@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Fotos
+Comment=Visor de imágenes y fotografías para TITAN Linux
+Exec=titan-fotos
+Icon=/usr/share/titan/icons/pictures.png
+Terminal=false
+Type=Application
+Categories=Graphics;Photography;Viewer;Qt;
+MimeType=image/png;image/jpeg;image/webp;image/svg+xml;image/bmp;image/gif;
+

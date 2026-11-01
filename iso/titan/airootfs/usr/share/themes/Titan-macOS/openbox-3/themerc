@@ -1,0 +1,55 @@
+# Titan Linux - Tema macOS Dark para Labwc / Openbox 3
+# Aspecto elegante con esquinas redondeadas y botones Traffic Lights en la esquina superior izquierda.
+
+# Barra de título activa e inactiva
+window.active.title.bg: flat solid
+window.active.title.bg.color: #1e2028
+window.inactive.title.bg: flat solid
+window.inactive.title.bg.color: #15161c
+
+# Bordes de ventana sutiles estilo macOS
+window.active.border.color: #383c4c
+window.inactive.border.color: #20222c
+border.width: 1
+
+# Título de ventana centrado
+window.active.label.text.color: #f2f4f8
+window.inactive.label.text.color: #6e7384
+window.label.text.justify: center
+
+# Botones Traffic Lights de macOS (Cerrar = Rojo, Minimizar = Amarillo, Maximizar = Verde)
+window.active.button.close.unpressed.image.color: #ff5f56
+window.active.button.close.hover.image.color: #e0443e
+window.active.button.close.pressed.image.color: #c0322c
+
+window.active.button.iconify.unpressed.image.color: #febc2e
+window.active.button.iconify.hover.image.color: #dea123
+window.active.button.iconify.pressed.image.color: #b88214
+
+window.active.button.max.unpressed.image.color: #28c840
+window.active.button.max.hover.image.color: #1aab29
+window.active.button.max.pressed.image.color: #12821d
+
+# Botones cuando la ventana está inactiva (grafito suave)
+window.inactive.button.close.unpressed.image.color: #404452
+window.inactive.button.iconify.unpressed.image.color: #404452
+window.inactive.button.max.unpressed.image.color: #404452
+
+# Relleno del encabezado
+padding.width: 8
+padding.height: 5
+window.handle.width: 0
+window.client.padding.width: 0
+
+# Menús contextuales
+menu.border.width: 1
+menu.border.color: #383c4c
+menu.title.bg: flat solid
+menu.title.bg.color: #1e2028
+menu.title.text.color: #f2f4f8
+menu.items.bg: flat solid
+menu.items.bg.color: #181a22
+menu.items.text.color: #d8dce6
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: #34405a
+menu.items.active.text.color: #ffffff

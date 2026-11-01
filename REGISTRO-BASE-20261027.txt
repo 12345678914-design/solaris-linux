@@ -1,0 +1,421 @@
+TITAN LINUX - REGISTRO DE LA BASE CON ESCRITORIO
+Fecha: 2026-10-27
+Estado: ISO 22 certificada en UEFI y BIOS con Inicio a la izquierda, iconos
+        del catalogo en las apps ancladas, resolucion adaptativa de QEMU y
+        la app Acerca; el instalador sigue en pausa. Las ISO 18, 20 y 21
+        certificadas se conservan en out/certificada-18/, -20/ y -21/.
+
+QUE ES ESTE FICHERO
+  El contrato de lo que compone el sistema base: paquetes, disco, ficheros,
+  scripts de arranque y ganchos del instalador. Sirve para retomar el
+  instalador sin adivinar nada.
+  Regla del proyecto: nada entra en la ISO ni en el instalador si no esta
+  escrito aqui. Si algo cambia, se cambia aqui primero.
+
+1. VARIABLES GLOBALES DE PERSONALIZACION
+  Fuente unica en el repositorio:
+    config/titan-base.conf
+  Destino en la ISO y en el sistema instalado:
+    /etc/titan/base.conf   (0644, root:root)
+
+  Claves:
+    TITAN_SO_NOMBRE       nombre visible del sistema
+    TITAN_SO_VERSION      version de la release
+    TITAN_SO_ID           identificador corto
+    TITAN_SO_WEB          pagina del proyecto
+    TITAN_USUARIO         cuenta del escritorio
+    TITAN_HOSTNAME        nombre de la maquina
+    TITAN_TERMINAL        terminal del escritorio (kitty)
+    TITAN_EXPLORADOR      explorador de archivos (pcmanfm-qt)
+    TITAN_ESCRITORIO      compositor (labwc)
+    TITAN_APAGAR          orden de apagado del boton Inicio
+    TITAN_REINICIAR       orden de reinicio del boton Inicio
+    TITAN_FONDO_COLOR1    color inicial del fondo
+    TITAN_FONDO_COLOR2    color final del fondo
+    TITAN_BARRA_ALTO      altura de la barra inferior en pixeles (56)
+    TITAN_BARRA_FONDO     color base de la barra
+    TITAN_BARRA_ALFA      opacidad de la barra
+    TITAN_BARRA_ACENTO    color del borde superior y de las tareas activas
+    TITAN_INICIO_TEXTO    etiqueta del boton Inicio
+    TITAN_CENTRO_ANCHO    ancho de la tarjeta central
+    TITAN_CENTRO_ALTO     alto de la tarjeta central
+    TITAN_CENTRO_COLUMNAS columnas de la cuadricula de aplicaciones
+    TITAN_CENTRO_OSCURIDAD alfa del velo que oscurece el entorno
+
+  Quien las lee:
+    - apps/titan-desktop las carga al arrancar (variables globales de la app).
+    - scripts/build-iso.sh las instala en el perfil de la ISO.
+    - el instalador (en pausa) las usara para crear usuario y hostname.
+
+  Limitacion actual y honesta: la cuenta del live sigue siendo "titan"
+  porque los drop-ins de getty y el .bashrc estan escritos a mano. Cambiar
+  TITAN_USUARIO en el fichero cambia lo que muestra el escritorio, pero no
+  crea otra cuenta en el live. El instalador es quien debe cerrar ese hueco.
+
+2. DECISIONES DE LA BASE
+  - Distribucion: Arch Linux.
+  - Kernel: linux-titanlinux (paquete propio) y linux de rescate.
+  - Disco: GPT, particion EFI vfat y raiz ext4. Sin swap de disco.
+  - RAM virtual: zram con zram-generator (zram0, zstd). La swap de disco
+    no se usa, para no desgastar el disco ni depender de una particion.
+  - Grafia: Wayland con labwc. No se instala GNOME.
+  - Escritorio: fondo propio en Qt 6 (titan-desktop) sobre una capa
+    layer-shell de fondo; no es una ventana normal.
+  - Barra: proceso propio titan-panel, tambien layer-shell, anclado abajo.
+    Orden: Inicio a la izquierda, apps ancladas, ventanas, reloj.
+  - Centro de aplicaciones: superficie layer-shell Overlay del mismo
+    proceso; oscurece tambien la barra, se cierra con Escape o clic fuera.
+    En el pie del centro estan Apagar y Reiniciar, sin pasar por una
+    sesion de texto ni por el antiguo boton Salir.
+  - Ventanas: wlr-foreign-toplevel-management de labwc. Se agrupan por
+    app_id; clic activa o minimiza y el menu contextual cierra.
+  - Terminal: kitty.
+  - Explorador: pcmanfm-qt. Dolphin se descarta: arrastra media pila KDE.
+  - Entrada: autologin en tty1, sin gestor de pantalla. tty2 y siguientes
+    quedan como consola de texto (Ctrl+Alt+F2 / Ctrl+Alt+F1).
+  - La ISO 18 certificada no se toca. La ISO 19 fue la prueba previa a la
+    barra. La ISO 20 es la candidata certificada con barra y centro. La
+    ISO 21 quita la tarjeta central, deja solo iconos en las tareas y el
+    boton Inicio, y anade la app Acerca. La ISO 22 mueve Inicio al extremo
+    izquierdo, usa los iconos del catalogo tambien en Terminal y Archivos,
+    elimina los respaldos con letra T/A y adapta la ventana de QEMU a la
+    resolucion real del host. La barra se prioriza siempre: el escritorio
+    no dibuja una segunda barra superior.
+  - Pantalla de QEMU: no se fija video= en GRUB ni syslinux. La ventana
+    usa virtio-vga con xres/yres/EDID calculados por
+    scripts/detectar-resolucion.sh; si no se puede detectar, usa 1280x720.
+    --resolution y TITAN_QEMU_RESOLUCION permiten forzar un tamano.
+  - Grafica del live: 15-titan-grafico.sh busca cualquier /dev/dri/card*
+    (no solo card0), espera hasta 3 s a udev y solo cae a texto si no hay
+    ninguno o falta labwc/titan-desktop.
+
+3. PAQUETES QUE ANADE EL ESCRITORIO
+  En iso/titan/packages.x86_64:
+    labwc          compositor Wayland (ligero, estilo openbox)
+    dbus           bus de sesion que necesita labwc
+    qt6-base       bibliotecas Qt 6 del escritorio
+    qt6-wayland    plugin Qt para dibujar sobre Wayland
+    mesa           OpenGL por software (llvmpipe) para QEMU sin GPU
+    kitty          terminal
+    pcmanfm-qt     explorador de archivos
+    layer-shell-qt  capas Wayland para fondo, barra y centro
+    qt6-svg         iconos SVG del catalogo
+    hicolor-icon-theme  temas de iconos base para aplicaciones
+    ttf-dejavu     tipografia del banner y de la interfaz
+    xdg-utils      xdg-open para "abrir con"
+  Dependencias del build (host, no van a la ISO por si solas):
+    qt6-base (qmake6), g++, make, wayland-protocols, layer-shell-qt.
+
+4. FICHEROS Y DIRECTORIOS
+  Cada linea: origen en el repositorio -> destino y funcion.
+
+  - config/titan-base.conf
+      -> /etc/titan/base.conf (0644)
+      Variables globales de personalizacion.
+
+  - apps/titan-desktop/
+      -> /usr/local/bin/titan-desktop (0755)
+      Fondo Qt sobre layer-shell. Solo pinta el degradado y los aros: no
+      tiene cabecera, tarjeta central ni boton Salir. La barra y las
+      tareas viven en titan-panel.
+      Modos: --escritorio (tamano de pantalla), --ventana (pruebas),
+      --comprobar (imprime variables, sin grafia), --captura (PNG),
+      --autocerrar (pruebas).
+
+  - apps/titan-panel/
+      -> /usr/local/bin/titan-panel (0755)
+      Barra inferior y centro de aplicaciones en un solo proceso.
+      La barra se ancla abajo con altura TITAN_BARRA_ALTO. Inicio ocupa el
+      primer puesto, a la izquierda; despues van Terminal y Archivos y, al
+      final, las tareas y el reloj. Las apps ancladas usan los mismos iconos
+      del catalogo que el centro (kitty y pcmanfm-qt) y no llevan letras de
+      respaldo: si falta el icono se pinta una ventana neutra. Las tareas
+      tambien son solo icono y agrupan por app_id
+      con wlr-foreign-toplevel-management: clic activa/minimiza, menu
+      contextual activa, minimiza o cierra. El centro lee el catalogo XDG
+      recursivo, busca por nombre y lanza con Exec. Es una capa Overlay que
+      cubre tambien la barra; cierra con Escape o clic fuera. En el pie del
+      centro estan Apagar y Reiniciar. Modos de prueba: --comprobar,
+      --captura, --centro, --autocerrar.
+
+  - apps/titan-acerca/
+      -> /usr/local/bin/titan-acerca (0755)
+      Ventana Acerca: icono de computadora, nombre del equipo, RAM,
+      procesador, disco y arquitectura; boton Aceptar centrado.
+      --comprobar imprime los datos sin grafica; --captura guarda un PNG.
+      Su entrada /usr/share/applications/titan-acerca.desktop la hace
+      aparecer en el centro de aplicaciones.
+
+  - apps/titan-common/
+      Codigo compartido: lectura de /etc/titan/base.conf y helper
+      TitanCapa::aplicar() para convertir ventanas Qt en layer-shell.
+      Fondo usa LayerBackground, barra LayerTop y centro LayerOverlay.
+      El centro pide zona exclusiva -1 para cubrir la barra.
+
+  - iso/titan/airootfs/etc/profile.d/10-titan.sh
+      -> /etc/profile.d/10-titan.sh (0644)
+      Prompt, alias y bienvenida. La marca TITAN_BANNER_IMPRESO evita que
+      /etc/profile y ~/.bashrc impriman el banner dos veces.
+
+  - iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh
+      -> /etc/profile.d/15-titan-grafico.sh (0644)
+      Decide si tty1 entra en grafia. Si falta labwc, dbus-run-session,
+      titan-desktop o no existe ningun /dev/dri/card*, avisa y sigue en
+      texto. Tambien se puede forzar texto con titan.texto en la linea del
+      kernel o con el fichero /etc/titan/modo-texto. Busca cualquier card*
+      (con virtio-vga el nodo es card1) y espera hasta 3 s a udev. Las
+      variables TITAN_DRM, TITAN_DRM_DIR y TITAN_CMDLINE permiten probar
+      esta decision sin hardware (las usa el test).
+
+  - iso/titan/airootfs/etc/profile.d/20-titan-scrollback.sh
+      -> /etc/profile.d/20-titan-scrollback.sh (0644)
+      Envuelve tty1 en tmux para tener historial de consola. No toca ttyS0
+      (pruebas automaticas) ni las demas consolas. Es tambien el destino
+      cuando el escritorio se cierra.
+
+  - iso/titan/airootfs/etc/tmux.conf
+      -> /etc/tmux.conf (0644)
+      Historial de 50.000 lineas y teclas de navegacion.
+
+  - iso/titan/airootfs/etc/systemd/system/getty@tty1.service.d/*.conf
+      -> /etc/systemd/system/getty@tty1.service.d/autologin.conf (0644)
+      Autologin de tty1 con el usuario del live.
+
+  - iso/titan/airootfs/etc/systemd/system/serial-getty@ttyS0.service.d/
+      -> /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+      Autologin de la consola serie, para las pruebas de QEMU.
+
+  - iso/titan/airootfs/root/customize_airootfs.sh
+      Solo build. Crea el usuario, sudoers, fastfetch y el autostart de
+      labwc en /home/titan/.config/labwc/autostart. Comprueba que el
+      escritorio arranca y que lee /etc/titan/base.conf.
+
+  - iso/titan/profiledef.sh
+      Solo build. file_permissions incluye titan-desktop, titan-panel y
+      titan-acerca a 0755; sin esas entradas archiso los copia 0644 y no
+      arrancan desde el autostart ni desde el catalogo.
+
+  - scripts/build-iso.sh
+      Solo build. Paso 2b: compila titan-desktop con qmake6 y make y ejecuta
+      verify/comprobar-escritorio.sh. Paso 2c: compila titan-panel, lo
+      instala y ejecuta verify/comprobar-panel.sh. Paso 2d: compila
+      titan-acerca, lo instala y ejecuta verify/comprobar-acerca.sh. Si
+      cualquiera de las pruebas falla, el build se detiene.
+
+  - verify/comprobar-banner.sh
+      Solo repositorio. Test de comportamiento del banner.
+
+  - verify/comprobar-arranque-grafico.sh
+      Solo repositorio. Test de la decision grafia/texto: tty1, tty2, sin
+      tarjeta, titan.texto, dentro de tmux, TITAN_GRAFICO repetido y
+      deteccion de card1 cuando no hay card0 (regresion de virtio-vga).
+
+  - verify/comprobar-escritorio-qemu.py
+      Solo repositorio. Arranca la ISO en QEMU (UEFI o --bios), espera la
+      shell de ttyS0, comprueba que labwc, titan-desktop y titan-panel
+      estan vivos, y mide el fondo y la barra en una captura real.
+      Con --interactuar usa QMP y un raton absoluto para abrir el centro
+      con Inicio, comprobar el velo y la tarjeta, cerrarlo con Escape y con
+      clic fuera, lanzar kitty, comprobar su tarea, minimizarla, restaurarla
+      y cerrarla desde el menu. Con --cerrar prueba labwc --exit y la vuelta
+      a tmux. --resolution ANCHOxALTO arranca con virtio-vga a ese tamano y
+      comprueba que la captura mide exactamente lo pedido. Guarda PPM, PNG
+      e informe JSON; el lector de PPM tiene en cuenta el relleno de fila a
+      4 bytes que usa QEMU con anchos como 1366.
+
+  - verify/comprobar-panel.sh
+      Solo repositorio. Prueba el catalogo XDG con un HOME temporal
+      (entradas anidadas, Name[es], Exec, Terminal, NoDisplay, TryExec),
+      comprueba las variables del panel y pinta la barra y el centro
+      offscreen. El build la ejecuta antes de instalar el binario.
+
+  - verify/comprobar-escritorio.sh
+      Solo repositorio. Comprueba que titan-desktop declara que no hay
+      barra superior, tarjeta central ni Salir, y pinta el fondo a
+      1280x800.
+
+  - verify/comprobar-acerca.sh
+      Solo repositorio. Comprueba los datos de Acerca, el boton Aceptar, la
+      captura 560x520 y que la entrada aparece en el catalogo.
+
+  - verify/comprobar-customize.sh
+      Solo repositorio. Comprueba que customize_airootfs.sh tiene sintaxis
+      valida, que define run_check antes de usarla, que crea el autostart
+      con ruta absoluta y que menciona 15-titan-grafico.sh. Acepta una ruta
+      como argumento para probar una copia rota.
+
+  - apps/titan-desktop/titan-desktop.pro
+      Proyecto qmake. Se eligio qmake6 porque el host ya lo trae; no hace
+      falta instalar cmake para construir la ISO.
+
+5. CADENA DE ARRANQUE
+  tty1:
+    systemd -> getty@tty1 (autologin)
+      -> /etc/profile
+        -> 10-titan.sh          prompt, alias y banner (una sola vez)
+        -> 15-titan-grafico.sh  decide grafia o texto y fija LANG UTF-8
+             -> dbus-run-session labwc
+                  -> ~/.config/labwc/autostart
+                       -> titan-desktop --escritorio  (capa de fondo)
+                       -> titan-panel                 (barra y centro)
+        -> 20-titan-scrollback.sh  solo si no hubo grafia o al cerrarla
+             -> tmux new-session -A -s titan
+
+  Capas Wayland, de abajo arriba:
+    background  titan-desktop
+    normal      kitty, pcmanfm-qt y demas ventanas
+    top         titan-panel (barra, 56 px, anclada abajo)
+    overlay     centro de aplicaciones (zona exclusiva -1, tapa la barra)
+
+  ttyS0 (serie) y tty2+:
+    shell normal, sin tmux y sin grafia. La serie es el camino de las
+    pruebas automaticas.
+
+  Acciones de energia:
+    Inicio -> centro -> Apagar (TITAN_APAGAR) o Reiniciar
+    (TITAN_REINICIAR). Las ejecuta titan-panel con systemctl; no hay ya un
+    boton Salir en el escritorio. Si la accion falla, el log del panel lo
+    dice y el centro se cierra igualmente.
+
+  Resolucion en QEMU:
+    Las 6 entradas de arranque no llevan video=. scripts/detectar-resolucion.sh
+    lee la pantalla del host (niri, wlr-randr, xrandr o DRM sysfs) y
+    scripts/run-qemu.sh pasa xres/yres/EDID a virtio-vga. La ventana GTK usa
+    zoom-to-fit=on y show-menubar=off. Si no hay datos, el respaldo es
+    1280x720; --resolution y TITAN_QEMU_RESOLUCION tienen prioridad. Asi la
+    barra inferior no queda recortada ni aparecen barras negras en 1366x768
+    o 1920x1080.
+
+6. EL FALLO DEL BANNER DUPLICADO
+  Causa real: /etc/profile carga 10-titan.sh y despues ~/.bashrc lo vuelve
+  a cargar en la MISMA shell. El guard TITAN_SHELL_VISIBLE no lo cubria:
+  las dos cargas eran la misma shell visible.
+  Arreglo: TITAN_BANNER_IMPRESO, exportada antes de imprimir. La primera
+  carga imprime; la segunda no.
+  Test: verify/comprobar-banner.sh. Simula ttyS0, tty1 fuera de tmux, tty1
+  dentro de tmux y tty2, y cuenta banners. Con el codigo anterior da 2 en
+  tres casos y falla; con el arreglo da 1 y pasa.
+
+7. DISCO Y SISTEMA INSTALADO (contrato para el instalador)
+  Tabla de particiones:
+    p1  1 GiB    vfat   /boot/efi
+    p2  resto    ext4   /
+  Sin particion swap.
+  fstab por UUID, no por nombre de dispositivo.
+  zram:
+    paquete zram-generator
+    /etc/systemd/zram-generator.conf:
+      [zram0]
+      zram-size = min(ram / 2, 4096)
+      compression-algorithm = zstd
+  Arranque: GRUB en UEFI y syslinux en BIOS para el live; el instalado usa
+  GRUB. Kernel linux-titanlinux con initramfs propio.
+  Red: systemd-networkd con DHCP en el live; el instalador decidira si
+  deja NetworkManager en el sistema instalado.
+
+8. GANCHOS DEL INSTALADOR (cuando se retome)
+  En orden:
+    1. Leer /etc/titan/base.conf y usar TITAN_USUARIO y TITAN_HOSTNAME.
+    2. Crear la cuenta, el home y /etc/sudoers.d/.
+    3. Copiar titan-desktop, titan-panel, titan-acerca y las bibliotecas Qt
+       que necesitan (incluida layer-shell-qt); instalar tambien
+       /usr/share/applications/titan-acerca.desktop.
+    4. Copiar /etc/titan/base.conf.
+    5. Copiar 10-titan.sh, 15-titan-grafico.sh, 20-titan-scrollback.sh,
+       tmux.conf y el autostart de labwc.
+    6. Configurar autologin de tty1 en el sistema instalado.
+    7. Particionar GPT (EFI + ext4), escribir fstab por UUID e instalar
+       GRUB.
+    8. Instalar y habilitar zram-generator.
+    9. Poner /etc/hostname con TITAN_HOSTNAME.
+   10. Ajustar el kernel y el initramfs.
+  El instalador sigue en pausa: este registro es lo que hay que implementar,
+  no una promesa de que ya este hecho.
+
+9. COMPROBACIONES
+  Desde la raiz del repositorio:
+    ./verify/comprobar-banner.sh
+    ./verify/comprobar-arranque-grafico.sh
+    ./verify/comprobar-customize.sh
+    ./verify/comprobar-escritorio.sh
+    ./verify/comprobar-acerca.sh
+    TITAN_PANEL=/tmp/titan-panel-build/titan-panel \
+        ./verify/comprobar-panel.sh
+    ./verify/comprobar-escritorio-qemu.py --interactuar
+    ./verify/comprobar-escritorio-qemu.py --bios --interactuar
+    ./verify/comprobar-escritorio-qemu.py --cerrar
+    bash -n iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh
+    (cd apps/titan-desktop && qmake6 && make -j)
+    (cd apps/titan-desktop/build && ./titan-desktop --comprobar)
+    QT_QPA_PLATFORM=offscreen ./titan-desktop --captura /tmp/escritorio.png
+    (cd apps/titan-acerca && mkdir -p build && cd build && qmake6 .. &&
+     make -j)
+    (cd apps/titan-acerca/build && ./titan-acerca --comprobar)
+    QT_QPA_PLATFORM=offscreen ./titan-acerca --captura /tmp/acerca.png
+
+  El build de la ISO comprueba ademas:
+    - comprobar-escritorio.sh, comprobar-panel.sh y comprobar-acerca.sh en
+      verde antes de instalar sus binarios.
+    - titan-desktop, titan-panel y titan-acerca --comprobar en el chroot.
+    - labwc, kitty, pcmanfm-qt, dbus-run-session y layer-shell-qt estan
+      instalados.
+    - 15-titan-grafico.sh y el autostart pasan las comprobaciones.
+    - el autostart arranca titan-desktop y titan-panel con ruta absoluta.
+
+  La prueba QEMU con interaccion comprueba 22 puntos: arranque, procesos,
+  Acerca en el live, capa, fondo, barra, apertura del centro, velo de la
+  barra, tarjeta, cierre con Escape, cierre con clic fuera, apertura de
+  kitty, tarea, minimizar/restaurar, cierre desde el menu y desaparicion
+  de la tarea.
+
+10. LO QUE NO ENTRA
+    GNOME, Dolphin, flatpak, snap, gestores de pantalla pesados.
+    Limitacion conocida: labwc no publica ventanas X11/XWayland por
+    wlr-foreign-toplevel-management, asi que esas ventanas no aparecen en
+    la barra. kitty y pcmanfm-qt son Wayland nativos y si se gestionan.
+    El fondo ya es una capa layer-shell real; no se vuelve a una ventana
+    normal del tamano de la pantalla. La barra no reserva espacio para una
+    segunda cabecera porque ya no existe.
+
+11. ESTADO Y SIGUIENTE PASO
+    Hecho y probado con la ISO 20 (se conserva certificada):
+      - Arranque directo al escritorio en UEFI y BIOS.
+      - Fondo layer-shell, barra inferior de 56 px y centro Overlay.
+      - Centro con busqueda, catalogo XDG, apertura de kitty y cierre con
+        Escape o clic fuera; el velo tambien tapa la barra.
+      - Tareas por app_id: abrir, minimizar, restaurar y cerrar desde el
+        menu contextual; la tarea desaparece al cerrar la ventana.
+    Certificacion ISO 21 (nueva revision):
+      - Prueba QEMU con QMP y raton absoluto: 22 comprobaciones en UEFI y
+        22 en BIOS, sin fallos, ademas de 13 comprobaciones de cierre.
+      - Verificacion manual con ventana GTK: la barra inferior completa
+        queda visible en la pantalla de 1366x768.
+    Conservacion:
+      - out/certificada-18/ es la ISO 18 certificada y no se toca.
+      - out/certificada-20/ guarda la ISO 20, su SHA256, informes y capturas
+        de la certificacion UEFI/BIOS.
+        SHA256:
+          307ca853c1fc50bd0c11241ff1e162eb2f9689d13892d3c84fae4f7336a2ddc7
+      - out/certificada-21/ guarda la ISO 21, su SHA256, informes, capturas
+        y pruebas de host de esta revision.
+        SHA256:
+          887236e7eb01a0d7e7868c7d06070c4fd9b048a4c63ca5ae2166d50e9793cdb7
+    Cambios de la ISO 21:
+      - Sin tarjeta central ni cabecera en titan-desktop.
+      - Boton Inicio y tareas solo con icono; sin etiquetas de texto.
+      - Apagar y Reiniciar en el pie del centro; se elimina Salir.
+      - App Acerca con equipo, RAM, procesador, disco, arquitectura y
+        boton Aceptar centrado.
+      - QEMU con zoom-to-fit para que la barra no quede recortada.
+      - Certificacion ISO 21: UEFI 22/22, BIOS 22/22, cierre 13/13;
+        panel de host 17/17, Acerca 10/10, escritorio 5/5; banner 4/4,
+        arranque grafico 6/6 y customize 4/4.
+    Pendiente inmediato: retomar el instalador con este registro.
+      - Copiar tambien titan-panel, titan-acerca y sus dependencias
+        Qt/layer-shell-qt, ademas del autostart de los dos procesos.
+      - Repetir las comprobaciones dentro del sistema instalado, no solo en
+        el live.
+    Pendiente de tests heredado: las comprobaciones 8 y 10 de
+    scripts/titan-verify.py teclean en tty1; hay que llevarlas a tty2 o a un
+    modo de consola del arnes.
+    Pendiente de consola: tty2 muestra login normal, sin autologin ni tmux.

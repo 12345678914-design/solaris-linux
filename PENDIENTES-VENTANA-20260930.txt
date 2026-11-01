@@ -1,0 +1,85 @@
+================================================================================
+TITAN LINUX -- PENDIENTES DEL MODO GRAFICO (2026-09-30)
+================================================================================
+
+Fallos que ha visto el usuario al instalar a mano con 'sudo install.sh
+--grafico' sobre la ISO 18, la misma que se certifico entera (UEFI y BIOS,
+0 FALLO). NO estan arreglados ni comprobados: son lo que falta, en el orden
+en que se van a arreglar (fases). Regla del proyecto: cada fallo se caza
+con un test que pueda fallar de verdad ANTES de tocar el codigo; un
+comprobador que no puede fallar no vale, y uno que exige el fallo tampoco.
+
+Cuando cada fase este arreglada y cazada por su test, pasara al AVANCE como
+fallo 47, 48, 49 o 50 y a los comprobadores correspondientes.
+
+--------------------------------------------------------------------------------
+FASE 1. 'fastfetch' se duplica en la consola del live.
+--------------------------------------------------------------------------------
+
+La bienvenida con el logo sale DOS veces seguidas en tty1. En la consola
+serie se ve el bloque entero repetido: el mismo resumen del sistema dos
+veces, una tras otra, hasta dejar el prompt.
+
+Probable causa a mirar: el perfil (10-titan.sh o el prompt de login)
+imprime fastfetch una vez por login, y 20-titan-scrollback.sh levanta tmux
+con otra shell de login dentro, que lo imprime otra vez.
+
+Que comprobar cuando se arregle: que la bienvenida salga una sola vez
+tanto en la primera shell como al entrar al tmux, y que el menu de
+comandos sea el de la segunda aparicion (la que queda delante).
+
+--------------------------------------------------------------------------------
+FASE 2. La ventana del instalador no tiene la resolucion adecuada: el boton
+        queda fuera de la pantalla.
+--------------------------------------------------------------------------------
+
+Con el modo grafico la ventana sale mas alta que la imagen que pinta QEMU:
+el boton de abajo (por ejemplo el de 'instalar') queda FUERA de la
+pantalla y no se puede pulsar. La resolucion del lienzo y el tamano
+inicial de la ventana no se entienden.
+
+Que comprobar cuando se arregle: la ventana del frontal cabe entera en el
+lienzo (todos los botones visibles), para la resolucion que el firmware
+decida. Sin 'video=' forzado en el instalado: es el live el que tiene que
+saber pedir lo que cabe.
+
+--------------------------------------------------------------------------------
+FASE 3. Las listas largas no tienen scroll.
+--------------------------------------------------------------------------------
+
+Cuando una lista no cabe en la ventana (por ejemplo la de aplicaciones por
+categorias, o la de discos) no se puede recorrer: el contenido se corta y
+no hay manera de llegar a lo que queda fuera. Falta un contenedor con
+scroll (ScrolledWindow en ventana-gui.py).
+
+Que comprobar cuando se arregle: con una lista mas larga que la ventana,
+se puede llegar a la primera y a la ultima entrada con el teclado y con la
+rueda del raton, y el frontal no se corta.
+
+--------------------------------------------------------------------------------
+FASE 4. Al pulsar 'instalar' la pantalla se queda negra.
+--------------------------------------------------------------------------------
+
+Se llega a la pantalla de instalacion y al pulsar el boton de instalar la
+ventana se queda negra. Parece el fallo 44 (cage que no pinta) pero en
+otro momento del recorrido: el 44 era al LEVANTAR la ventana, y esto pasa
+DESPUES, al EMPEZAR la instalacion.
+
+Que comprobar cuando se arregle: al pulsar instalar la pantalla sigue
+pintando (el frontal sigue vivo y con la tarjeta de verdad), y si cage o
+ventana-gui.py mueren, el codigo de salida llega al que lo tiene que
+recoger sin perderse por el camino (como el 46).
+
+--------------------------------------------------------------------------------
+Como reproducirlo todo
+--------------------------------------------------------------------------------
+
+    sudo install.sh --grafico     (en el live de la ISO 18)
+
+  1. la bienvenida de tty1 sale dos veces;
+  2. la ventana del instalador no cabe: el boton de abajo queda fuera;
+  3. en las listas largas no hay scroll;
+  4. al pulsar 'instalar' la pantalla se queda negra.
+
+El live sigue corriendo en QEMU (PID 702622) con disco de 20G; la consola
+serie esta en /var/tmp/viva-serie.log y confirma el duplicado del 1.

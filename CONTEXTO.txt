@@ -1,0 +1,734 @@
+================================================================================
+ TITAN LINUX - CONTEXTO DEL PROYECTO
+ Actualizado: 2026-09-26
+================================================================================
+
+Este archivo esta junto al kernel descargado. Lelo antes de retomar el trabajo
+para saber que hay, donde esta y en que fase va el proyecto.
+
+
+--------------------------------------------------------------------------------
+1. QUE ES ESTE PROYECTO
+--------------------------------------------------------------------------------
+
+Titan Linux: una DISTRIBUCION DERIVADA de Arch Linux, orientada a desarrollo,
+con el escritorio niri preconfigurado, un kernel LTS propio y aplicaciones
+propias.
+
+Titulo importante: es una DERIVADA de Arch, no una distro desde cero. Motivo:
+los drivers se mantienen actualizados desde upstream (requisito del usuario),
+Arch tiene el ecosistema de paquetes mas grande de Linux, y construir un
+escritorio completo (KDE/Hyprland) desde cero es inviable. Es el mismo modelo
+que EndeavourOS, CachyOS o Garuda.
+
+Decisiones tomadas y confirmadas por el usuario:
+  - Base:        Arch Linux (rolling)
+  - Escritorio:  niri  (repo oficial 'extra', se actualiza con Arch)
+  - Kernel:      rama LTS 6.x, actualmente 6.18
+  - Politica:    NO se parchean drivers. Van de upstream.
+  - Instalacion: nativa, SIN maquinas virtuales
+  - Apps:        GUI (GTK4/libadwaita) + CLI de productividad (Rust/clap)
+  - Nombre:      Titan Linux  ->  pkgname: titanlinux
+  - Usuario:     "LO VOY A HACER YO" (la instalacion de Arch la hace el usuario)
+
+
+--------------------------------------------------------------------------------
+2. FASE ACTUAL: FASE 1 HECHA / ISO VIVA VERIFICADA (42/42)
+--------------------------------------------------------------------------------
+
+  [X] FASE 0  Instalar Arch Linux nativo            -> HECHA por el usuario
+                                                        (Arch rolling, sudo
+                                                        sin clave)
+  [X] FASE 1  Bootstrap + paquete de kernel + rastreo de versiones
+                                                  -> HECHA (ver seccion 3)
+  [X] FASE 2  Validar que el kernel arranca y deja entrada de rescate
+                                                  -> HECHA DENTRO DE LA ISO:
+                                                     el kernel propio arranca
+                                                     por defecto y el de Arch
+                                                     queda como entrada
+                                                     "rescate"
+  [ ] FASE 3  install.sh: particionado, pacstrap, repo propio, GRUB
+  [ ] FASE 4  niri preconfigurado: config.kdl, waybar, tema, /etc/skeleton
+  [X] FASE 5  ISO con branding via archiso (mkarchiso)
+                                                  -> HECHA: ISO viva de
+                                                     777 MB, UEFI + BIOS,
+                                                     ver seccion 4
+  [~] FASE 6  firstboot.sh + apps propias (GUI GTK4, CLI Rust)
+                                                  -> PARCIAL: CLI 'titan'
+                                                     (Rust/clap) y branding
+                                                     de fastfetch, hechos y
+                                                     verificados. Falta la app
+                                                     GUI GTK4 y firstboot.sh
+  [ ] FASE 7  README del flujo + CI que compile la ISO por commit
+
+  El orden es deliberado: la FASE 2 va antes que la 3 porque el kernel
+  personalizado es el riesgo tecnico mas alto (Secure Boot, ABI, config).
+  Se prueba solo, en minutos, sin depender del instalador.
+
+  COMO SE VALIDO EL KERNEL (la via elegida en vez de esperar a la FASE 3):
+    No se arranco el kernel en el hardware ni con un instalador: se metio en
+    una ISO viva de archiso. Asi el kernel propio, su initramfs, el PID 1 y el
+    CLI se prueban de una vez y en minutos, sin tocar el disco del equipo.
+
+  SIGUIENTE PASO CONCRETO:
+    1. cd distro && ./scripts/build-iso.sh        (reconstruye la ISO)
+    2. ./scripts/verify-qemu.sh                   (42 comprobaciones)
+    3. ./scripts/run-qemu.sh                      (arranque con ventana)
+    4. Commit inicial: falta la identidad de git (ver seccion 9).
+
+  LO QUE PIDIO EL USUARIO Y YA ESTA HECHO:
+    Que cuando la salida se pase de la pantalla se pueda volver a leer, y que
+    la de abajo (la ultima linea) se vea siempre. Decidido con el usuario: la
+    shell de tty1 dentro de tmux, con la barra de estado apagada. Ver seccion 4
+    comprobacion 10, seccion 7.20-7.23 y el apartado "Scrolling back through
+    the output" del README. La tecla es RePag a secas, NUNCA Shift+RePag.
+
+
+--------------------------------------------------------------------------------
+3. ARCHIVOS Y UBICACIONES
+--------------------------------------------------------------------------------
+
+EN ESTA CARPETA  (C:\Users\isai_noe\src\)
+  linux-6.18.54.tar.xz        147.63 MB   kernel 6.18.54 comprimido
+                                          SHA256 VERIFICADO (ver seccion 4)
+                                          NO extraido: sigue siendo un
+                                          archivo comprimido, no un arbol
+  sha256sums.asc              0.24 MB    checksums oficiales de kernel.org
+  arch-linux-lts-PKGBUILD     ~10 KB     recipe original de Arch (referencia)
+  arch-config.x86_64          0.28 MB    config original de Arch (referencia)
+
+EN /home/isai/Projects/system_linux/distro/   (repo git, SIN COMMIT)
+  setup.sh                    bootstrap del host Arch
+  kernel/bump.sh              rastrea LTS en kernel.org, refresca el paquete
+  kernel/linux-titanlinux/PKGBUILD
+  kernel/linux-titanlinux/config.x86_64
+  kernel/linux-titanlinux/0001-...CLONE_NEW.patch
+  kernel/linux-titanlinux/0002-...amdgpu-avoid-memory-allocation.patch
+  kernel/linux-titanlinux/0003-...amdgpu-GFP_ATOMIC.patch
+  kernel/linux-titanlinux/0004-modfinal-strip-module-debug-info.patch
+                              (nuevo: quita el DWARF de los .ko al enlazarlos;
+                              sin el, el build del kernel se queda SIN disco)
+  .gitattributes              fuerza LF (critico: archivos escritos en Windows)
+  .gitignore
+  README.md
+
+  Lo anadido para la ISO viva y la verificacion:
+  scripts/build-iso.sh        compila el CLI, monta el repo local y llama a
+                              mkarchiso
+  scripts/verify-qemu.sh      arranca la ISO sin mirar y ejecuta las
+                              42 comprobaciones
+  scripts/titan-verify.py     el verificador de verdad (consola serie por
+                              socket unix + monitor de QEMU + screendump)
+  scripts/run-qemu.sh         arranque manual, con ventana o sin ella
+  iso/titan/profiledef.sh     perfil de archiso (install_dir=titan, erofs)
+  iso/titan/packages.x86_64   catalogo de paquetes de la ISO
+  iso/titan/pacman.conf       repos de la ISO (incluye el repo local [titan])
+  iso/titan/airootfs/         lo que se copia al sistema de la ISO:
+                              root/customize_airootfs.sh (todo el trabajo
+                              post-pacstrap: identidad, usuario, sudo,
+                              espejos de pacman, red, comprobaciones),
+                              etc/profile.d/10-titan.sh, el preset de
+                              fastfetch, el logo, el preset de mkinitcpio,
+                              los drop-ins de autologin
+                              (/etc/sudoers.d/10-titan lo escribe el hook y no
+                              el perfil, porque archiso copia el perfil sin
+                              modos)
+  iso/titan/grub/grub.cfg     entradas de GRUB (UEFI)
+  iso/titan/syslinux/*.cfg    entradas de syslinux (BIOS)
+  apps/titan-cli/src/main.rs  el CLI 'titan' (Rust + clap)
+  out/titan-linux-0.1.0-x86_64.iso    la ISO (777 MB) + .sha256
+  out/verify/                 informes, registros de consola y capturas
+
+EN C:\Users\isai_noe\Documents\sistema operativo\linux-master\linux-master
+  Arbol del kernel Linux 7.3.0-rc1 (mainline, release candidate).
+  NO se usa para construir Titan Linux. Se conservo como referencia.
+  Advertencia: es un -rc, esta sujeto a fallos de compilacion. Por eso se
+  eligio la rama LTS 6.18 en su lugar.
+
+EN C:\Users\isai_noe\Documents\  (hallazgos de reconocimiento inicial)
+  Virtual Machines\ryoku 1     VM VirtualBox ~8.4 GB (no se usara)
+  archlinux\disco_duro.qcow2   imagen vacia, 0.2 MB
+  CENT OS STREAM 10\...vhdx    vacia, 7 MB
+  -> Descartado: el usuario instalara Linux de forma nativa.
+
+
+--------------------------------------------------------------------------------
+4. VERIFICACIONES REALIZADAS (todo comprobado, nada asumido)
+--------------------------------------------------------------------------------
+
+  [OK] SHA256 del tarball coincide con kernel.org Y con el recipe de Arch:
+         9df30b02dd8102bbd0be52556288ef6889ddbe7f1ddb96fbf847d0becf3eacac
+
+  [OK] Los 3 parches coinciden byte a byte con los de Arch.
+
+  [OK] config.x86_64 == config de Arch (sha aef082c1ee24...) con UN solo
+       cambio: CONFIG_LOCALVERSION_AUTO -> "not set"
+         sha de la config de Titan:
+         021ae8b89af12bab8f0dfd2ec77415a6badd6361f1b3ba0b8e4f218a0882cc1b
+
+  [OK] git diff del PKGBUILD contra el de Arch: solo los 7 deltas
+       deliberados, cero perdida de entradas de licencia.
+
+  [OK] Sintaxis bash validada (bash -n) en setup.sh, bump.sh y PKGBUILD.
+
+  [OK] Cero finales CRLF en los 7 archivos de texto (critico para Linux).
+
+  [OK] bump.sh probado contra el feed real de kernel.org: detecta 6.18.54.
+
+  [OK] La URL y el hash del tarball coinciden con los que declara el
+       recipe oficial de Arch (aef082c1 / 9df30b02).
+
+  ---- ISO viva, 2026-09-27 (todo ejecutado, nada supuesto) ----
+
+  [OK] Paquete del kernel construido con el PKGBUILD:
+       linux-titanlinux-6.18.54-1-x86_64.pkg.tar.zst   163 MB
+       (+ -docs 14 MB, + -headers 77 MB)
+       6407 modulos en /usr/lib/modules/6.18.54-1-titanlinux/
+       vermagic correcto, .ko.zst, BTF intacto, sin DWARF, vmlinuz bzImage valido
+
+  [OK] ISO construida: out/titan-linux-0.1.0-x86_64.iso  777 MB
+       sha256 1071ca86fc96e167172f3f270d77c2503abff483609e9698876c5ef13ad42602
+       dentro: titan/boot/x86_64/{vmlinuz,initramfs}-linux-titanlinux.*
+               titan/boot/x86_64/{vmlinuz,initramfs}-linux.*  (rescate)
+               /EFI/BOOT/BOOTx64.EFI
+
+  [OK] QEMU UEFI (OVMF) + arranque por defecto de GRUB: 42/42 PASS
+  [OK] QEMU BIOS (syslinux), la otra via de arranque:      42/42 PASS
+       (1 arranque, 2 kernel propio, 3 identidad, 4 catalogo de 32 comandos,
+        5 fastfetch con el logo, 6 CLI titan, 7 titan doctor, 8 captura,
+        9 sudo + instalacion real de un paquete con pacman,
+       10 salida larga releible con RePag y con la cola siempre a la vista)
+
+  [OK] Comprobacion 10, medida sobre el texto real de la consola de tty1
+       (sudo sh -c "fold -w 80 < /dev/vcs1"), sin OCR, en UEFI y en BIOS:
+          panel de tmux 45x160 (la consola de texto es 45x160: coincide)
+          la ultima fila con texto es el prompt: 'titan@titan:~$'
+          la orden larga imprime 28322 lineas; la cola visible es
+            28279..28322, o sea 44 lineas seguidas con el prompt debajo
+          historial de tmux: 28322 lineas ya desplazadas
+          tras 1 RePag   -> visibles 28236..28280, el ultimo NO se ve
+          tras 41 RePag  -> visibles 26516..26560 (unas 1800 lineas atras)
+          tras q         -> visibles 28280..28322, el ultimo vuelve
+       La orden es 'clear; seq ${#HOME} $(( ${#BASH_VERSION} * ${#BASH_VERSION}
+       * ${#PATH} ))', que no teclea NI UN DIGITO (ver 7.26).
+
+  [OK] Lo que se ve dentro del sistema vivo:
+       uname -r          6.18.54-1-titanlinux
+       /etc/os-release  Titan Linux 0.1.0 (TITAN)
+       MOTD              "Welcome to Titan Linux 0.1.0 (TITAN)!"
+       (TITAN va con tilde en el binario; aqui se omite porque todo este
+        archivo es ASCII)
+       'titan doctor'    7/7 comprobaciones internas
+       104 comandos basicos presentes; 202 paquetes en el live
+       'fastfetch' a secas ya sale con el logo y las claves en espanol
+
+
+--------------------------------------------------------------------------------
+5. VERSIONES DE REFERENCIA (verificadas en sus fuentes)
+--------------------------------------------------------------------------------
+
+  kernel.org, 2026-09-25:
+    mainline   7.3-rc4
+    stable     7.2.8
+    longterm   6.18.54    <-- la que usa Titan Linux, EOL diciembre 2028
+              6.12.111   EOL diciembre 2028
+              6.6.157    EOL diciembre 2027
+              6.1.188
+              5.15.221 / 5.10.270  EOL 2026
+
+  niri 26.04-1  -> repo oficial 'extra' de Arch (NOT AUR), se actualiza solo.
+  Sus dependencias se resuelven solas: cairo, glib2, glibc, libdisplay-info,
+  libgcc, libinput, libpipewire, libxkbcommon, mesa, pango, pixman, seatd,
+  systemd-libs.
+
+  Hardware del equipo: Intel i5-1135G7, 4 nucleos / 8 hilos, 11.7 GB RAM,
+  grafica Intel Iris Xe (SIN Nvidia), disco C: con 196 GB libres.
+  -> Sin Nvidia significa que se evitan los problemas #1 de Wayland.
+  -> -j8 es correcto; bajar a -j6 solo si empieza a hacer swap.
+  -> ~25 GB de disco necesarios: 1.5 GB fuente, 10 GB build, 2 GB instalado.
+
+
+--------------------------------------------------------------------------------
+6. DECISIONES TECNICAS DEL PAQUETE DE KERNEL
+--------------------------------------------------------------------------------
+
+  El PKGBUILD se derivo BYTE A BYTE del recipe oficial de Arch (linux-lts),
+  no se reescribio a mano. Motivo: al reescribirlo se perdieron entradas de
+  licencia en el bloque _package-headers. Se detecto con git diff --no-index.
+
+  Los 7 deltas deliberados:
+    1. pkgbase=linux-titanlinux
+       -> da el sufijo "-titanlinux" en el kernelrelease usando el mecanismo
+          propio de Arch (localversion.20-pkgname = "${pkgbase#linux}").
+          NO hace falta tocar CONFIG_LOCALVERSION.
+    2. pkgdesc = 'Titan Linux kernel (LTS 6.18 track)'
+    3. replaces=(wireguard-lts) ELIMINADO
+       -> ese conflicto pertenece a linux-lts; un fork no debe reclamarlo o
+          pacman desinstalaria wireguard-lts de un sistema que si tiene
+          linux-lts instalado legitimamente.
+    4. SIN conflicts=('linux-lts'), a proposito
+       -> Titan Linux debe COEXISTIR con linux-lts de Arch para que el kernel
+          de Arch quede en GRUB como entrada de rescate.
+    5. config.x86_64 con CONFIG_LOCAL_VERSION_AUTO desactivado
+    6. KBUILD_BUILD_HOST=titanos / KBUILD_BUILD_USER=titanlinux
+    7. b2sums_x86_64 eliminado (la config cambio y su b2sum se desconoce)
+       -> b2sums de los 3 parches conservado: son identicos a los de Arch.
+
+  Se hereda de Arch a proposito (NO cambiar):
+    WERROR off           -> tolera warnings nuevos de GCC
+    IKCONFIG + _PROC     -> config del kernel legible en /proc/config.gz
+    PREEMPT_DYNAMIC      -> escritorio, sin latencia de RT
+    MODVERSIONS *unset*  -> es lo que mantiene compatibles los modulos .ko
+                            externos. OJO: esto contradice una recomendacion
+                            anterior equivocada; ver seccion 7.
+
+  Resultado esperado del build:
+    kernelrelease:  6.18.54-1-titanlinux
+    binarios:       /usr/lib/modules/6.18.54-1-titanlinux/
+                    mkinitcpio -> /boot/initramfs-linux-titanlinux.img
+                    GRUB -> entrada "Titan Linux"
+
+
+--------------------------------------------------------------------------------
+7. ERRORES PROPIOS QUE SE DEBEN RECORDAR
+--------------------------------------------------------------------------------
+
+  1. CONFIG_ABI_FREEZE NO EXISTE.
+     Se recomendo como "imprescindible" y era FALSO. Cero resultados en todo
+     el arbol del kernel. El simbolo real es CONFIG_MODVERSIONS, y en Arch
+     esta DESACTIVADO a proposito, que es justamente lo que da compatibilidad
+     a modulos externos. La recomendacion original estaba INVERTIDA.
+
+  2. El patron PCRE de bump.sh estaba ROTO.
+     Causa: grep no puede emparejar a traves de un salto de linea, y en el
+     JSON de kernel.org "moniker" y "version" estan en lineas distintas.
+     Arreglo: aplanar el documento con tr antes de buscar.
+     Ademas sort -V es OBLIGATORIO: el orden lexicografico elegiria 6.6.157
+     sobre 6.18.54, o sea el kernel mas viejo. Esta documentado en el codigo.
+
+  3. 'dwarves' NO es un paquete de Arch.  <-- ALERTA, NO ES UN BUG EN LOS
+     ARCHIVOS
+     Al verificar los nombres de paquete contra la base de datos de Arch,
+     'dwarves' devolvio 0 resultados. Se confundo el nombre del proyecto
+     upstream (Dwarves) con el del paquete. El paquete correcto en Arch es
+     'pahole' (1.32, repo extra), que ademas provee las libs libdwarves.
+     IMPORTANTE: setup.sh YA USA 'pahole' correctamente en la linea 55.
+     NO hay que cambiar nada. En una conversacion anterior se afirmo por
+     error que setup.sh contenia 'dwarves' y que habia que corregirlo; eso
+     era FALSO, solo se habia consultado la base de datos.
+
+  4. 'tuigreet' no existe en los repos oficiales.  El nombre correcto es
+     'greetd-tuigreet' (0.11.1, extra).
+
+  5. 'updpkgsums' NO es un paquete. Es un binario que viene dentro de
+     'pacman'. No debe listarse como paquete.
+
+  ---- Lo que costo tiempo al montar la ISO (2026-09-26) ----
+
+  6. archiso TIRA los permisos de los ficheros del perfil.
+     _make_custom_airootfs() copia airootfs/ con
+       cp -af --no-preserve=ownership,mode
+     y luego solo restaura los modos que esten en la tabla 'file_permissions'
+     del profiledef.sh. Consecuencia real: /usr/local/bin/titan llegaba a la
+     ISO como 0644 y el usuario recibia "Permiso denegado" al ejecutarlo.
+     Todo fichero del perfil que necesite modo va en 'file_permissions'.
+     Esa tabla se aplica ANTES de pacstrap, asi que no sirve para /etc/shadow
+     ni /etc/gshadow: ahi los deja bien el paquete 'shadow'.
+
+  7. 'command -v' LOCALIZA un fichero aunque no sea ejecutable.
+     Bash solo resuelve el nombre contra el PATH: un 0644 en /usr/local/bin
+     sigue apareciendo. Por eso un bucle "for cmd in ...; command -v" da una
+     falsa sensacion de comprobacion. La unica comprobacion que vale es
+     ejecutar: 'titan version >/dev/null' dentro del chroot del build.
+
+  8. El nombre del preset de mkinitcpio NO puede llevar guiones.
+     mkinitcpio construye las variables <preset>_kver, <preset>_config y
+     <preset>_image, y un guion da 'invalid variable name'. Ademas esta
+     version de mkinitcpio NO honra ALL_image, solo <preset>_image.
+     El FICHERIO se llama linux-titanlinux.preset (para que lo reutilice el
+     hook 90-mkinitcpio-install.hook) pero el preset se llama 'titan_live'.
+
+  9. fastfetch NO lee /usr/share/fastfetch/presets/ como config por defecto.
+     Las rutas que mira (--list-config-paths) son ~/.config/fastfetch/,
+     ~/fastfetch/, /etc/xdg/fastfetch/ y /etc/fastfetch/. Por eso
+     'fastfetch --config titan' si encuentra el preset del sistema, pero un
+     'fastfetch' a secas sale con el logo de Arch. Solucion: enlazar
+     ~/.config/fastfetch/config.jsonc al preset del sistema.
+
+  10. Sin /etc/localtime, systemd-firstboot se queda esperando en el prompt
+      del huso horario y el live nunca llega a la shell. Es el primer
+      arranque de una imagen nueva, no un fallo del kernel.
+
+  11. La comprobacion por consola serie tiene dos trampas propias:
+      a) fastfetch deja el reset de color pegado al principio de la linea
+         siguiente, asi que el marcador llega como "\x1b[m__TITAN_DONE_38__".
+         Hay que buscar en el texto SIN escapes (ANSI.sub) antes de exigir
+         que el marcador este en la columna 0.
+      b) El live esta en es_ES.UTF-8, asi que 'lscpu' escribe "Arquitectura:"
+         y no "Architecture:". El catalogo de comandos se ejecuta con
+         LC_ALL=C: lo que se comprueba es que el comando funciona, no el
+         idioma. ('df -h' tampoco da "MiB" en coreutils >= 9, sino "256M".)
+
+  12. En prepare(), un sello de "ya parcheado" NO es fiable.
+      bsdtar reextrae el tarball encima del arbol en cada ejecucion de
+      makepkg, y al hacerlo deja SIN parchear los ficheros que los parches
+      tocan (~400 objetos de amdgpu/fork, unos 10 minutos). Con un sello por
+      hash, el segundo build compila un kernel SIN parches y no dice nada.
+      La comprobacion que si vale es un dry-run en reverso por parche:
+        patch -Np1 -R --dry-run -p1 -i <parche>
+      Si aplica al reves, el parche ya esta puesto.
+
+  13. El build del kernel se queda SIN DISCO con la config de Arch.
+      Los .ko con DWARF ocupan muchisimo. El parche 0004 los deja sin info
+      de depuracion al enlazarlos (kbuild la quita al instalar igualmente):
+      asi el build cabe y, de paso, el arbol de build encoge. Sin el, el
+      enlazado final deja el disco a cero y el build muere con ENOSPC.
+
+  14. En una ISO en vivo, 'sudo pacman -S' no funciona por dos razones
+      independientes, y solo con las dos arregladas instala de verdad:
+      a) En el /etc/sudoers de Arch la regla de wheel esta COMENTADA
+         (# %wheel ALL=(ALL:ALL) ALL). Sin un /etc/sudoers.d/10-titan con
+         "titan ALL=(ALL:ALL) NOPASSWD: ALL" (modo 0440, que es lo que pide
+         sudo), el usuario del live recibe "titan is not in the sudoers
+         file". Y como el live no tiene contrasena, NOPASSWD no es un
+         capricho: con la regla activada, sudo pediria una clave imposible.
+         Ojo: 'command -v sudo' no detecta nada de esto (localiza el
+         fichero aunque no sea ejecutable); hay que ejecutarlo como el
+         usuario de verdad, 'su titan -c "sudo -n id -u"'.
+      b) El /etc/pacman.d/mirrorlist que trae el paquete pacman viene con
+         TODOS los espejos comentados, porque en una instalacion normal los
+         activa el instalador. En la ISO no hay instalador, asi que
+         'pacman -Sy' fallaba con "no servers configured for repository".
+         El hook escribe el geo de Arch mas dos respaldos y deja la lista
+         original del paquete en mirrorlist.commented.
+      Con las dos cosas, el check 9 del verificador instala 'cowsay' (que no
+      viene en la ISO) y lo ejecuta.
+
+  15. El espacio escribible del live son 256 MB por defecto, y se cambia con
+      cow_spacesize=1G en la linea de comandos del kernel (las tres entradas
+      de grub.cfg y de syslinux-linux.cfg). Es un tmpfs: RAM, y se pierde al
+      apagar. Con 256 MB, sincronizar las bases de datos de pacman ya deja
+      el sitio al limite.
+
+  16. Dinside del chroot de customize_airootfs.sh, /etc/resolv.conf es un
+      punto de montaje (mkarchiso lo lanza con arch-chroot, que monta el
+      resolv.conf del host). No hay que escribirlo: 'rm' responde EBUSY. Y
+      aun asi no hay DNS, porque el del host es un symlink a
+      /run/systemd/resolve/stub-resolv.conf y esa ruta no existe dentro del
+      chroot. Por eso la comprobacion 'pacman -Sy' del build, si falla por
+      resolver nombres, solo avisa: el que de verdad importa (que el live
+      descarga paquetes) lo comprueba el check 9 con la red del live.
+
+  17. Parsear la salida de la consola de serie para comprobar cosas exige
+      buscar un token unico, no parsear. 'sudo -n id -u' devuelve un '0' que
+      la consola de 80 columnas pega a las secuencias de escape del prompt,
+      y 'cowsay' escribe arte multibyte. La solucion que aguanta: que el
+      propio comando de la prueba imprima un marcador ("... && echo
+      TITAN_OK_X") y el test lo busque como texto.
+
+  18. LA CONSOLA DE TEXTO DEL KERNEL NO PUEDE HACER SCROLL. Y no es un ajuste:
+      es que la consola de esta ISO la dibuja fbcon, que no lo implementa.
+      Medido con dmesg del live, en los dos modos de arranque:
+        - UEFI: "Console: colour dummy device 80x25" sobre
+          simple-framebuffer/simpledrm.
+        - BIOS: arranca como "Console: colour VGA+" pero "bochs-drm: vgaarb:
+          deactivate vga console" y acaba en fbcon tambien.
+      En el kernel 6.18, drivers/video/console/vgacon.c es el UNICO driver con
+      con_scrolldelta (el scrollback "duro" del buffer de texto VGA), y el atajo
+      Shift+RePag (keymap por defecto del kernel) llega hasta scrolldelta() en
+      drivers/tty/vt/vt.c, que llama a con_scrolldelta. En fbcon no hay a quien
+      llamar. Resultado medido: 0,00 % de cambio de pantalla con 1, 4, 12 y 20
+      pulsaciones, tanto en UEFI como en BIOS.
+
+  19. NO HAY PARAMETRO DE KERNEL QUE LO ARREGLE:
+        - 'console_scrollback' NO EXISTE (nunca estuvo en mainline; tampoco
+          aparece en Documentation/admin-guide/kernel-parameters.txt de 6.18).
+          Se habia puesto 8192 en las seis entradas de arranque por inercia: solo
+          consigue un "Unknown kernel command line parameters" en dmesg. Fuera.
+        - 'fbcon=scrollback:N' se ignora A PROPOSITO: en fbcon.c hay un
+          pr_warn("Ignoring scrollback size option"). Es codigo de mainline.
+      La unica palanca del kernel seria quedarse en la consola VGA de texto
+      (donde el scrollback es el del buffer fisico, unos cientos de lineas), y
+      en UEFI eso significaria pelearse con simpledrm y con el futuro escritorio.
+
+  20. DECISION (acordada con el usuario): el historial lo aporta un terminal de
+      espacio de usuario. La shell de tty1 arranca dentro de una sesion de tmux
+      (/etc/tmux.conf + /etc/profile.d/20-titan-scrollback.sh, paquete tmux,
+      +1,2 MB), con la barra de estado desactivada para que la consola se vea
+      igual que antes. RePag historial, q/Esc al final, Ctrl+b d desprender.
+      El envoltorio es a proposito estrecho: SOLO tty1 (la consola
+      por serie, que usan las pruebas y el instalador, sigue siendo una shell
+      normal), solo shell interactiva de login, nunca dos veces ($TMUX), y si
+      tmux no esta la shell arranca igual en vez de tirar al prompt de login.
+      El getty de tty1 ahora pasa TERM=linux explicitamente: antes ponia
+      '$TERM', que systemd expande a vacio porque TERM no es variable de
+      entorno de un servicio, y esa consola se quedaba sin TERM (less a ciegas
+      y tmux negandose a arrancar).
+      El banner y la pista los imprime /etc/profile.d/10-titan.sh, que se
+      ejecuta ANTES que el envoltorio (menor numero) y por eso no puede saber
+      con certeza si su shell va a morir: la shell de dentro de tmux vuelve a
+      leer ese mismo fichero. Por eso el fichero del banner REPETE la condicion
+      del envoltorio (sin $TMUX, tty es /dev/tty1, hay tmux) y, cuando su shell
+      va a ser sustituida, exporta TITAN_SHELL_VISIBLE=0 y no pinta nada. La
+      shell que de verdad se ve (la de dentro de tmux, que ya trae $TMUX) si
+      pinta. Sin eso el banner salia DOS veces seguidas en tty1.
+
+  21. tmux IGNORA EN SILENCIO los nombres de tecla de pagina. Se escriben
+      PPage (RePag), NPage (AvPag), S-PPage (Shift+RePag) y S-NPage. Escribir
+      'PageUp' o 'S-PageUp' no da error: no se registra el binding y la tecla se
+      queda muerta; dentro del modo copia se le suelta ademas el codigo de
+      tecla entero a la shell ('^[[5;2~' por pulsacion). Comprobado con tmux
+      3.7c (list-keys -T copy-mode). Por eso /etc/tmux.conf lleva los bindings
+      explicitos en las dos tablas (copy-mode y copy-mode-vi) y el hook del
+      build comprueba con grep que no reaparezca 'PageUp'/'PageDown'.
+
+  22. tmux tampoco avisa de un config invalido: ni 'tmux -f conf start-server'
+      ni 'new-session -d' devuelven error ni un aviso (comprobado con tmux
+      3.7c: codigo 0 y stderr vacio). Por eso el config se valida aparte, en el
+      build, montando un servidor de prueba con 'tmux -f /etc/tmux.conf -L
+      titanbuild new-session -d -s build' y leyendo 'list-keys -T root' y
+      'list-keys -T copy-mode' (OJO: cada llamada de tmux necesita el mismo
+      -L, si no cada una arranca su propio servidor). Y para probar que las
+      teclas HACEN algo hace falta un cliente de verdad: 'send-keys -X' solo
+      funciona con un panel en modo, y 'tmux send-keys PPage' se lo inyecta a
+      la aplicacion del panel, no pasa por los bindings. La prueba buena es un
+      cliente pty que escriba los bytes en crudo ('\e[5~') en un tmux del
+      host: pos 22 -> 44 -> 66 -> 88 en un panel de 24 filas.
+
+  23. Para MEDIR la consola de tty1 sin OCR ni leer imagenes: se lee su texto
+      con 'sudo sh -c "{ echo TITANVCSINI; fold -w 80 < /dev/vcs1 | cat -v;
+      echo TITANVCSFIN; }" | sed -n '/^TITANVCSINI$/,/^TITANVCSFIN$/p''. Tres
+      detalles, los tres aprendidos a base de sustos:
+        - El nodo es /dev/vcs1. /dev/vcs es la consola ACTIVA, y en el live esa
+          es ttyS0, que no tiene buffer de texto y devuelve 0 bytes.
+        - Es 0600 y la redireccion la abre la shell, asi que el sudo tiene que
+          envolver al comando entero: 'sudo fold ... < /dev/vcs1' no funciona.
+        - La captura por serie tambien trae el ECO del propio comando, asi que
+          los marcadores van DENTRO de la tuberia del guest.
+      Y las teclas a tty1 solo llegan si hay una tty abierta donde encolarlas:
+      si se mandan antes de que el getty la abra, el kernel las descarta. Por eso
+      el test espera a ver "titan@titan" y VERIFICA cada orden con un marcador en
+      pantalla, en vez de mandar y suponer.
+
+  24. LA TECLA ES 'RePag', NUNCA 'Shift+RePag'. El keymap de la consola del
+      kernel (c_shipped) se come las variantes CON SHIFT de RePag/AvPag/F9 en la
+      capa de la VT: medido con el monitor de QEMU sobre tty3 y 'cat -v',
+      'sendkey shift-pgup', 'shift-pgdn' y 'shift-f9' NO producen ni un byte, y
+      lo que llega de una tecla MODIFICADA (alt-, ctrl-) es la secuencia SIMPLE,
+      de modo que ningun programa de espacio de usuario puede distinguirlas. Lo
+      que si llega: pgup = ESC [ 5 ~, pgdn = ESC [ 6 ~, f9 = ESC [ 20 ~,
+      up/down = ESC [ A / ESC [ B, y 'A' a secas no hace nada (hay que mandar
+      'shift-a'). Consecuencia: los bindings van en PPage/NPage, y el banner,
+      el README y 'titan doctor' tienen que decir RePag. Si alguna vez prometemos
+      Shift+RePag al usuario es prometerle una tecla que no existe: por eso el
+      build falla si la pista del banner (el heredoc HINT de 10-titan.sh) la
+      menciona. Ojo al escribir ese grep: los COMENTARIOS de /etc/tmux.conf si
+      pueden (y deben) explicar por que no vale, asi que el grep se acota al
+      heredoc y a las lineas 'bind'.
+
+  25. En el historial de tmux, 'page-up' y 'scroll-up' NO son lo mismo. Medido
+      con tmux 3.7c, panel de 24 filas y 1977 lineas de historial:
+          scroll-up        -> +1 linea
+          scroll-up 10     -> +0 lineas (el numero se ignora EN SILENCIO)
+          page-up          -> +22 lineas
+          page-down        -> -22
+          history-top      -> 1977      history-bottom -> 0
+      Asi que con 'scroll-up' RePag movia una linea por pulsacion y el 'check'
+      fallaba sin motivo aparente. En /etc/tmux.conf va 'page-up'/'page-down',
+      y Home/End van a history-top/history-bottom.
+
+  26. 'sendkey' de QEMU solo acepta NOMBRES de tecla, y dos cosas de ahi
+      duelen:
+        - Un nombre invalido NO se ve: Monitor.cmd() no lee la respuesta del
+          monitor, y el error 'invalid parameter: X' se pierde. Con eso, un
+          ';' o un '_' mal enviados desaparecian de la orden ('clear; echo
+          TITAN_VGA_OK' llegaba como 'clear echo TITAN VGA OK') y el check
+          fallaba sin explicacion. Ahora hay un mapa completo de los 95
+          imprimibles de ASCII (97 con ret y tab) verificado contra el monitor
+          de QEMU 11.1, y type_text() LANZA ValueError si le pides un caracter
+          que no sepa. Para acordarse: ';' es 'semicolon', '_' es 'shift-minus',
+          '{' es 'shift-bracket_left', y 'bs'/'del' no existen ('backspace'
+          si). Que 'A' no valga y 'shift-a' si.
+        - Los DIGITOS salen con shift pegado si van demasiado seguidos: con
+          0,2 s entre teclas, 'seq 1 2000' llegaba a la consola como
+          'seq ! @)))'. Con 0,6 s sale bien, medido tecla a tecla, tambien
+          justo despues de una tecla con shift. type_text() usa 0,2 s de base y
+          0,6 s despues de cada 'shift-*'. Y aun asi, para la comprobacion 10
+          se usa una orden SIN NINGUN DIGITO, con el numero derivado de la
+          longitud de unas variables de entorno:
+          'clear; seq ${#HOME} $(( ${#BASH_VERSION} * ${#BASH_VERSION} * ${#PATH} ))'
+          (28322 lineas en el live). Asi el tecleo no puede corromper nada.
+
+  27. La consola de texto del live es de 45x160, y eso encaja con el panel de
+      tmux (que se queda en 45x160), pero al LEERLA por serie parece el doble:
+      la consola de serie va a 80 columnas, una fila de 80 caracteres llena la
+      pantalla y el salto de linea anade otra fila vacia, asi que el dump de
+      /dev/vcs1 llega con 91 lineas por 45. Al contar filas hay que contar solo
+      las que tienen texto. La captura de pantalla (screendump) mide
+      1280x720 = 45 filas de 16 px, que es la confirmacion de que el texto es de
+      45 filas y no de 90. (Estas medidas eran de 50x80 / 1280x800 / 101 lineas
+      antes del video=1280x720 del punto 29.)
+
+  28. mkarchiso marca cada paso con un fichero testigo ('base._make_packages',
+      'iso._build_iso_image'...) DENTRO del directorio de trabajo, y se salta
+      los que ya estan marcados. Si el work dir sobrevive de un build anterior,
+      el build siguiente no rehace NADA, sale con codigo 0 en veinte segundos y
+      vuelve a cantar el sha256 de la ISO VIEJA como si fuera nueva. Medido: se
+      perdio un build entero de tmux por esto. build-iso.sh borra el work dir y
+      la ISO anterior SIEMPRE (ya no existe --clean), y ademas pone un latido
+      cada 30 s, porque archiso 90 no imprime NADA hasta el final salvo que se
+      le pase -v. El latido se para con 'trap' y no con un kill normal: si el
+      build falla a mitad, 'set -e' se lleva el script y el latido se queda
+      escribiendo en el log del build siguiente.
+
+  29. "No se ve la ultima linea de abajo" NO era un fallo de scroll ni de
+      tmux: la ventana de QEMU es del tamaño exacto del modo de video del
+      guest, sin escalar, y el firmware entrega 1280x800. La pantalla del host
+      es 1366x768, asi que la ventana NO CABIA y los ultimos ~60 px quedaban
+      fuera, que es justo donde esta la fila del prompt. Medido en el live antes
+      de tocar nada: 50 filas de texto en /dev/vcs1 con el prompt en la fila 50,
+      321 pixeles de tinta en las filas 784-799 del framebuffer, o sea el prompt
+      ESTABA dibujado y no se podia ver. Por eso buscar un fallo de scroll era
+      perder el tiempo.
+      Como se arregla: video=1280x720 en la linea de arranque (las 6 entradas,
+      UEFI y BIOS). Asi el framebuffer son 720 px de alto, la consola sale de
+      45x160 y la ventana cabe en 768 px con margen. Y lo que NO sirve, medido
+      arrancando el kernel a mano desde la linea de comandos de GRUB por el
+      puerto serie (sin reconstruir la ISO: 'c', set, linux, initrd, boot):
+        - 'set gfxmode=1280x720' solo, con 'terminal_output console': no hace
+          nada, porque sin un terminal grafico no hay backend de video que
+          programe el modo. El 'if loadfont "${prefix}/fonts/unicode.pf2"' del
+          grub.cfg SI se cumple (la fuente va dentro de la memdisk de
+          BOOTx64.EFI, no en el ISO: buscar unicode.pf2 en el ISO es perder el
+          tiempo), pero eso solo carga la fuente.
+        - 'set gfxpayload=1280x720,...' (que GRUB acepta como lista): tampoco.
+        - Con 'loadfont ${prefix}/fonts/unicode.pf2' + 'terminal_output
+          gfxterm' + la lista 1280x720,1024x768,800x600: TAMPOCO. El GOP de
+          OVMF no ofrece esos modos, o no se programan; el framebuffer se
+          queda en 1280x800 sin avisar de nada.
+        - 'video=1280x720' en la linea del kernel: SI. El driver DRM acepta el
+          modo definido por el usuario y lo aplica; dmesg lo dice con
+          'User-defined mode not supported' si no puede, y en el kernel propio
+          si puede. Sirve igual en UEFI (simpledrm) y en BIOS (bochs-drm).
+      Nota: los modos de OVMF estan comprimidos en el FV, asi que no se leen
+      del binario; los del BIOS estan en la tabla VBE de
+      /usr/share/qemu/vgabios-stdvga.bin, que si incluye 1280x720 (y 1024x768
+      y 800x600).
+      build-iso.sh comprueba las 6 lineas de arranque ANTES de mkarchiso y
+      falla si alguna se queda sin video=1280x720: los ficheros grub.cfg y
+      syslinux-linux.cfg estan en el perfil, no en el airootfs, asi que desde
+      customize_airootfs.sh (que corre dentro del chroot) no se ven.
+
+  30. tmux dibuja una fila propia ARRIBA de la ventana cuando se esta leyendo el
+      historial: la hora y '[cuantas lineas atras/de quantas]', por ejemplo
+      '22:32 [43/28322]'. No es salida del comando, pero el 28322 de ahi es
+      justamente el numero de la ultima linea de 'seq', asi que al contar los
+      numeros visibles en la consola (numeros_pantalla en titan-verify.py) hay
+      que FILTRAR esa fila con la expresion r"\[\d+/\d+\]". Sin el filtro, tras
+      subir por el historial la comprobacion creia que la ultima linea seguia a
+      la vista y el check 10 fallaba con "RePag no subio por el historial",
+      senalando justo lo contrario de lo que pasaba. La fila aparece tambien con
+      'status off' en el tmux.conf, que es como esta configurado.
+
+
+--------------------------------------------------------------------------------
+8. PAQUETES NECESARIOS PARA ARCH
+--------------------------------------------------------------------------------
+
+A) PARA INSTALAR ARCH (perfil del USB / archiso):
+   base linux linux-firmware arch-install-scripts mkinitcpio
+   grub efibootmgr os-prober dosfstools e2fsprogs parted
+   networkmanager iwd nano vim git wget htop man-pages sudo
+
+B) ARCH RECIEN INSTALADO (base minima funcional):
+   base linux linux-firmware grub efibootmgr os-prober
+   networkmanager iwd base-devel git nano
+
+C) HOST DE DESARROLLO DE TITAN LINUX (lo instala ./setup.sh):
+   bc binutils cpio gettext glibc libelf libgcc openssl pahole
+   perl python rust rust-bindgen rust-src tar xxhash xz zlib zstd
+   graphviz imagemagick python-sphinx python-yaml texlive-latexextra
+   mkinitcpio linux-firmware grub efibootmgr os-prober
+   devtools jq git-lfs
+   qemu-desktop edk2-ovmf
+   (rust, rust-bindgen y rust-src son OBLIGATORIOS: el arbol 6.18 tiene
+    soporte Rust y el PKGBUILD los exige en makedepends)
+
+D) TITAN LINUX INSTALADO (el producto):
+   niri waybar fuzzel alacritty swaybg swaylock mako polkit-gnome
+   xdg-desktop-portal xdg-desktop-portal-gnome xwayland-satellite
+   qt6-wayland wtype wl-clipboard pipewire wireplumber
+   greetd greetd-tuigreet networkmanager brightnessctl grim slurp wofi
+   xdg-utils xdg-user-dirs gnome-keyring seatd
+   git neovim ripgrep fd bat fzf jq yq eza zoxide starship tldr
+   lazygit gh base-devel rustup go python python-pip nodejs npm
+   docker podman kubectl code-server direnv shellcheck shfmt
+
+
+--------------------------------------------------------------------------------
+9. PENDIENTES / RIESGOS
+--------------------------------------------------------------------------------
+
+  [ ] Sin commit inicial: falta identidad de git. NO se invento un email.
+      El usuario debe ejecutar:
+        git -C ~/Projects/system_linux/distro config user.name  "Su Nombre"
+        git -C ~/Projects/system_linux/distro config user.email "su@correo.com"
+        git -C ~/Projects/system_linux/distro commit -m "Titan Linux: kernel
+                                    propio, ISO viva, CLI y verificacion"
+      Lo de "10 archivos staged" de la seccion 3 ya no vale: el arbol tiene
+      ahora iso/, scripts/, apps/ y out/ (out/ esta en .gitignore).
+
+  [ ] Secure Boot debe estar DESACTIVADO en el BIOS. El kernel propio no esta
+      firmado y no arrancara con el activo. Alternativa: firmarlo con clave
+      propia y enrolarla en shim.
+
+  [X] VT-x YA NO es un problema: /dev/kvm existe y QEMU arranca acelerado
+      con KVM. La nota de que estaba deshabilitado era del reconocimiento
+      inicial en Windows y ya no aplica.
+
+  [ ] Los archivos se escribieron en Windows. .gitattributes fuerza LF, pero
+      al copiarlos a Arch comprobar que no cambiaron los finales de linea,
+      porque un CRLF en un .sh rompe el script y en el PKGBUILD invalida
+      todos los checksums.
+
+  [ ] "Titan Linux" YA EXISTE como distro basada en Ubuntu. Sin conflicto
+      tecnico, pero conviene otro nombre antes de registrar dominio o
+      publicar en un repositorio publico.
+
+  [X] El problema de 'make htmldocs' esta resuelto con TITAN_NO_HTMLDOCS=1:
+      exportarlo salta ese target y sus dependencias, y el build del kernel
+      entra en un disco normal. Sin la variable, texlive-latexextra sigue
+      siendo obligatorio (y ocupa varios GB).
+
+
+--------------------------------------------------------------------------------
+10. COMO RETOMAR ESTE PROYECTO
+--------------------------------------------------------------------------------
+
+  Al abrir una sesion nueva, leer PRIMERO este archivo.
+
+  Luego verificar el estado real (no confiar en la nota):
+    - ¿Existe Arch instalado?          cat /etc/os-release ; uname -r
+    - ¿Existe el paquete del kernel?   ls -la distro/kernel/linux-titanlinux/*.zst
+    - ¿Existe la ISO?                  ls -la distro/out/*.iso
+    - ¿Pasa la verificacion?           distro/scripts/verify-qemu.sh
+    - ¿Existe el repo con commit?      git -C distro log --oneline
+    - ¿Hay espacio en disco?            df -h /
+    - ¿Queda algun QEMU colgado?        pgrep -af "qemu-system-x86_6[4]"
+      (con corchetes: sin ellos, el patron coincide con el propio shell y
+       pkill/pgrep matan la sesion. Ha pasado dos veces.)
+
+  Estado de referencia verificado el 2026-09-27:
+    - Arch instalado y operativo, con sudo sin clave
+    - paquete del kernel construido y verificado (163 MB)
+    - ISO construida (777 MB) y verificada 42/42 por UEFI y por BIOS
+    - consola de texto de 45x160 (video=1280x720) para que la ventana de QEMU
+      quepa en un monitor de 1366x768 y se vea la fila del prompt
+    - repo SIN commit todavia (falta la identidad de git)
+    - Secure Boot: desconocido en este equipo; el kernel propio NO esta
+      firmado, asi que con Secure Boot activo no arranca
+
+
+================================================================================
+ FIN DEL CONTEXTO
+================================================================================

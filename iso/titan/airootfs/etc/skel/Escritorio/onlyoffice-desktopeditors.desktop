@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=ONLYOFFICE
+GenericName=Suite Ofimática
+Comment=Editor de documentos, hojas de cálculo y presentaciones
+Exec=onlyoffice-desktopeditors %U
+Icon=onlyoffice-desktopeditors
+Terminal=false
+Type=Application
+Categories=Office;WordProcessor;Spreadsheet;Presentation;
+

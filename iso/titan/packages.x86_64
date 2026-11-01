@@ -1,0 +1,196 @@
+#!/bin/bash
+#
+# Titan Linux 0.1 - lista de paquetes de la ISO en vivo.
+#
+# Criterio: lo minimo para que un Titan Linux arranque y sirva para trabajar
+# desde la consola, mas la cadena de herramientas que el proyecto necesita.
+#
+# El kernel del proyecto NO aparece aqui a proposito: lo anade
+# scripts/build-iso.sh con 'mkarchiso -p linux-titanlinux' en cuanto existe
+# kernel/linux-titanlinux/*.pkg.tar.zst. Asi este fichero no depende de si el
+# kernel propio ya esta construido, y la ISO se puede reconstruir sin recompilar
+# nada. Si el paquete aun no existe, la ISO arranca con el kernel de Arch.
+
+# --- Nucleo e initramfs -----------------------------------------------------
+# linux = kernel de Arch. Se queda como entrada de rescate: es el kernel que
+# Arch mantiene y el unico que no depende de nuestro PKGBUILD.
+# El kernel propio, linux-titanlinux, lo anade scripts/build-iso.sh con
+# 'mkarchiso -p linux-titanlinux' en cuanto existe
+# kernel/linux-titanlinux/*.pkg.tar.zst. Asi el perfil no depende de si el
+# kernel propio ya esta construido o no.
+linux
+
+# --- Sistema base ----------------------------------------------------------
+# base aporta bash, coreutils, util-linux, findutils, grep, sed, gawk, pacman,
+# systemd, file, shadow, y el resto del arbol de utilidades basicas.
+base
+archlinux-keyring
+
+mkinitcpio
+mkinitcpio-archiso
+
+# --- Arranque (BIOS con syslinux, UEFI con grub) ---------------------------
+syslinux
+grub
+efibootmgr
+dosfstools
+mtools
+
+# --- Comandos basicos de Linux, explicitos para que quede documentado ------
+coreutils
+findutils
+grep
+sed
+gawk
+diffutils
+file
+which
+tree
+bc
+procps-ng
+psmisc
+iproute2
+iputils
+pciutils
+usbutils
+inetutils
+ethtool
+lsof
+strace
+e2fsprogs
+# parted y os-prober: los necesita el instalador (Fase 3). Se meten ya para
+# que la ISO en vivo sirva para instalar sin reconstruirse.
+parted
+os-prober
+tar
+gzip
+bzip2
+xz
+zstd
+unzip
+jq
+# bind aporta dig, host y nslookup (inetutils no los trae en Arch).
+bind
+
+# --- Editores, visor y ayuda ----------------------------------------------
+nano
+vim
+less
+man-pages
+man-db
+bash-completion
+htop
+
+# --- Titulos y herramientas de desarrollo ----------------------------------
+git
+curl
+wget
+rsync
+sudo
+ripgrep
+fd
+bat
+fzf
+
+# --- Titan Linux: identidad visual e informacion del sistema --------------
+fastfetch
+
+# --- Instalador -------------------------------------------------------------
+# El instalador (root/install.sh) necesita todo esto. Va en la ISO desde el
+# principio para que la ISO sirva para instalar sin reconstruirse.
+arch-install-scripts
+# dialog: las ventanas del instalador en MODO DE TEXTO. Antes se pondria aqui
+# whiptail, pero ya no existe en Arch (era un script que dialog hacia de
+# envoltorio, y dialog 1.3-20260721 lo quito del paquete). El instalador habla
+# dialog.
+dialog
+# La pantalla GRAFICA del instalador (root/instalador/ventana-gui.py), que es el
+# mismo instalador con las mismas preguntas dibujadas con GTK4 en vez de con
+# ncurses. Va en el live y no en el sistema instalado porque el sistema
+# instalado no tiene escritorio todavia: si la pantalla grafica solo se
+# instalara despues, el primer arranque de un equipo recien instalado no
+# tendria forma de reinstalar. Con esto, 'install.sh --grafico' levanta cage y
+# el instalador corre con ventana; sin dispositivo de grafica, avisa y sigue en
+# texto, que instala igual de bien.
+#
+#   gtk4            la biblioteca de dibujo (unos 52 MB instalados)
+#   libadwaita      el aspecto (GNOME) de las ventanas, con sus widgets
+#   adwaita-icon-theme  los iconos que usan esos widgets
+#   python-gobject  la union de Python con GTK, que es lo que escribe la
+#                   ventana del instalador
+#   cage            un compositor minimo para levantar una pantalla en el live,
+#                   que no trae escritorio. Sin el, una ventana grafica en un
+#                   live no tendria donde dibujarse.
+gtk4
+libadwaita
+adwaita-icon-theme
+python-gobject
+cage
+# gptfdisk aporta sgdisk: el particionado automatico del instalador. Ojo, el
+# paquete se llama gptfdisk, no gdisk (ese nombre es de un programa ancient).
+gptfdisk
+# btrfs-progs: para poder elegir btrfs como sistema de ficheros.
+btrfs-progs
+# cryptsetup: para poder cifrar el disco (LUKS2).
+cryptsetup
+# iw y wpa_supplicant: el paso de red del instalador sabe conectar a una red
+# wifi si la maquina arranca sin cable. En un live sin NetworkManager, el
+# camino es iw para buscar y wpa_supplicant para autenticarse.
+iw
+wpa_supplicant
+
+# --- Utilidades de la ISO en vivo ------------------------------------------
+# Entrada de red por DHCP en el live, con systemd-networkd.
+systemd-resolvconf
+# Terminal con historial para la consola de texto del live. No es un capricho:
+# la consola del kernel NO puede hacer scroll (ver /etc/tmux.conf y el
+# apartado "Historial de la consola" del README). tmux es lo que permite
+# volver a leer lo que se sale de la pantalla. Solo envuelve tty1; la consola
+# por serie (ttyS0), que usan las pruebas automaticas, no pasa por aqui.
+tmux
+
+# --- Escritorio grafico (Wayland) ------------------------------------------
+# Decision de proyecto: escritorio propio en Qt 6, no un escritorio completo.
+#   labwc         compositor de ventanas (Wayland, ligero; hereda openbox)
+#   dbus          bus de sesion que necesita labwc y el escritorio
+#   qt6-base      bibliotecas de Qt 6 (el binario titan-desktop)
+#   qt6-wayland   el plugin de Qt que dibuja sobre Wayland (sin el, los
+#                 programas Qt no arrancan dentro de labwc)
+#   mesa          OpenGL/EGL por software (llvmpipe) cuando QEMU o una maquina
+#                 sin aceleracion no ofrecen GPU; kitty lo necesita
+#   kitty         terminal del escritorio (elegido por ser rapido y ligero)
+#   pcmanfm-qt    explorador de archivos en Qt, sin arrastrar la pila KDE
+#   layer-shell-qt  convierte la barra, el centro y el fondo en superficies
+#                 Wayland con zona exclusiva y capas (sin el, serian ventanas
+#                 normales que taparian a las demas o saldrian en la barra)
+#   qt6-svg       iconos SVG del tema (los .desktop usan iconos vectoriales)
+#   hicolor-icon-theme  iconos base cuando el tema no trae uno concreto
+#   ttf-dejavu    tipografia con los bloques y simbolos del banner
+#   xdg-utils     xdg-open, que usan el explorador y los menus "abrir con"
+# Compositor principal estilo macOS con ventanas libres (stacking) y soporte X11
+labwc
+xorg-xwayland
+dbus
+qt6-base
+qt6-wayland
+qt6-svg
+layer-shell-qt
+hicolor-icon-theme
+mesa
+kitty
+pcmanfm-qt
+ttf-dejavu
+xdg-utils
+
+# --- Qt Quick Shell moderno estilo macOS ---
+qt6-declarative
+qt6-multimedia
+qt6-multimedia-ffmpeg
+qmltermwidget
+
+# --- Soporte de AppImages y aplicaciones adicionales ---
+fuse2
+
+# --- Aplicaciones incluidas en la ISO ---
+firefox
+

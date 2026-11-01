@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=Firefox
+GenericName=Navegador Web
+Comment=Navega por la red
+Exec=firefox %u
+Icon=firefox
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+

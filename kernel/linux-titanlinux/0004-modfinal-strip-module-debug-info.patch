@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Titan Linux <titan@localhost>
+Date: Sat, 26 Sep 2026 19:40:00 +0000
+Subject: [PATCH] modfinal: strip module debug info as soon as it is linked
+
+A full config.x86_64 build produces around 6400 modules. Each of them keeps
+its DWARF in the build tree after the final link, at ~1.2 MB each: roughly
+8 GB of build tree that nothing ever reads. That is a problem on any machine
+that does not have tens of gigabytes to spare.
+
+The installed copies are stripped anyway, because 'make modules_install'
+honours INSTALL_MOD_STRIP (scripts/Makefile.modinst) and defaults to
+stripping the installed module. The DWARF sitting in the intermediate tree
+only exists to be thrown away later.
+
+Strip it where it stops being useful: as the last step of the %.ko rule,
+right after the BTF generation that needs the DWARF still in place.
+'strip --strip-debug' keeps .BTF, .BTF_ids, .modinfo, the symbol tables and
+the module license text intact, so:
+
+  - BTF-aware introspection (bpftool, drgn, ftrace function graphs, libbpf
+    CO-RE) keeps working;
+  - 'modinfo' keeps working;
+  - the installed module is what it was before, since modules_install would
+    have stripped the same sections anyway.
+
+Relinking is cheap: the .o files are untouched, so the only work is 'ld -r'
+plus the BTF fixups. In exchange the module tree shrinks from ~7.7 GB to
+~0.2 GB and the build no longer needs that headroom to finish.
+
+---
+--- a/scripts/Makefile.modfinal
++++ b/scripts/Makefile.modfinal
+@@ -51,12 +51,21 @@
+ 	$(cmd);                                                              \
+ 	printf '%s\n' 'savedcmd_$@ := $(make-cmd)' > $(dot-target).cmd, @:)
+ 
++# Titan: drop the DWARF of a module as soon as it is linked. Without this the
++# build tree holds 1.2 MB per module (~8 GB for the ~6400 modules of this
++# config) that nothing ever reads: 'make modules_install' strips the installed
++# copy anyway (INSTALL_MOD_STRIP), and .BTF, which is what matters for
++# BTF-aware introspection, is left untouched by --strip-debug.
++quiet_cmd_strip_ko = STRIP [M] $@
++      cmd_strip_ko = $(STRIP) --strip-debug $@
++
+ # Re-generate module BTFs if either module's .ko or vmlinux changed
+ %.ko: %.o %.mod.o .module-common.o $(objtree)/scripts/module.lds $(and $(CONFIG_DEBUG_INFO_BTF_MODULES),$(KBUILD_BUILTIN),$(objtree)/vmlinux) FORCE
+ 	+$(call if_changed_except,ld_ko_o,$(objtree)/vmlinux)
+ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+ 	+$(if $(newer-prereqs),$(call cmd,btf_ko))
+ endif
++	+$(call cmd,strip_ko)
+ 
+ targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o) .module-common.o
+ 
+-- 
+2.39.5

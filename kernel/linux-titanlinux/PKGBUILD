@@ -1,0 +1,524 @@
+# Titan Linux kernel package
+# Derived verbatim from Arch Linux's official 'linux-lts' packaging recipe.
+# Upstream recipe: https://gitlab.archlinux.org/archlinux/packaging/packages/linux-lts
+#
+# Deltas from Arch (deliberately minimal, all verified against the upstream file):
+#   1. pkgbase = linux-titanlinux. The '-titanlinux' suffix in the kernelrelease
+#      comes for free from Arch's own localversion.20-pkgname mechanism
+#      ("${pkgbase#linux}"), so no LOCALVERSION config change is needed.
+#   2. pkgdesc rebranded to Titan Linux.
+#   3. replaces=(wireguard-lts) removed. That conflict belongs to linux-lts;
+#      a fork must not claim it or pacman would drop wireguard-lts from a
+#      system that legitimately has linux-lts installed too.
+#   4. NO conflicts=('linux-lts') on purpose. Titan Linux's kernel is meant to
+#      coexist with Arch's linux-lts so that Arch's kernel remains available in
+#      GRUB as a rescue entry if the custom one fails to boot.
+#   5. config.x86_64 is Arch's config with CONFIG_LOCALVERSION_AUTO disabled.
+#      Everything else is inherited from Arch on purpose: WERROR off (tolerates
+#      new GCC warnings), IKCONFIG + IKCONFIG_PROC (config at /proc/config.gz),
+#      PREEMPT_DYNAMIC with PREEMPT_NONE (throughput-oriented desktop kernel),
+#      and MODVERSIONS *unset* so out-of-tree modules stay broadly compatible.
+#   6. KBUILD_BUILD_HOST/USER rebranded (shows in `uname -v`).
+#   7. b2sums_x86_64 removed because config.x86_64 was modified and its b2sum
+#      is unknown. b2sums for the three patches is kept: those files are
+#      byte-identical to Arch's. Run bump.sh to regenerate all checksums.
+#
+# Driver sources are NOT patched here. AMDGPU, i915, NVMe, USB and EXT4 all come
+# straight from upstream LTS, and are updated by re-running kernel/bump.sh.
+#
+# Credits: kernel packaging recipe by Andreas Radke and the Arch Linux team,
+# reused under the terms of the upstream file.
+
+# Maintainer: Titan Linux <titan@titanos.local>
+
+pkgbase=linux-titanlinux
+pkgver=6.18.54
+pkgrel=1
+pkgdesc='Titan Linux kernel (LTS 6.18 track)'
+url='https://www.kernel.org'
+arch=(
+  x86_64
+)
+makedepends=(
+  bc
+  binutils
+  cpio
+  gettext
+  glibc
+  libelf
+  libgcc
+  openssl
+  pahole
+  perl
+  python
+  rust
+  rust-bindgen
+  rust-src
+  tar
+  xxhash
+  xz
+  zlib
+  zstd
+)
+# The htmldocs target needs a LaTeX/Sphinx toolchain (texlive-latexextra alone
+# is several GB). TITAN_NO_HTMLDOCS=1 drops both the target and its dependencies,
+# for hosts with a tight disk budget. The package is identical otherwise.
+if [[ "${TITAN_NO_HTMLDOCS:-0}" != 1 ]]; then
+  makedepends+=(
+    graphviz
+    imagemagick
+    python-sphinx
+    python-yaml
+    texlive-latexextra
+  )
+fi
+options=(
+  !debug
+  !strip
+)
+_srcname=linux-$pkgver
+_srctag=v$pkgver
+source=(
+  https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/${_srcname}.tar.{xz,sign}
+  0001-add-sysctl-to-allow-disabling-unprivileged-CLONE_NEW.patch
+  0002-drm-amdgpu-avoid-memory-allocation-in-the-critical-c.patch
+  0003-drm-amdgpu-use-GFP_ATOMIC-instead-of-NOWAIT-in-the-c.patch
+  0004-modfinal-strip-module-debug-info.patch
+)
+source_x86_64=(config.x86_64)
+validpgpkeys=(
+  ABAF11C65A2970B130ABE3C479BE3E4300411886  # Linus Torvalds
+  647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
+)
+sha256sums=('9df30b02dd8102bbd0be52556288ef6889ddbe7f1ddb96fbf847d0becf3eacac'
+            'SKIP'
+            '0bb3b4cda53db35c10e0a34defb5f52f3c91895d7b4a9f93b3f40f5401a71e02'
+            '70d54dfde13e52ea1109c4222a987a29ada68feec35dca9ce4afd6f7977e8740'
+            '44caa7c6a79055539f16ab118bece58934cdf93557643a50017634366c864b91'
+            '25861f228d30a2d93e4f6327e5efc83d172f8d09a7a0c8668e7f732d691156b3')
+# Arch's own config.x86_64 hash is aef082c1ee2484304a180fc6e8b320f7c93b27843a5deb74e1a92fe32d1dd86c
+# Ours is that same file with CONFIG_LOCALVERSION_AUTO disabled, recomputed locally.
+sha256sums_x86_64=('021ae8b89af12bab8f0dfd2ec77415a6badd6361f1b3ba0b8e4f218a0882cc1b')
+b2sums=('8b86b9130a4847bb1188b0181922713afe367717560ad9faebc327feb911285a11a79309aaaebd705fac6eab7671986ac6726ec8aa44a11c686a2fdece638f3c'
+        'SKIP'
+        'f98f4a2e714f7c9e05740caaad2bf014065ec950c096df74a3dee8b2ce6549f034adf6f87a76168f513aa68eb738edbdb6fe1a3f1b3a5104201c65199b5b931e'
+        '6ca246df80fa85f9c21d090f87ee31e33acb02f3c1147944750e0896ebf199bc0cf427a164dacbdd9baa26dbdbce2fabd89ebdb6a8ce5dae83fc455b27a56cc8'
+        'a612d5ea58485eeaa5cce0b30074ab3188f4321c4759448780de2f3f656821356d640df433e31bd4e8f2c9719c8e275374ddea29b9504335ed0981be5ac7bf7b'
+        '874b29e925d518366b72e1a92cff0ba8aa69210a0da93c5b33879a89fef46dee2a15f0fc7b4320633aa28f2e7db890c9840cb16f0023ed74d0eac490e7b78559')
+# b2sums_x86_64 intentionally absent: our config.x86_64 differs from Arch's, so
+# its bsdiff hash is unknown. Run bump.sh (or updpkgsums) after any version bump.
+# https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
+
+export KBUILD_BUILD_HOST=titanos
+export KBUILD_BUILD_USER=titanlinux
+export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
+
+prepare() {
+  cd $_srcname
+
+  echo "Setting version..."
+  echo "-$pkgrel" > localversion.10-pkgrel
+  echo "${pkgbase#linux}" > localversion.20-pkgname
+
+  # prepare() se ejecuta en cada invocacion de makepkg, tambien al retomar una
+  # compilacion interrumpida en un BUILDDIR reutilizado. Makepkg vuelve a
+  # extraer el tarball encima del arbol en cada ejecucion, asi que prepare() no
+  # puede fiarse de su propio estado anterior: decide parche a parche, con un
+  # ensayo inverso, si el parche ya esta aplicado.
+  #
+  # Esto importa por dos motivos:
+  #
+  #   1. 'patch' reescribe los ficheros que toca aunque el parche ya este
+  #      aplicado, y eso les cambia la fecha, asi que kbuild recompila todo
+  #      lo que dependa de ellos: en este arbol, varios cientos de objetos de
+  #      amdgpu, casi dos horas de compilacion perdidas.
+  #   2. Un sello que solo recuerda "ya lo he aplicado" daria por bueno un
+  #      arbol recien extraido y sin ningun parche, y el kernel se
+  #      compilaria sin ellos en silencio. Un error claro es mejor que eso.
+  #
+  # Los sellos se guardan un nivel por encima del arbol (junto a los parches
+  # que copia makepkg) y solo sirven para detectar que el juego de parches
+  # cambio entre ejecuciones.
+  local src stamp hash
+  stamp="../.titan-patches.stamp"
+  # Solo el contenido de los parches, no sus rutas: asi el sello sigue valiendo
+  # aunque el BUILDDIR cambie de sitio.
+  hash="$(sha256sum ../0*.patch | cut -d' ' -f1 | sha256sum | cut -d' ' -f1)"
+
+  if [[ -f $stamp && $(<"$stamp") != "$hash" ]]; then
+    echo "ERROR: the patches changed since the last build."
+    echo "       Start over from a clean build directory:"
+    echo "         rm -rf \"\$BUILDDIR\""
+    return 1
+  fi
+
+  for src in "${source[@]}"; do
+    src="${src%%::*}"
+    src="${src##*/}"
+    src="${src%.zst}"
+    [[ $src = *.patch ]] || continue
+    if patch -Np1 -R --dry-run < "../$src" >/dev/null 2>&1; then
+      echo "Patch $src is already applied; skipping."
+    else
+      echo "Applying patch $src..."
+      patch -Np1 < "../$src"
+    fi
+  done
+  printf '%s' "$hash" >"$stamp"
+
+  echo "Setting config..."
+  # Mismo sello que para los parches. No se puede comparar el .config con
+  # config.$CARCH porque 'olddefconfig' lo ajusta (RUSTC_*), asi que la
+  # comparacion valida es la del config.x86_64 de origen.
+  local cstamp chash
+  cstamp="../.titan-config.stamp"
+  chash="$(sha256sum "../config.$CARCH" | cut -d' ' -f1)"
+  if [[ -f $cstamp && -f .config && $(<"$cstamp") == "$chash" ]]; then
+    echo "Config unchanged; keeping the existing .config."
+  else
+    cp "../config.$CARCH" .config
+    make olddefconfig
+    diff -u "../config.$CARCH" .config || :
+    printf '%s' "$chash" >"$cstamp"
+  fi
+
+  make -s kernelrelease > version
+  echo "Prepared $pkgbase version $(<version)"
+}
+
+build() {
+  cd $_srcname
+
+  # htmldocs is what pulls texlive-latexextra in (several GB of makedepends).
+  # Hosts with a tight disk budget can export TITAN_NO_HTMLDOCS=1 to skip the
+  # HTML kernel documentation; the resulting package is identical apart from
+  # /usr/share/doc/html and /usr/share/doc/kernel.*
+  local pid_docs=
+  if [[ "${TITAN_NO_HTMLDOCS:-0}" != 1 ]]; then
+    make htmldocs SPHINXOPTS=-QT &
+    pid_docs=$!
+  fi
+
+  make all
+  make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
+  [[ -n "$pid_docs" ]] && wait "$pid_docs"
+  return 0
+}
+
+_package() {
+  pkgdesc="The $pkgdesc kernel and modules"
+  license=(
+    'Apache-2.0 OR MIT'
+
+    'BSD-2-Clause OR GPL-2.0-or-later'
+
+    BSD-3-Clause
+    'BSD-3-Clause OR GPL-2.0-only'
+    'BSD-3-Clause OR GPL-2.0-or-later'
+    BSD-3-Clause-Clear
+
+    GPL-1.0-or-later
+    'GPL-1.0-or-later OR BSD-3-Clause'
+
+    GPL-2.0-only
+    'GPL-2.0-only OR Apache-2.0'
+    'GPL-2.0-only OR BSD-2-Clause'
+    'GPL-2.0-only OR BSD-3-Clause'
+    'GPL-2.0-only OR CDDL-1.0'
+    'GPL-2.0-only OR Linux-OpenIB'
+    'GPL-2.0-only OR MIT'
+    'GPL-2.0-only OR MPL-1.1'
+    'GPL-2.0-only OR X11'
+    'GPL-2.0-only WITH Linux-syscall-note'
+
+    GPL-2.0-or-later
+    'GPL-2.0-or-later OR BSD-2-Clause'
+    'GPL-2.0-or-later OR BSD-3-Clause'
+    'GPL-2.0-or-later OR MIT'
+    'GPL-2.0-or-later OR X11'
+    'GPL-2.0-or-later WITH GCC-exception-2.0'
+
+    ISC
+
+    LGPL-2.0-or-later
+    'LGPL-2.1-only'
+    'LGPL-2.1-only OR BSD-2-Clause'
+
+    LGPL-2.1-or-later
+
+    MIT
+    MPL-1.1
+    X11
+    Zlib
+  )
+  depends=(
+    coreutils
+    initramfs
+    kmod
+  )
+  optdepends=(
+    "$pkgbase-headers: headers and scripts for building modules"
+    'linux-firmware: firmware images needed for some devices'
+    'scx-scheds: to use sched-ext schedulers'
+    'wireless-regdb: to set the correct wireless channels of your country'
+  )
+  provides=(
+    KSMBD-MODULE
+    NTSYNC-MODULE
+    VIRTUALBOX-GUEST-MODULES
+    WIREGUARD-MODULE
+  )
+  # NOTE: no 'replaces=(wireguard-lts)' here on purpose, unlike Arch's linux-lts.
+  # wireguard-lts is owned by Arch's package; a fork must not claim it.
+
+  cd $_srcname
+  local modulesdir="$pkgdir/usr/lib/modules/$(<version)"
+
+  echo "Installing boot image..."
+  # systemd expects to find the kernel here to allow hibernation
+  # https://github.com/systemd/systemd/commit/edda44605f06a41fb86b7ab8128dcf99161d2344
+  install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
+
+  # Used by mkinitcpio to name the kernel
+  echo "$pkgbase" | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
+
+  echo "Installing modules..."
+  ZSTD_CLEVEL=19 make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
+    DEPMOD=/doesnt/exist modules_install  # Suppress depmod
+
+  # remove build link
+  rm "$modulesdir"/build
+
+  # licenses
+  install -vDm 644 LICENSES/deprecated/{GPL-1.0,ISC,Linux-OpenIB,X11,Zlib} -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 LICENSES/preferred/{BSD,MIT}* -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 LICENSES/exceptions/* -t "$pkgdir/usr/share/licenses/$pkgname/"
+}
+
+_package-headers() {
+  pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
+  license=(
+    BSD-3-Clause
+    'BSD-3-Clause OR GPL-2.0-only'
+
+    GPL-1.0-or-later
+    'GPL-1.0-or-later WITH Linux-syscall-note'
+
+    GPL-2.0-only
+    'GPL-2.0-only OR Apache-2.0'
+    'GPL-2.0-only OR BSD-2-Clause'
+    'GPL-2.0-only OR BSD-3-Clause'
+    'GPL-2.0-only OR CDDL-1.0'
+    'GPL-2.0-only OR Linux-OpenIB'
+    'GPL-2.0-only OR Linux-OpenIB OR BSD-2-Clause'
+    'GPL-2.0-only OR MIT'
+    'GPL-2.0-only OR MPL-1.1'
+    'GPL-2.0-only OR X11'
+    'GPL-2.0-only WITH Linux-syscall-note'
+    '(GPL-2.0-only WITH Linux-syscall-note) AND MIT'
+    '(GPL-2.0-only WITH Linux-syscall-note) OR BSD-2-Clause'
+    '(GPL-2.0-only WITH Linux-syscall-note) OR BSD-3-Clause'
+    '(GPL-2.0-only WITH Linux-syscall-note) OR CDDL-1.0'
+    '(GPL-2.0-only WITH Linux-syscall-note) OR Linux-OpenIB'
+    '(GPL-2.0-only WITH Linux-syscall-note) OR MIT'
+
+    GPL-2.0-or-later
+    'GPL-2.0-or-later OR BSD-2-Clause'
+    'GPL-2.0-or-later OR BSD-3-Clause'
+    'GPL-2.0-or-later OR MIT'
+    'GPL-2.0-or-later WITH Linux-syscall-note'
+    '(GPL-2.0-or-later WITH Linux-syscall-note) OR BSD-3-Clause'
+    '(GPL-2.0-or-later WITH Linux-syscall-note) OR MIT'
+    'LGPL-2.0-or-later OR BSD-2-Clause'
+    'LGPL-2.0-or-later WITH Linux-syscall-note'
+
+    ISC
+
+    'LGPL-2.0-or-later WITH Linux-syscall-note'
+    'LGPL-2.0-or-later OR BSD-2-Clause'
+
+    LGPL-2.1-only
+    'LGPL-2.1-only OR BSD-2-Clause'
+    'LGPL-2.1-only OR MIT'
+    'LGPL-2.1-only WITH Linux-syscall-note'
+
+    LGPL-2.1-or-later
+    'LGPL-2.1-or-later OR BSD-2-Clause'
+    'LGPL-2.1-or-later WITH Linux-syscall-note'
+
+    MIT
+    Zlib
+  )
+  depends=(
+    binutils
+    glibc
+    libelf
+    libgcc
+    openssl
+    pahole
+    xxhash
+    zlib
+    zstd
+  )
+  provides=(LINUX-HEADERS)
+
+  cd $_srcname
+  local builddir="$pkgdir/usr/lib/modules/$(<version)/build"
+
+  local karch
+  case $CARCH in
+    x86_64) karch=x86 ;;
+    *) echo "Unknown CARCH $CARCH"; exit 1 ;;
+  esac
+
+  echo "Installing build files..."
+  install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
+    localversion.* version vmlinux tools/bpf/bpftool/vmlinux.h
+  install -Dt "$builddir/kernel" -m644 kernel/Makefile
+  install -Dt "$builddir/arch/$karch" -m644 arch/$karch/Makefile
+  cp -t "$builddir" -a scripts
+  ln -srt "$builddir" "$builddir/scripts/gdb/vmlinux-gdb.py"
+
+  if [[ $(scripts/config -s CONFIG_HAVE_STACK_VALIDATION) = y ]]; then
+    install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+  fi
+
+  if [[ $(scripts/config -s CONFIG_DEBUG_INFO_BTF_MODULES) = y ]]; then
+    install -Dt "$builddir/tools/bpf/resolve_btfids" tools/bpf/resolve_btfids/resolve_btfids
+  fi
+
+  echo "Installing headers..."
+  cp -t "$builddir" -a include
+  cp -t "$builddir/arch/$karch" -a arch/$karch/include
+  install -Dt "$builddir/arch/$karch/kernel" -m644 arch/$karch/kernel/asm-offsets.s
+
+  install -Dt "$builddir/drivers/md" -m644 drivers/md/*.h
+  install -Dt "$builddir/net/mac80211" -m644 net/mac80211/*.h
+
+  # https://bugs.archlinux.org/task/13146
+  install -Dt "$builddir/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
+
+  # https://bugs.archlinux.org/task/20402
+  install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
+  install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
+  install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+
+  # https://bugs.archlinux.org/task/71392
+  install -Dt "$builddir/drivers/iio/common/hid-sensors" -m644 drivers/iio/common/hid-sensors/*.h
+
+  echo "Installing KConfig files..."
+  find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
+
+  if [[ $(scripts/config -s CONFIG_RUST) = y ]]; then
+    echo "Installing Rust files..."
+    install -Dt "$builddir/rust" -m644 rust/*.rmeta
+    install -Dt "$builddir/rust" rust/*.so
+  fi
+
+  echo "Installing unstripped VDSO..."
+  make INSTALL_MOD_PATH="$pkgdir/usr" vdso_install \
+    link=  # Suppress build-id symlinks
+
+  echo "Removing unneeded architectures..."
+  local arch
+  for arch in "$builddir"/arch/*/; do
+    [[ $arch = */$karch/ ]] && continue
+    echo "Removing $(basename "$arch")"
+    rm -r "$arch"
+  done
+
+  echo "Removing documentation..."
+  rm -r "$builddir/Documentation"
+
+  echo "Removing broken symlinks..."
+  find -L "$builddir" -type l -printf 'Removing %P\n' -delete
+
+  echo "Removing loose objects..."
+  find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
+
+  echo "Stripping build tools..."
+  local file
+  while read -rd '' file; do
+    case "$(file -Sib "$file")" in
+      application/x-sharedlib\;*)      # Libraries (.so)
+        strip -v $STRIP_SHARED "$file" ;;
+      application/x-archive\;*)        # Libraries (.a)
+        strip -v $STRIP_STATIC "$file" ;;
+      application/x-executable\;*)     # Binaries
+        strip -v $STRIP_BINARIES "$file" ;;
+      application/x-pie-executable\;*) # Relocatable binaries
+        strip -v $STRIP_SHARED "$file" ;;
+    esac
+  done < <(find "$builddir" -type f -perm -u+x ! -name vmlinux -print0)
+
+  echo "Stripping vmlinux..."
+  strip -v $STRIP_STATIC "$builddir/vmlinux"
+
+  echo "Adding symlink..."
+  mkdir -p "$pkgdir/usr/src"
+  ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
+
+  # licenses
+  install -vDm 644 LICENSES/deprecated/{ISC,Linux-OpenIB,X11,Zlib} -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 LICENSES/preferred/{BSD*,MIT} -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 LICENSES/exceptions/* -t "$pkgdir/usr/share/licenses/$pkgname/"
+}
+
+_package-docs() {
+  pkgdesc="Documentation for the $pkgdesc kernel"
+  license=(
+    BSD-3-Clause
+
+    GFDL-1.1-no-invariants-or-later
+
+    GPL-2.0-only
+    'GPL-2.0-only OR BSD-2-Clause'
+    'GPL-2.0-only OR BSD-3-Clause'
+    'GPL-2.0-only OR GFDL-1.1-no-invariants-or-later'
+    'GPL-2.0-only OR GFDL-1.2-no-invariants-only'
+    'GPL-2.0-only OR MIT'
+
+    GPL-2.0-or-later
+    'GPL-2.0-or-later OR BSD-2-Clause'
+    'GPL-2.0-or-later OR CC-BY-4.0'
+    'GPL-2.0-or-later OR MIT'
+    'GPL-2.0-or-later OR X11'
+
+    'LGPL-2.1-only OR BSD-2-Clause'
+
+    MIT
+  )
+
+  cd $_srcname
+  local builddir="$pkgdir/usr/lib/modules/$(<version)/build"
+
+  echo "Installing documentation..."
+  local src dst
+  while read -rd '' src; do
+    dst="${src#Documentation/}"
+    dst="$builddir/Documentation/${dst#output/}"
+    install -Dm644 "$src" "$dst"
+  done < <(find Documentation -name '.*' -prune -o ! -type d -print0)
+
+  echo "Adding symlink..."
+  mkdir -p "$pkgdir/usr/share/doc"
+  ln -sr "$builddir/Documentation" "$pkgdir/usr/share/doc/$pkgbase"
+
+  # licenses
+  install -vDm 644 LICENSES/deprecated/X11 -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 LICENSES/preferred/{BSD*,MIT} -t "$pkgdir/usr/share/licenses/$pkgname/"
+}
+
+pkgname=(
+  "$pkgbase"
+  "$pkgbase-headers"
+  "$pkgbase-docs"
+)
+for _p in "${pkgname[@]}"; do
+  eval "package_$_p() {
+    $(declare -f "_package${_p#$pkgbase}")
+    _package${_p#$pkgbase}
+  }"
+done
+
+# vim:set ts=8 sts=2 sw=2 et:

@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/SettingsWindow.qml</file>
+        <file>qml/GeneralView.qml</file>
+        <file>qml/AppearanceView.qml</file>
+        <file>qml/WallpaperView.qml</file>
+        <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
+        <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
+        <file>icons/system.png</file>
+    </qresource>
+</RCC>
+

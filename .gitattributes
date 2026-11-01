@@ -1,0 +1,21 @@
+# Titan Linux - kernel package build artifacts
+src/
+pkg/
+*.pkg.tar.*
+*.pkg.tar.*
+*.install
+.makepkg*
+/boot/
+/distro-*.iso
+
+# Keep shell scripts, PKGBUILDs and patches with LF endings. These files were
+# authored on Windows; without this, a checkout on Linux with core.autocrlf=true
+# would rewrite them to CRLF, breaking bash and invalidating every checksum.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+PKGBUILD text eol=lf
+*.patch text eol=lf
+config.* text eol=lf
+*.kdl  text eol=lf
+*.md   text eol=lf

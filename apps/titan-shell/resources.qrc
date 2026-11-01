@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Shell.qml</file>
+        <file>qml/TopBar.qml</file>
+        <file>qml/Dock.qml</file>
+        <file>qml/DockItem.qml</file>
+        <file>qml/DesktopIcons.qml</file>
+        <file>qml/Launcher.qml</file>
+        <file>qml/WallpaperPicker.qml</file>
+        <file>qml/ControlCenter.qml</file>
+        <file>qml/SplashScreen.qml</file>
+        <file>qml/WindowDecorations.qml</file>
+        <file>qml/TrafficLights.qml</file>
+        <file>qml/ContextMenu.qml</file>
+        <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
+        <file>icons/finder.png</file>
+        <file>icons/launchpad.png</file>
+        <file>icons/terminal.png</file>
+        <file>icons/files.png</file>
+        <file>icons/about.png</file>
+        <file>icons/safari.png</file>
+        <file>icons/vscode.png</file>
+        <file>icons/trash.png</file>
+        <file>icons/system.png</file>
+        <file>icons/developer.png</file>
+        <file>icons/folder.png</file>
+        <file>icons/desktop.png</file>
+        <file>icons/downloads.png</file>
+        <file>icons/notes.png</file>
+        <file>icons/music.png</file>
+        <file>icons/pictures.png</file>
+        <file>icons/onlyoffice.png</file>
+    </qresource>
+</RCC>

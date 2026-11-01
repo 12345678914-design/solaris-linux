@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ONLYOFFICE
+Name[es]=ONLYOFFICE
+GenericName=Suite Ofimática
+GenericName[es]=Suite Ofimática
+Comment=Editor de documentos de texto, hojas de cálculo y presentaciones
+Comment[es]=Editor de documentos de texto, hojas de cálculo y presentaciones
+Exec=onlyoffice-desktopeditors %U
+Icon=/usr/share/titan/icons/notes.png
+Terminal=false
+StartupWMClass=DesktopEditors
+Categories=Office;WordProcessor;Spreadsheet;Presentation;
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/msword;application/vnd.ms-excel;application/vnd.ms-powerpoint;application/pdf;
+

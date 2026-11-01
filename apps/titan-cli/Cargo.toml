@@ -1,0 +1,21 @@
+[package]
+name = "titan"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Titan Linux system CLI: info, diagnostics and the branded fastfetch view"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "titan"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "wrap_help"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <theme>
+    <name>Titan-macOS</name>
+    <cornerRadius>10</cornerRadius>
+    <titlebar>
+      <!-- Layout macOS: Cerrar, Minimizar, Maximizar a la izquierda; nada a la derecha -->
+      <layout>close,iconify,max:</layout>
+    </titlebar>
+    <font place="ActiveWindow">
+      <name>DejaVu Sans</name>
+      <size>10</size>
+      <weight>bold</weight>
+    </font>
+    <font place="InactiveWindow">
+      <name>DejaVu Sans</name>
+      <size>10</size>
+      <weight>normal</weight>
+    </font>
+  </theme>
+
+  <!-- Reglas de ventana: las apps de Titan con CSD propio no llevan barra de labwc; Acerca sí usa gestor de ventana -->
+  <windowRules>
+    <windowRule identifier="*" serverDecoration="default" />
+    <windowRule identifier="titan-finder" serverDecoration="no" />
+    <windowRule identifier="titan-fotos" serverDecoration="no" />
+    <windowRule identifier="titan-musica" serverDecoration="no" />
+    <windowRule identifier="titan-terminal" serverDecoration="no" />
+    <windowRule identifier="titan-settings" serverDecoration="no" />
+    <windowRule identifier="titan-shell" serverDecoration="no" />
+    <windowRule identifier="titan-desktop" serverDecoration="no" />
+    <windowRule title="*Finder*" serverDecoration="no" />
+    <windowRule title="*Fotos*" serverDecoration="no" />
+    <windowRule title="*Música*" serverDecoration="no" />
+    <windowRule title="*Terminal*" serverDecoration="no" />
+    <windowRule title="*Ajustes del Sistema*" serverDecoration="no" />
+    <windowRule identifier="titan-acerca" serverDecoration="yes" />
+    <windowRule title="*Acerca*" serverDecoration="yes" />
+    <windowRule identifier="firefox*" serverDecoration="yes" />
+    <windowRule title="*Firefox*" serverDecoration="yes" />
+    <windowRule identifier="*onlyoffice*" serverDecoration="yes" />
+    <windowRule identifier="DesktopEditors*" serverDecoration="yes" />
+    <windowRule title="*ONLYOFFICE*" serverDecoration="yes" />
+    <windowRule title="*DesktopEditors*" serverDecoration="yes" />
+  </windowRules>
+
+  <!-- Suavizado de bordes, resistencia y ajuste suave estilo macOS -->
+  <resistance>
+    <strength>12</strength>
+    <screen_edge>18</screen_edge>
+  </resistance>
+
+  <snapping>
+    <range inner="10" outer="10" />
+  </snapping>
+
+  <!-- Atajos de ratón estilo macOS -->
+  <mouse>
+    <default/>
+    <context name="Titlebar">
+      <mousebind button="Left" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+      <mousebind button="Left" action="Drag">
+        <action name="Move"/>
+      </mousebind>
+      <mousebind button="Left" action="DoubleClick">
+        <action name="ToggleMaximize"/>
+      </mousebind>
+    </context>
+    <context name="Frame">
+      <mousebind button="A-Left" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+      <mousebind button="A-Left" action="Drag">
+        <action name="Move"/>
+      </mousebind>
+      <mousebind button="A-Right" action="Drag">
+        <action name="Resize"/>
+      </mousebind>
+    </context>
+    <context name="Client">
+      <mousebind button="Left" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+    </context>
+  </mouse>
+
+  <!-- Atajos de teclado estilo macOS -->
+  <keyboard>
+    <default/>
+    
+    <!-- Tecla Mod / Super suelta (al pulsar y soltar): abre el menú de inicio / Launchpad -->
+    <keybind key="Super_L" onRelease="yes">
+      <action name="Execute" command="titan-shell --toggle-launcher"/>
+    </keybind>
+    <keybind key="Super_R" onRelease="yes">
+      <action name="Execute" command="titan-shell --toggle-launcher"/>
+    </keybind>
+
+    <!-- Super/Cmd + Espacio: Lanzador / Spotlight -->
+    <keybind key="W-space">
+      <action name="Execute" command="titan-shell --toggle-launcher"/>
+    </keybind>
+    
+    <!-- Super/Cmd + T: Terminal -->
+    <keybind key="W-t">
+      <action name="Execute" command="titan-terminal"/>
+    </keybind>
+
+    <!-- Ctrl + W: Selector de fondo de pantalla estilo macOS -->
+    <keybind key="C-w">
+      <action name="Execute" command="titan-shell --toggle-wallpaper"/>
+    </keybind>
+    <keybind key="C-W">
+      <action name="Execute" command="titan-shell --toggle-wallpaper"/>
+    </keybind>
+
+    <!-- Super/Mod + W: Selector de fondo de pantalla estilo macOS -->
+    <keybind key="W-w">
+      <action name="Execute" command="titan-shell --toggle-wallpaper"/>
+    </keybind>
+    <keybind key="W-W">
+      <action name="Execute" command="titan-shell --toggle-wallpaper"/>
+    </keybind>
+
+    <!-- Super/Mod + Shift + D: Alternar Modo Claro / Oscuro -->
+    <keybind key="W-S-d">
+      <action name="Execute" command="titan-shell --toggle-theme"/>
+    </keybind>
+    <keybind key="W-S-D">
+      <action name="Execute" command="titan-shell --toggle-theme"/>
+    </keybind>
+    
+    <!-- Super/Mod + E: Finder -->
+    <keybind key="W-e">
+      <action name="Execute" command="titan-finder"/>
+    </keybind>
+    <keybind key="W-E">
+      <action name="Execute" command="titan-finder"/>
+    </keybind>
+    
+    <!-- Super/Cmd + Q: Cerrar ventana -->
+    <keybind key="W-q">
+      <action name="Close"/>
+    </keybind>
+    
+    <!-- Super/Cmd + M: Minimizar ventana al Dock -->
+    <keybind key="W-m">
+      <action name="Iconify"/>
+    </keybind>
+    
+    <!-- Super/Cmd + F: Maximizar ventana (zoom) -->
+    <keybind key="W-f">
+      <action name="ToggleMaximize"/>
+    </keybind>
+    
+    <!-- Alt + Tab: Cambiar entre ventanas abiertas -->
+    <keybind key="A-Tab">
+      <action name="NextWindow"/>
+    </keybind>
+    <keybind key="A-S-Tab">
+      <action name="PreviousWindow"/>
+    </keybind>
+  </keyboard>
+</labwc_config>
+

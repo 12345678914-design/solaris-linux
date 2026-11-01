@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Fotos.qml</file>
+        <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
+        <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
+        <file>icons/pictures.png</file>
+        <file>icons/desktop.png</file>
+        <file>icons/downloads.png</file>
+    </qresource>
+</RCC>
+

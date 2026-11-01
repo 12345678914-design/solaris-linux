@@ -1,0 +1,26 @@
+#!/bin/sh
+# Titan Linux - Autostart de sesion grafica con Labwc
+# Inicia el fondo de escritorio y el Shell estilo macOS (TopBar + Dock + Launchpad)
+
+# 1. Fondo de pantalla (capa LayerBackground)
+if command -v titan-desktop >/dev/null 2>&1; then
+    /usr/local/bin/titan-desktop --escritorio >/tmp/titan-desktop.log 2>&1 &
+fi
+
+# 2. Titan Shell (TopBar y Dock flotante con LayerShellQt)
+if command -v titan-shell >/dev/null 2>&1; then
+    /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1 &
+fi
+
+# 3. Exportar variables de entorno en segundo plano para terminales y servicios
+(
+    sleep 1
+    mkdir -p /tmp/.X11-unix 2>/dev/null || true
+    chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+    if [ -n "$DISPLAY" ]; then
+        echo "$DISPLAY" > /tmp/.titan-display
+        chmod 0666 /tmp/.titan-display 2>/dev/null || true
+    fi
+    dbus-update-activation-environment --all 2>/dev/null || true
+) &
+

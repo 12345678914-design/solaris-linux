@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Acerca
+Name[es]=Acerca
+Comment=Informacion del equipo y del sistema
+Comment[es]=Informacion del equipo y del sistema
+Exec=titan-acerca
+Icon=computer
+Terminal=false
+StartupWMClass=titan-acerca
+Categories=System;Settings;

@@ -1,0 +1,8 @@
+# Variables de entorno para la sesion Wayland con Labwc
+XDG_CURRENT_DESKTOP=Titan:labwc
+XDG_SESSION_TYPE=wayland
+QT_QPA_PLATFORM=wayland;xcb
+QT_WAYLAND_DISABLE_WINDOWDECORATION=0
+GDK_BACKEND=wayland,x11
+MOZ_ENABLE_WAYLAND=1
+

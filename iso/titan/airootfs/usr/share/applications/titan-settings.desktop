@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Ajustes del Sistema
+Name[es]=Ajustes del Sistema
+GenericName=Configuración
+GenericName[es]=Configuración
+Comment=Personaliza la apariencia, fondos de pantalla y sistema
+Comment[es]=Personaliza la apariencia, fondos de pantalla y sistema
+Exec=titan-settings
+Icon=/usr/share/titan/icons/system.png
+Terminal=false
+StartupWMClass=titan-settings
+Categories=Settings;DesktopSettings;Qt;
+

@@ -1,0 +1,32 @@
+# Preset de mkinitcpio para el kernel propio de Titan Linux.
+#
+# El nombre del FICHERO no es arbitrario: el hook de alpm
+# 90-mkinitcpio-install.hook crea /etc/mkinitcpio.d/<pkgbase>.preset a partir de
+# /usr/share/mkinitcpio/hook.preset *solo si no existe*. Con este nombre
+# (linux-titanlinux = pkgbase del paquete) el hook lo reutiliza en vez de
+# generar el suyo, y el initramfs que sale es el que quiere la ISO en lugar de
+# uno con autodetect.
+#
+# El nombre del PRESET, en cambio, si lleva guiones: mkinitcpio construye
+# variables bash a partir de el ('<preset>_kver', '<preset>_config') y las
+# resuelve por expansion indirecta, asi que 'linux-titanlinux_kver' no es un
+# identificador valido y mkinitcpio aborta con "invalid variable name".
+#
+# Usa la MISMA configuracion que el kernel de Arch en la ISO
+# (/etc/mkinitcpio.conf.d/archiso.conf), porque la imagen en vivo necesita el
+# hook 'archiso' para encontrar y montar airootfs.erofs.
+#
+# A diferencia del initramfs del kernel de Arch, este NO lleva autodetect:
+# incluye todos los controladores de bloque y de sistema de archivos, para que
+# la misma ISO arranque en cualquier QEMU (virtio, SATA, IDE, NVMe) sin que
+# haya que regenerarlo por hardware.
+
+PRESETS=('titan_live')
+
+ALL_kver='/boot/vmlinuz-linux-titanlinux'
+titan_live_config='/etc/mkinitcpio.conf.d/archiso.conf'
+
+# La imagen tambien se nombra por preset ('<preset>_image'), no con ALL_image:
+# esta version de mkinitcpio no mira ALL_image, y sin esto avisa "No image or
+# UKI specified" y se salta el preset entero.
+titan_live_image='/boot/initramfs-linux-titanlinux.img'

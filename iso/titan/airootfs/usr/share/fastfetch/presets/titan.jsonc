@@ -1,0 +1,78 @@
+{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "logo": {
+        "type": "file",
+        "source": "/usr/share/titan/titan.logo",
+        "padding": {
+            "left": 1
+        }
+    },
+    "modules": [
+        "title",
+        "separator",
+        {
+            "type": "os",
+            "key": "Sistema",
+            "keyIcon": ""
+        },
+        {
+            "type": "kernel",
+            "key": "Kernel",
+            "keyIcon": ""
+        },
+        {
+            "type": "host",
+            "key": "Host",
+            "keyIcon": ""
+        },
+        {
+            "type": "uptime",
+            "key": "Uptime",
+            "keyIcon": ""
+        },
+        "break",
+        {
+            "type": "shell",
+            "key": "Shell",
+            "keyIcon": ""
+        },
+        {
+            "type": "terminal",
+            "key": "Terminal",
+            "keyIcon": ""
+        },
+        "break",
+        {
+            "type": "cpu",
+            "key": "CPU",
+            "keyIcon": "",
+            "showPeCoreCount": true
+        },
+        {
+            "type": "gpu",
+            "key": "GPU",
+            "keyIcon": ""
+        },
+        {
+            "type": "memory",
+            "key": "Memoria",
+            "keyIcon": ""
+        },
+        {
+            "type": "disk",
+            "key": "Disco",
+            "keyIcon": ""
+        },
+        "break",
+        {
+            "type": "locale",
+            "key": "Locale",
+            "keyIcon": ""
+        },
+        {
+            "type": "packages",
+            "key": "Paquetes",
+            "keyIcon": ""
+        }
+    ]
+}

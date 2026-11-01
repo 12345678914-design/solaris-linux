@@ -1,0 +1,38 @@
+# Respuestas automaticas para instalar Titan Linux entero, sin teclear nada.
+#
+#   sudo install.sh --autopiloto --respuestas /ruta/a/este/fichero
+#
+# Lo usa scripts/titan-instala.py para hacer la instalacion completa dentro de
+# QEMU, sobre un disco de 20 GiB. Las claves son las de E[] del instalador, y
+# cada una se puede ver en el sitio donde se pregunta (que esta al lado).
+#
+# Un detalle importante: 'clave' y 'clave2' tienen que ser IGUALES y de 6
+# caracteres o mas. Sin eso el instalador se para y avisa, porque en autopilot
+# no hay nadie delante para corregirlo.
+
+# --- para que va a servir el equipo -> de aqui sale la lista de apps --------
+usos=ordinario
+
+# --- escritorio: GNOME por defecto -----------------------------------------
+escritorio=gnome
+
+# --- disco: se BORRA entero. En la maquina virtual es el disco virtual ------
+disco=/dev/vda
+fs=btrfs
+swap=zram
+luks=no
+# En autopilot el borrado NO se da por supuesto: hay que decirlo aqui, para que
+# una comprobacion automatica no pueda formatear el disco de alguien por un
+# descuido.
+confirmar_borrado=si
+
+# --- cuentas ----------------------------------------------------------------
+hostname=titan
+usuario=isai
+clave=titanlinux
+clave2=titanlinux
+clave_root=titanlinux
+locale=es_ES.UTF-8
+teclado=es
+zona_horaria=Europe/Madrid
+bluetooth=si

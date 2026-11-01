@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Música
+Comment=Reproductor de música para TITAN Linux
+Exec=titan-musica
+Icon=/usr/share/titan/icons/music.png
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;Qt;
+MimeType=audio/mpeg;audio/ogg;audio/flac;audio/x-wav;audio/aac;audio/mp4;
+

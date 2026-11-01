@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Name[es]=Terminal
+GenericName=Línea de Comandos
+GenericName[es]=Línea de Comandos
+Comment=Terminal moderna acelerada por GPU estilo macOS
+Comment[es]=Terminal moderna acelerada por GPU estilo macOS
+Exec=titan-terminal
+Icon=/usr/share/titan/icons/terminal.png
+Terminal=false
+StartupWMClass=titan-terminal
+Categories=System;TerminalEmulator;Qt;
+
