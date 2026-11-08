@@ -1,8 +1,11 @@
-# Titan Linux 0.1 — Guía de compilación y puesta en marcha
+# Solaris Linux 1.8 — Guía de compilación y puesta en marcha
 
-Este repositorio contiene el código fuente de **Titan Linux**, una distribución
+Este repositorio contiene el código fuente de **Solaris Linux**, una distribución
 derivada de Arch Linux con escritorio **Labwc** y aplicaciones gráficas propias
 en **Qt 6 / QML** con aspecto macOS.
+
+> Los nombres internos `titan-*` y `linux-titanlinux` se conservan por
+> compatibilidad con el árbol de código y los paquetes existentes.
 
 > Este README recoge las instrucciones de `INSTRUCCIONES.md`. La documentación
 > técnica ampliada (kernel, ISO, verificaciones y arquitectura) está en
@@ -12,7 +15,8 @@ en **Qt 6 / QML** con aspecto macOS.
 
 - `apps/` — aplicaciones propias: `titan-shell`, `titan-finder`,
   `titan-terminal`, `titan-panel`, `titan-desktop`, `titan-settings`,
-  `titan-fotos`, `titan-musica`, `titan-acerca` y el CLI `titan-cli`.
+  `titan-fotos`, `titan-musica`, `titan-acerca`, `titan-calc`,
+  `titan-calendar`, `titan-clock`, `titan-video` y el CLI `titan-cli`.
 - `iso/titan/` — perfil de `archiso`, configuración del sistema, tema de Labwc,
   iconos, fondos y scripts del instalador.
 - `kernel/linux-titanlinux/` — receta del kernel propio (`PKGBUILD`, parches y
@@ -56,7 +60,7 @@ Para evitar que `pacman` se quede colgado en mirrors lentos como
 sudo sed -i 's|^Server = https://geo.mirror.pkgbuild.com|# Server = https://geo.mirror.pkgbuild.com|' /etc/pacman.d/mirrorlist
 ```
 
-## Paso 3: compilar la ISO de Titan Linux
+## Paso 3: compilar la ISO de Solaris Linux
 
 ```bash
 sudo ./scripts/build-iso.sh
@@ -71,6 +75,7 @@ El script realiza automáticamente estas tareas:
    - `titan-terminal` — terminal gráfica con pestañas.
    - `titan-panel` y `titan-desktop` — fondo de escritorio y gestor de capas.
    - `titan-settings`, `titan-fotos`, `titan-musica` y `titan-acerca`.
+   - `titan-calc`, `titan-calendar`, `titan-clock` y `titan-video`.
 3. Busca el paquete del kernel propio en
    `kernel/linux-titanlinux/linux-titanlinux-*.pkg.tar.zst` y lo integra en la
    imagen sin recompilar Linux.
@@ -79,7 +84,7 @@ El script realiza automáticamente estas tareas:
 5. Genera la ISO final en:
 
    ```text
-   out_root/titan-linux-0.1.0-x86_64.iso
+   out/solaris-linux-0.1.0-x86_64.iso
    ```
 
 ### Si no existe el paquete del kernel
@@ -171,8 +176,8 @@ make clean       # limpia artefactos de compilación
 
 ## Estructura de compilación
 
-- `out/` — capturas, transcripciones e informes de verificación.
-- `out_root/` — ISO generada y su `.sha256`.
+- `out/` — ISO generada, su `.sha256`, capturas e informes de verificación.
+- `out_root/` — ISO antigua de Titan Linux (solo se conserva como referencia).
 - `build/archiso/` — árbol de trabajo de `mkarchiso` (se borra en cada build).
 - `repo/` — repositorio local de paquetes usado durante la compilación.
 
@@ -180,6 +185,6 @@ Estos directorios son artefactos de build y no forman parte del código fuente.
 
 ## Créditos y aviso
 
-Titan Linux es un proyecto derivado de Arch Linux. «Titan Linux» ya existe como
-distribución basada en Ubuntu; no hay conflicto técnico, pero conviene elegir un
-nombre distinto antes de publicar el proyecto de forma oficial.
+Solaris Linux es un proyecto derivado de Arch Linux. Los nombres internos
+`titan-*` y `linux-titanlinux` se mantienen para no romper paquetes, rutas y
+aplicaciones existentes.

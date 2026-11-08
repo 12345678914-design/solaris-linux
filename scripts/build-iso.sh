@@ -421,6 +421,10 @@ build_qt_app titan-finder || exit 1
 build_qt_app titan-fotos || exit 1
 build_qt_app titan-musica || exit 1
 build_qt_app titan-settings || exit 1
+build_qt_app titan-calc || exit 1
+build_qt_app titan-calendar || exit 1
+build_qt_app titan-clock || exit 1
+build_qt_app titan-video || exit 1
 
 # ------------------------------------------- 2d. app 'titan-acerca' ----------
 

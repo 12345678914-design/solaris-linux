@@ -1,6 +1,6 @@
-# Titan Linux 0.1 - Guía de Compilación y Puesta en Marcha
+# Solaris Linux 1.8 - Guía de Compilación y Puesta en Marcha
 
-Esta carpeta contiene todo el código fuente de **Titan Linux**, sus aplicaciones gráficas en Qt 6 / QML al estilo macOS, la configuración del compositor de ventanas libres **Labwc**, y el paquete del **kernel propio ya compilado** (`linux-titanlinux`).
+Esta carpeta contiene todo el código fuente de **Solaris Linux**, sus aplicaciones gráficas en Qt 6 / QML al estilo macOS, la configuración del compositor de ventanas libres **Labwc**, y la receta del **kernel propio** (`linux-titanlinux`). Los nombres internos `titan-*` se conservan por compatibilidad.
 
 ---
 
@@ -35,7 +35,7 @@ sudo sed -i 's|^Server = https://geo.mirror.pkgbuild.com|# Server = https://geo.
 
 ---
 
-### Paso 3: Compilar la ISO de Titan Linux
+### Paso 3: Compilar la ISO de Solaris Linux
 
 Ejecuta el script de construcción con permisos de superusuario:
 
@@ -51,10 +51,11 @@ sudo ./scripts/build-iso.sh
    - `titan-terminal` (Terminal gráfica con pestañas).
    - `titan-panel` y `titan-desktop` (Fondo de escritorio y gestor de capas).
    - `titan-acerca` (Ventana de información del sistema).
+   - `titan-calc`, `titan-calendar`, `titan-clock` y `titan-video`.
 3. Detecta automáticamente el paquete del kernel propio que ya viene incluido en `kernel/linux-titanlinux/linux-titanlinux-6.18.54-1-x86_64.pkg.tar.zst` y lo integra en la imagen sin necesidad de recompilar Linux.
 4. Aplica la configuración de **Labwc** (ventanas libres flotantes, botones semáforo rojo/amarillo/verde y atajos de teclado).
 5. Empaqueta la ISO final lista para usar en:
-   `out/titan-linux-0.1.0-x86_64.iso`
+   `out/solaris-linux-0.1.0-x86_64.iso`
 
 ---
 

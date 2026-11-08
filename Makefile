@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."
@@ -109,6 +109,26 @@ apps/titan-settings:
 	@echo "Compilando titan-settings..."
 	cd $(APPS)/titan-settings && qmake6 titan-settings.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-settings/titan-settings iso/titan/airootfs/usr/local/bin/
+
+apps/titan-calc:
+	@echo "Compilando titan-calc..."
+	cd $(APPS)/titan-calc && qmake6 titan-calc.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-calc/titan-calc iso/titan/airootfs/usr/local/bin/
+
+apps/titan-calendar:
+	@echo "Compilando titan-calendar..."
+	cd $(APPS)/titan-calendar && qmake6 titan-calendar.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-calendar/titan-calendar iso/titan/airootfs/usr/local/bin/
+
+apps/titan-clock:
+	@echo "Compilando titan-clock..."
+	cd $(APPS)/titan-clock && qmake6 titan-clock.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-clock/titan-clock iso/titan/airootfs/usr/local/bin/
+
+apps/titan-video:
+	@echo "Compilando titan-video..."
+	cd $(APPS)/titan-video && qmake6 titan-video.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-video/titan-video iso/titan/airootfs/usr/local/bin/
 
 build: apps
 
