@@ -218,6 +218,48 @@ void FotosBackend::selectPhoto(int index)
     emit rotationAngleChanged();
 }
 
+void FotosBackend::openFile(const QString &filePath)
+{
+    if (filePath.isEmpty()) return;
+    QString local = filePath;
+    if (local.startsWith(QLatin1String("file://"))) {
+        local = QUrl(filePath).toLocalFile();
+    }
+    QFileInfo fi(local);
+    if (!fi.exists()) return;
+
+    QString absPath = fi.absoluteFilePath();
+    for (int i = 0; i < m_filteredPhotos.size(); ++i) {
+        if (m_filteredPhotos.at(i).toMap().value(QStringLiteral("path")).toString() == absPath) {
+            selectPhoto(i);
+            return;
+        }
+    }
+
+    QVariantMap item;
+    item[QStringLiteral("path")] = absPath;
+    item[QStringLiteral("url")] = QUrl::fromLocalFile(absPath).toString();
+    item[QStringLiteral("name")] = fi.fileName();
+    item[QStringLiteral("category")] = QStringLiteral("todas");
+    item[QStringLiteral("date")] = fi.lastModified().toString(QStringLiteral("dd/MM/yyyy hh:mm"));
+    qint64 bytes = fi.size();
+    if (bytes < 1024 * 1024) {
+        item[QStringLiteral("size")] = QStringLiteral("%1 KB").arg(bytes / 1024);
+    } else {
+        item[QStringLiteral("size")] = QStringLiteral("%1 MB").arg(QString::number(bytes / (1024.0 * 1024.0), 'f', 1));
+    }
+    QImageReader reader(absPath);
+    const QSize sz = reader.size();
+    if (sz.isValid()) {
+        item[QStringLiteral("dimensions")] = QStringLiteral("%1 × %2").arg(sz.width()).arg(sz.height());
+    }
+
+    m_allPhotos.prepend(item);
+    m_filteredPhotos.prepend(item);
+    emit photosChanged();
+    selectPhoto(0);
+}
+
 void FotosBackend::nextPhoto()
 {
     if (m_filteredPhotos.isEmpty()) return;

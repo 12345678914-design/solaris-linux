@@ -1,14 +1,34 @@
 #!/bin/sh
-# Titan Linux - Autostart de sesion grafica con Labwc
-# Inicia el fondo de escritorio y el Shell estilo macOS (TopBar + Dock + Launchpad)
+# Solaris Linux - Autostart de sesion grafica con Labwc
+export PATH="/usr/local/bin:$PATH"
+
+# 0. Servidor de audio PipeWire y WirePlumber (Hardware real y emulado)
+if command -v pipewire >/dev/null 2>&1; then
+    pgrep -x pipewire >/dev/null 2>&1 || pipewire &
+    sleep 0.3
+    pgrep -x pipewire-pulse >/dev/null 2>&1 || pipewire-pulse &
+    sleep 0.3
+    pgrep -x wireplumber >/dev/null 2>&1 || wireplumber &
+fi
+
+# Desmutear y calibrar volumen en hardware real ALSA y PipeWire
+(sleep 2 && /usr/local/bin/titan-audio-setup) &
+
+# 0.1 Driver de sincronización de batería en QEMU
+if [ -x /usr/local/bin/titan-battery-sync ]; then
+    /usr/local/bin/titan-battery-sync &
+fi
+
+# 0.2 Desbloquear radio Wi-Fi en el arranque si existe hardware inalámbrico
+(sleep 1 && rfkill unblock wifi 2>/dev/null && nmcli radio wifi on 2>/dev/null) &
 
 # 1. Fondo de pantalla (capa LayerBackground)
-if command -v titan-desktop >/dev/null 2>&1; then
+if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
     /usr/local/bin/titan-desktop --escritorio >/tmp/titan-desktop.log 2>&1 &
 fi
 
-# 2. Titan Shell (TopBar y Dock flotante con LayerShellQt)
-if command -v titan-shell >/dev/null 2>&1; then
+# 2. Solaris Shell (TopBar, Dock flotante, Iconos y Launchpad)
+if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
     /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1 &
 fi
 

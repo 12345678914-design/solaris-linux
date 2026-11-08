@@ -1,0 +1,21 @@
+[General]
+ColorScheme=Solaris-macOS
+Name=Solaris macOS
+TerminalApplication=kitty
+font=DejaVu Sans,10,-1,5,50,0,0,0,0,0
+fixed=DejaVu Sans Mono,10,-1,5,50,0,0,0,0,0
+menuFont=DejaVu Sans,10,-1,5,50,0,0,0,0,0
+smallestReadableFont=DejaVu Sans,8,-1,5,50,0,0,0,0,0
+toolBarFont=DejaVu Sans,9,-1,5,50,0,0,0,0,0
+windowTitleFont=DejaVu Sans,10,-1,5,75,0,0,0,0,0
+
+[Icons]
+Theme=breeze-dark
+
+[KDE]
+ShowDeleteCommand=true
+SingleClick=false
+widgetStyle=Breeze
+ShowIconsOnPushButtons=true
+ShowIconsInMenuItems=true
+colorScheme=Solaris-macOS

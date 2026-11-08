@@ -12,10 +12,10 @@
 #   TITAN_CODENAME  apodo de la release
 #   TITAN_REPO      ruta del repositorio local con linux-titanlinux
 
-iso_name="titan-linux"
-iso_label="TITAN_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Titan Linux Project <https://github.com/titan-linux>"
-iso_application="Titan Linux"
+iso_name="solaris-linux"
+iso_label="SOLARIS_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_publisher="Solaris Linux Project <https://github.com/solaris-linux>"
+iso_application="Solaris Linux"
 iso_version="${TITAN_VERSION:-0.1.0}"
 install_dir="titan"
 buildmodes=('iso')

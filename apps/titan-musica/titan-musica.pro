@@ -1,5 +1,7 @@
 QT += quick quickcontrols2 multimedia gui
-CONFIG += c++17 warn_on
+CONFIG += c++17 warn_on release
+QMAKE_CXXFLAGS_RELEASE += -O3 -pipe -fno-plt
+QMAKE_LFLAGS_RELEASE += -Wl,-O1,--as-needed
 TEMPLATE = app
 TARGET = titan-musica
 

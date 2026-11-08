@@ -32,17 +32,53 @@ if [ -z "${TITAN_DRM}" ]; then
   done
 fi
 
-for programa in dbus-run-session labwc titan-desktop; do
+if [ ! -e "${TITAN_DRM}" ]; then
+  echo "Aviso: no hay dispositivo de grafica; consola de texto."
+  return 0
+fi
+
+if ! command -v dbus-run-session >/dev/null 2>&1; then
+  echo "Aviso: falta dbus-run-session; se sigue en consola de texto."
+  return 0
+fi
+
+# Selección de sesión: labwc/titan-shell (por defecto) o KDE Plasma 6 si se solicita
+SESION_DESKTOP="labwc"
+if [ "${TITAN_DESKTOP:-}" = "plasma" ] && command -v startplasma-wayland >/dev/null 2>&1; then
+  SESION_DESKTOP="plasma"
+fi
+
+if [ "${SESION_DESKTOP}" = "plasma" ]; then
+  TITAN_GRAFICO=1
+  export TITAN_GRAFICO
+  export XDG_SESSION_TYPE=wayland
+  export XDG_CURRENT_DESKTOP=KDE
+  export KDE_SESSION_VERSION=6
+  export QT_QPA_PLATFORM="wayland;xcb"
+  export GDK_BACKEND="wayland,x11"
+  export MOZ_ENABLE_WAYLAND=1
+
+  case "${LANG:-}" in
+    ""|C|POSIX) export LANG=es_ES.UTF-8 ;;
+  esac
+
+  echo "Iniciando Solaris (KDE Plasma 6 Wayland)..."
+  dbus-run-session -- startplasma-wayland 2>&1 | tee /tmp/plasma.log
+  codigo_salida=${PIPESTATUS[0]}
+  if [ $codigo_salida -ne 0 ] && [ -s /tmp/plasma.log ]; then
+    echo "Aviso: KDE Plasma finalizó con código ${codigo_salida}."
+    tail -n 25 /tmp/plasma.log
+  fi
+  echo "El escritorio se ha cerrado. Volviendo a la consola de texto."
+  return 0
+fi
+
+for programa in labwc titan-desktop; do
   if ! command -v "${programa}" >/dev/null 2>&1; then
     echo "Aviso: falta ${programa}; se sigue en consola de texto."
     return 0
   fi
 done
-
-if [ ! -e "${TITAN_DRM}" ]; then
-  echo "Aviso: no hay dispositivo de grafica; consola de texto."
-  return 0
-fi
 
 TITAN_GRAFICO=1
 export TITAN_GRAFICO
@@ -53,9 +89,13 @@ export XDG_CURRENT_DESKTOP=Titan:labwc
 unset DISPLAY
 export WLR_BACKENDS="drm,libinput"
 
-# Backend por software para compatibilidad completa en QEMU y VMware
-export QT_QUICK_BACKEND=software
-export QSG_RHI_BACKEND=software
+# Detección dinámica de máquina virtual vs hardware real:
+# En entornos virtualizados sin aceleración 3D (QEMU/bochs/VMware), usar renderizado por software seguro.
+# En hardware real con GPU física (Intel, AMD, NVIDIA), aprovechar aceleración completa por hardware.
+if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q; then
+  export QT_QUICK_BACKEND=software
+  export QSG_RHI_BACKEND=software
+fi
 export QT_QPA_PLATFORM="wayland;xcb"
 export GDK_BACKEND="wayland,x11"
 export MOZ_ENABLE_WAYLAND=1
@@ -66,8 +106,8 @@ case "${LANG:-}" in
 esac
 
 echo "Iniciando Titan Linux (interfaz gráfica estilo macOS con labwc)..."
-dbus-run-session -- labwc >/tmp/labwc.log 2>&1
-codigo_salida=$?
+dbus-run-session -- labwc 2>&1 | tee /tmp/labwc.log
+codigo_salida=${PIPESTATUS[0]}
 
 if [ $codigo_salida -ne 0 ] && [ -s /tmp/labwc.log ]; then
   echo "Aviso: labwc finalizó con código ${codigo_salida}. Registro de error:"

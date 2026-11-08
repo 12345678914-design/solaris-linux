@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Calc.qml</file>
+        <file>qml/TitanWindow.qml</file>
+        <file>qml/TitanTheme.qml</file>
+        <file>icons/calculator.png</file>
+    </qresource>
+</RCC>
+

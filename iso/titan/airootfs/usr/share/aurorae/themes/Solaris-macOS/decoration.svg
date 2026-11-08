@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="76" height="76" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <!-- ACTIVE -->
+  <g id="active-topleft">
+    <path d="M 0,28 L 0,10 C 0,4.5 4.5,0 10,0 L 28,0 L 28,28 Z" fill="#1c1d22"/>
+  </g>
+  <g id="active-top">
+    <rect x="28" y="0" width="20" height="28" fill="#1c1d22"/>
+  </g>
+  <g id="active-topright">
+    <path d="M 48,0 L 66,0 C 71.5,0 76,4.5 76,10 L 76,28 L 48,28 Z" fill="#1c1d22"/>
+  </g>
+  <g id="active-left">
+    <rect x="0" y="28" width="1" height="20" fill="#282a32"/>
+  </g>
+  <g id="active-center">
+    <rect x="28" y="28" width="20" height="20" fill="none"/>
+  </g>
+  <g id="active-right">
+    <rect x="75" y="28" width="1" height="20" fill="#282a32"/>
+  </g>
+  <g id="active-bottomleft">
+    <path d="M 0,48 L 1,48 L 1,75 L 10,75 C 10,75.5 9.5,76 9,76 L 0,76 Z" fill="#282a32"/>
+  </g>
+  <g id="active-bottom">
+    <rect x="28" y="75" width="20" height="1" fill="#282a32"/>
+  </g>
+  <g id="active-bottomright">
+    <path d="M 75,48 L 76,48 L 76,76 L 67,76 C 66.5,76 66,75.5 66,75 L 75,75 Z" fill="#282a32"/>
+  </g>
+
+  <!-- INACTIVE -->
+  <g id="inactive-topleft">
+    <path d="M 0,28 L 0,10 C 0,4.5 4.5,0 10,0 L 28,0 L 28,28 Z" fill="#16171b"/>
+  </g>
+  <g id="inactive-top">
+    <rect x="28" y="0" width="20" height="28" fill="#16171b"/>
+  </g>
+  <g id="inactive-topright">
+    <path d="M 48,0 L 66,0 C 71.5,0 76,4.5 76,10 L 76,28 L 48,28 Z" fill="#16171b"/>
+  </g>
+  <g id="inactive-left">
+    <rect x="0" y="28" width="1" height="20" fill="#222328"/>
+  </g>
+  <g id="inactive-center">
+    <rect x="28" y="28" width="20" height="20" fill="none"/>
+  </g>
+  <g id="inactive-right">
+    <rect x="75" y="28" width="1" height="20" fill="#222328"/>
+  </g>
+  <g id="inactive-bottomleft">
+    <rect x="0" y="75" width="10" height="1" fill="#222328"/>
+  </g>
+  <g id="inactive-bottom">
+    <rect x="28" y="75" width="20" height="1" fill="#222328"/>
+  </g>
+  <g id="inactive-bottomright">
+    <rect x="66" y="75" width="10" height="1" fill="#222328"/>
+  </g>
+</svg>

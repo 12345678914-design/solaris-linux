@@ -1,0 +1,18 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Solaris Linux Team"
+            }
+        ],
+        "Description": "Tema de bienvenida e inicio Solaris para KDE Plasma",
+        "Id": "org.solaris.desktop",
+        "Name": "Solaris",
+        "ServiceTypes": [
+            "Plasma/LookAndFeel"
+        ],
+        "Version": "1.0",
+        "Website": "https://github.com/titan-linux"
+    }
+}
+

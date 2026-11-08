@@ -254,5 +254,29 @@ void ThemeManager::syncLabwcTheme()
         // Reconfigurar labwc en caliente
         QProcess::startDetached(QStringLiteral("labwc"), {QStringLiteral("--reconfigure")});
     }
+
+    // Sincronizar tema del sistema (GTK 3, GTK 4, GNOME y Portal de apariencia)
+    QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
+    QString gtkTheme = m_isDark ? QStringLiteral("Adwaita-dark") : QStringLiteral("Adwaita");
+
+    QProcess::startDetached(QStringLiteral("gsettings"), {
+        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"), gtkColorScheme
+    });
+    QProcess::startDetached(QStringLiteral("gsettings"), {
+        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("gtk-theme"), gtkTheme
+    });
+
+    for (const QString &ver : {QStringLiteral("gtk-3.0"), QStringLiteral("gtk-4.0")}) {
+        QString p = QDir::homePath() + QStringLiteral("/.config/") + ver;
+        QDir().mkpath(p);
+        QFile gf(p + QStringLiteral("/settings.ini"));
+        if (gf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream gout(&gf);
+            gout << "[Settings]\n"
+                 << "gtk-application-prefer-dark-theme=" << (m_isDark ? "1" : "0") << "\n"
+                 << "gtk-theme-name=" << gtkTheme << "\n";
+            gf.close();
+        }
+    }
 }
 

@@ -1,44 +1,24 @@
-#include <QGuiApplication>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <QQuickStyle>
 #include <QCoreApplication>
-#include <QObject>
-#include <QUrl>
-#include "ThemeManager.h"
+#include <QProcess>
+#include <QStandardPaths>
+#include <iostream>
 
 int main(int argc, char *argv[])
 {
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND"))
-        qputenv("QT_QUICK_BACKEND", "software");
+    for (int i = 1; i < argc; ++i) {
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--comprobar")) {
+            std::cout << "titan-terminal=ok" << std::endl;
+            return 0;
+        }
+    }
 
-    QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName(
-        QStringLiteral("titan-terminal"));
-    QGuiApplication::setDesktopFileName(
-        QStringLiteral("titan-terminal"));
+    QString kitty = QStandardPaths::findExecutable(QStringLiteral("kitty"));
+    if (kitty.isEmpty()) kitty = QStringLiteral("/usr/bin/kitty");
 
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    QStringList args;
+    for (int i = 1; i < argc; ++i) {
+        args << QString::fromLocal8Bit(argv[i]);
+    }
 
-    QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
-
-    const QUrl url(QStringLiteral("qrc:/qml/Terminal.qml"));
-
-    QObject::connect(
-        &engine,
-        &QQmlApplicationEngine::objectCreated,
-        &app,
-        [url](QObject *obj, const QUrl &objUrl) {
-            if (!obj && url == objUrl)
-                QCoreApplication::exit(-1);
-        },
-        Qt::QueuedConnection);
-
-    engine.load(url);
-
-    if (engine.rootObjects().isEmpty())
-        return -1;
-
-    return app.exec();
+    return QProcess::startDetached(kitty, args) ? 0 : 1;
 }

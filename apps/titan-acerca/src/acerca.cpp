@@ -171,17 +171,39 @@ QPixmap iconoComputadora(int lado)
     return lienzo;
 }
 
+QPixmap obtenerLogoSolaris(int lado)
+{
+    const QStringList rutas = {
+        QStringLiteral(":/icons/icons/solaris-logo.png"),
+        QStringLiteral("/usr/share/pixmaps/solaris-logo.png"),
+        QStringLiteral("/usr/share/titan/solaris-logo.png"),
+        QStringLiteral("apps/titan-acerca/icons/solaris-logo.png"),
+        QStringLiteral(":/icons/icons/solaris-symbol.png")
+    };
+    for (const QString &ruta : rutas) {
+        if (QFile::exists(ruta)) {
+            QPixmap pix(ruta);
+            if (!pix.isNull()) {
+                return pix.scaled(lado, lado, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+        }
+    }
+    return iconoComputadora(lado);
+}
+
 AcercaVentana::AcercaVentana(QWidget *padre)
     : QWidget(padre)
 {
-    setWindowTitle(QStringLiteral("Acerca"));
+    const Config &cfg = Config::instancia();
+    const QString nombreSo = cfg.soNombre().isEmpty() ? QStringLiteral("Solaris Linux") : cfg.soNombre();
+    setWindowTitle(QStringLiteral("Acerca de %1").arg(nombreSo));
     setObjectName(QStringLiteral("acerca"));
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
     resize(560, 520);
     setMinimumSize(420, 360);
-    setWindowIcon(QIcon(iconoComputadora(64)));
+    setWindowIcon(QIcon(obtenerLogoSolaris(64)));
     construir(leerDatosEquipo());
 
     if (QScreen *pantalla = QGuiApplication::primaryScreen()) {
@@ -236,7 +258,7 @@ void AcercaVentana::construir(const DatosEquipo &datos)
 
     auto *icono = new QLabel(this);
     icono->setAlignment(Qt::AlignCenter);
-    icono->setPixmap(iconoComputadora(96));
+    icono->setPixmap(obtenerLogoSolaris(100));
     raiz->addWidget(icono);
 
     auto *equipo = new QLabel(datos.equipo, this);

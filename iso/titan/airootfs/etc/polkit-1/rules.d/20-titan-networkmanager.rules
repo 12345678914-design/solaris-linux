@@ -1,0 +1,8 @@
+// Titan Linux: permitir a usuarios del grupo wheel, network y al usuario titan gestionar conexiones sin contraseña
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        (subject.isInGroup("wheel") || subject.isInGroup("network") || subject.user === "titan")) {
+        return polkit.Result.YES;
+    }
+});
+

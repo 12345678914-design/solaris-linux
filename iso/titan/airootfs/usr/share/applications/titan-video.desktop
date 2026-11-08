@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Reproductor de Video
+Name[es]=Reproductor de Video
+Comment=Reproductor multimedia de video y audio
+Comment[es]=Reproductor multimedia de video y audio
+Exec=titan-video %U
+Icon=/usr/share/titan/icons/video.png
+Terminal=false
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/avi;video/x-msvideo;
+StartupWMClass=titan-video

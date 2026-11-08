@@ -325,6 +325,7 @@ paso_servicios() {
   # wifi sin herramientas extra). Se apaga el otro para que no se peleen por
   # la misma interfaz.
   arch-chroot "${r}" systemctl enable NetworkManager.service >/dev/null 2>&1
+  arch-chroot "${r}" systemctl enable bluetooth.service >/dev/null 2>&1 || true
   arch-chroot "${r}" systemctl enable iwd.service >/dev/null 2>&1 || true
   arch-chroot "${r}" systemctl mask systemd-networkd.service >/dev/null 2>&1 || true
   arch-chroot "${r}" systemctl mask systemd-resolved.service >/dev/null 2>&1 || true

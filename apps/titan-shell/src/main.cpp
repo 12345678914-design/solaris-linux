@@ -52,19 +52,47 @@ void configurarCapa(QQuickWindow *win, LayerShellQt::Window::Layer capa,
 
 int main(int argc, char *argv[])
 {
+    bool modoComprobar = false;
     for (int i = 1; i < argc; ++i) {
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--comprobar")) {
-            std::cout << "titan-shell=ok" << std::endl;
-            std::cout << "estilo=macos" << std::endl;
-            std::cout << "capas=layer-shell-qt" << std::endl;
-            return 0;
+            modoComprobar = true;
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            qputenv("QT_QPA_PLATFORMTHEME", "");
+            break;
         }
+    }
+
+    for (int i = 1; i < argc && !modoComprobar; ++i) {
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-launcher")) {
             const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
             QLocalSocket socket;
             socket.connectToServer(socketName);
             if (socket.waitForConnected(600)) {
                 socket.write("toggle-launcher\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-workspaces")) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("toggle-workspaces\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--battery") && i + 1 < argc) {
+            QString val = QString::fromLocal8Bit(argv[i + 1]);
+            QString state = (i + 2 < argc) ? QString::fromLocal8Bit(argv[i + 2]) : QStringLiteral("discharging");
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write(QStringLiteral("set-battery %1 %2\n").arg(val, state).toUtf8());
                 socket.flush();
                 socket.waitForBytesWritten(600);
             }
@@ -94,6 +122,30 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-notifications")) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("toggle-notifications\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--notify") && i + 1 < argc) {
+            QString title = QString::fromLocal8Bit(argv[i + 1]);
+            QString msg = (i + 2 < argc) ? QString::fromLocal8Bit(argv[i + 2]) : QStringLiteral("");
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write(QStringLiteral("notify %1|%2\n").arg(title, msg).toUtf8());
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
     }
 
     if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND")) {
@@ -105,13 +157,21 @@ int main(int argc, char *argv[])
     
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("titan-shell"));
-    QGuiApplication::setOrganizationName(QStringLiteral("TitanLinux"));
+    QGuiApplication::setOrganizationName(QStringLiteral("SolarisLinux"));
     
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     
     ShellBackend shellBackend;
     WindowTracker windowTracker;
     DockModel dockModel(&windowTracker, &shellBackend);
+    
+    QObject::connect(&shellBackend, &ShellBackend::currentWorkspaceChanged, &windowTracker, [&windowTracker, &shellBackend]() {
+        windowTracker.setCurrentWorkspace(shellBackend.currentWorkspace());
+    });
+    QObject::connect(&windowTracker, &WindowTracker::requestWorkspaceSwitch, &shellBackend, [&shellBackend](int ws) {
+        shellBackend.switchToWorkspace(ws);
+    });
+    shellBackend.setDockModel(&dockModel);
     LauncherBackend launcherBackend;
     DesktopBackend desktopBackend;
 
@@ -126,10 +186,27 @@ int main(int argc, char *argv[])
                     const QByteArray cmd = client->readAll().trimmed();
                     if (cmd == "toggle-launcher") {
                         shellBackend.toggleLauncher();
+                    } else if (cmd == "toggle-workspaces") {
+                        shellBackend.toggleWorkspaces();
                     } else if (cmd == "toggle-wallpaper") {
                         shellBackend.toggleWallpaperPicker();
                     } else if (cmd == "toggle-theme") {
                         shellBackend.toggleTheme();
+                    } else if (cmd == "toggle-notifications") {
+                        shellBackend.toggleNotificationCenter();
+                    } else if (cmd.startsWith("notify ")) {
+                        QString payload = QString::fromUtf8(cmd.mid(7));
+                        QStringList parts = payload.split(QLatin1Char('|'));
+                        QString t = parts.value(0);
+                        QString m = parts.value(1);
+                        shellBackend.notify(t, m);
+                    } else if (cmd.startsWith("set-battery")) {
+                        const auto parts = cmd.split(' ');
+                        if (parts.size() >= 2) {
+                            int pct = parts[1].toInt();
+                            bool chg = (parts.size() >= 3 && parts[2] == "charging");
+                            shellBackend.setSimulatedBattery(pct, chg);
+                        }
                     }
                     client->disconnectFromServer();
                 });
@@ -155,7 +232,16 @@ int main(int argc, char *argv[])
     engine.load(url);
 
     if (engine.rootObjects().isEmpty()) {
+        std::cerr << "titan-shell: fallo critico al cargar los componentes QML" << std::endl;
         return -1;
+    }
+
+    if (modoComprobar) {
+        std::cout << "titan-shell=ok" << std::endl;
+        std::cout << "estilo=macos" << std::endl;
+        std::cout << "capas=layer-shell-qt" << std::endl;
+        std::cout << "qml-componentes=ok" << std::endl;
+        return 0;
     }
 
     // Configurar ventanas LayerShell
@@ -188,7 +274,7 @@ int main(int argc, char *argv[])
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerTop, a, 0, QStringLiteral("titan-dock"));
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dock"));
             QObject::connect(&shellBackend, &ShellBackend::launcherVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(!shellBackend.launcherVisible());
             });
@@ -228,16 +314,6 @@ int main(int argc, char *argv[])
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
             configurarCapa(win, LayerShellQt::Window::LayerBottom, a, 0, QStringLiteral("titan-desktop-icons"));
-        } else if (name == QStringLiteral("splashWindow")) {
-            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
-            a |= LayerShellQt::Window::AnchorBottom;
-            a |= LayerShellQt::Window::AnchorLeft;
-            a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-splash"),
-                           LayerShellQt::Window::KeyboardInteractivityNone, false);
-            QObject::connect(&shellBackend, &ShellBackend::splashVisibleChanged, win, [win, &shellBackend]() {
-                win->setVisible(shellBackend.splashVisible());
-            });
         } else if (name == QStringLiteral("lowBatteryWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;
@@ -247,6 +323,35 @@ int main(int argc, char *argv[])
                            LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
             QObject::connect(&shellBackend, &ShellBackend::batteryChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.lowBatteryAlert());
+            });
+        } else if (name == QStringLiteral("notificationCenterWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-notification-center"),
+                           LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
+            QObject::connect(&shellBackend, &ShellBackend::notificationCenterVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.notificationCenterVisible());
+            });
+        } else if (name == QStringLiteral("dynamicIslandWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dynamic-island"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.islandActive());
+            });
+        } else if (name == QStringLiteral("workspacesWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-workspaces"),
+                           LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
+            QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.workspacesVisible());
             });
         }
     }

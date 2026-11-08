@@ -6,6 +6,7 @@ Window {
     id: rootWindow
 
     default property alias mainContentData: contentSlot.data
+    property alias content: contentSlot.data
     property alias headerContentData: headerSlot.data
     property alias sidebarContentData: sidebarSlot.data
     property alias statusBarContentData: statusBarSlot.data

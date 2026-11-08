@@ -11,8 +11,41 @@
 #include <QStandardPaths>
 #include <QDateTime>
 #include <QStorageInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QTimer>
+#include <QCoreApplication>
+#include <QTextStream>
 #include <algorithm>
 #include <QDebug>
+#include <QDrag>
+#include <QMimeData>
+#include <QPixmap>
+
+static QString resolveFinderBinary(const QString &program)
+{
+    if (QFile::exists(program)) return program;
+    QString inPath = QStandardPaths::findExecutable(program);
+    if (!inPath.isEmpty()) return inPath;
+
+    const QStringList candidates = {
+        QStringLiteral("/usr/local/bin/") + program,
+        QStringLiteral("/usr/bin/") + program,
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/") + program,
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/build/") + program,
+        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/") + program,
+        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/build/") + program,
+        QDir::currentPath() + QStringLiteral("/iso/titan/airootfs/usr/local/bin/") + program
+    };
+
+    for (const QString &c : candidates) {
+        if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
+            return c;
+        }
+    }
+    return program;
+}
 
 FinderBackend::FinderBackend(QObject *parent)
     : QObject(parent)
@@ -26,6 +59,12 @@ FinderBackend::FinderBackend(QObject *parent)
 {
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &FinderBackend::onDirectoryChanged);
 
+    m_deviceTimer = new QTimer(this);
+    m_deviceTimer->setInterval(2000);
+    connect(m_deviceTimer, &QTimer::timeout, this, &FinderBackend::refreshDevices);
+    m_deviceTimer->start();
+
+    refreshDevices();
     initFavorites();
 
     // Iniciar en el directorio personal del usuario
@@ -52,35 +91,55 @@ void FinderBackend::initFavorites()
     // Sección Favoritos estilo macOS
     addFav(QStringLiteral("Recientes"), home, QStringLiteral("qrc:/icons/notes.png"), QStringLiteral("Favoritos"));
 
-    QString desktop = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
-    if (!QDir(desktop).exists()) desktop = home + QStringLiteral("/Escritorio");
+    QString desktop = home + QStringLiteral("/Escritorio");
+    QDir().mkpath(desktop);
     addFav(QStringLiteral("Escritorio"), desktop, QStringLiteral("qrc:/icons/desktop.png"), QStringLiteral("Favoritos"));
 
-    addFav(QStringLiteral("Aplicaciones"), QStringLiteral("/usr/share/applications"), QStringLiteral("qrc:/icons/launchpad.png"), QStringLiteral("Favoritos"));
+    addFav(QStringLiteral("Aplicaciones"), QStringLiteral("/usr/share/applications"), QStringLiteral("qrc:/icons/apps-folder.png"), QStringLiteral("Favoritos"));
 
-    QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (!QDir(documents).exists()) documents = home + QStringLiteral("/Documentos");
+    QString documents = home + QStringLiteral("/Documentos");
+    QDir().mkpath(documents);
     addFav(QStringLiteral("Documentos"), documents, QStringLiteral("qrc:/icons/files.png"), QStringLiteral("Favoritos"));
 
-    QString downloads = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-    if (!QDir(downloads).exists()) downloads = home + QStringLiteral("/Descargas");
+    QString downloads = home + QStringLiteral("/Descargas");
+    QDir().mkpath(downloads);
     addFav(QStringLiteral("Descargas"), downloads, QStringLiteral("qrc:/icons/downloads.png"), QStringLiteral("Favoritos"));
 
-    QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-    if (!QDir(pictures).exists()) pictures = home + QStringLiteral("/Imágenes");
-    addFav(QStringLiteral("Imágenes"), pictures, QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("Favoritos"));
+    QString pictures = home + QStringLiteral("/Pictures");
+    if (!QDir(pictures).exists() && QDir(home + QStringLiteral("/Imágenes")).exists()) {
+        pictures = home + QStringLiteral("/Imágenes");
+    } else {
+        QDir().mkpath(pictures);
+    }
+    addFav(QStringLiteral("Pictures"), pictures, QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("Favoritos"));
 
-    QString music = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-    if (!QDir(music).exists()) music = home + QStringLiteral("/Música");
-    addFav(QStringLiteral("Música"), music, QStringLiteral("qrc:/icons/music.png"), QStringLiteral("Favoritos"));
+    QString music = home + QStringLiteral("/Musica");
+    if (!QDir(music).exists() && QDir(home + QStringLiteral("/Música")).exists()) {
+        music = home + QStringLiteral("/Música");
+    } else {
+        QDir().mkpath(music);
+    }
+    addFav(QStringLiteral("Musica"), music, QStringLiteral("qrc:/icons/music-folder.png"), QStringLiteral("Favoritos"));
 
-    // Sección iCloud / Ubicaciones
-    addFav(QStringLiteral("iCloud Drive"), home, QStringLiteral("qrc:/icons/finder.png"), QStringLiteral("iCloud"));
-    addFav(QStringLiteral("Disco TITAN"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("iCloud"));
+    QString videos = home + QStringLiteral("/Videos");
+    QDir().mkpath(videos);
+    addFav(QStringLiteral("Videos"), videos, QStringLiteral("qrc:/icons/file-video.png"), QStringLiteral("Favoritos"));
+
+    QString proyectos = home + QStringLiteral("/Proyectos");
+    QDir().mkpath(proyectos);
+    addFav(QStringLiteral("Proyectos"), proyectos, QStringLiteral("qrc:/icons/developer.png"), QStringLiteral("Favoritos"));
+
+    // Sección Ubicaciones
+    addFav(QStringLiteral("Disco del Sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Ubicaciones"));
 
     QString trash = home + QStringLiteral("/.local/share/Trash/files");
     QDir().mkpath(trash);
-    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("iCloud"));
+    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Ubicaciones"));
+
+    // Sección Dispositivos (USBs y Discos detectados bajo demanda)
+    for (const QVariant &v : m_devices) {
+        m_favorites.append(v);
+    }
 
     // Sección Etiquetas (macOS Tags con círculos de colores)
     addFav(QStringLiteral("Rojo"), QStringLiteral("tag:red"), QStringLiteral("color:#ff3b30"), QStringLiteral("Etiquetas"));
@@ -90,6 +149,8 @@ void FinderBackend::initFavorites()
     addFav(QStringLiteral("Azul"), QStringLiteral("tag:blue"), QStringLiteral("color:#007aff"), QStringLiteral("Etiquetas"));
     addFav(QStringLiteral("Morado"), QStringLiteral("tag:purple"), QStringLiteral("color:#af52de"), QStringLiteral("Etiquetas"));
     addFav(QStringLiteral("Gris"), QStringLiteral("tag:gray"), QStringLiteral("color:#8e8e93"), QStringLiteral("Etiquetas"));
+
+    emit favoritesChanged();
 }
 
 QString FinderBackend::currentPathName() const
@@ -322,10 +383,14 @@ QString FinderBackend::resolveIcon(const QFileInfo &info) const
             return QStringLiteral("qrc:/icons/downloads.png");
         if (name == QStringLiteral("documents") || name == QStringLiteral("documentos"))
             return QStringLiteral("qrc:/icons/notes.png");
+        if (name == QStringLiteral("applications") || name == QStringLiteral("aplicaciones") || path == QStringLiteral("/usr/share/applications"))
+            return QStringLiteral("qrc:/icons/apps-folder.png");
         if (name == QStringLiteral("pictures") || name == QStringLiteral("imágenes") || name == QStringLiteral("imagenes") || name == QStringLiteral("fotos"))
             return QStringLiteral("qrc:/icons/pictures.png");
         if (name == QStringLiteral("music") || name == QStringLiteral("música") || name == QStringLiteral("musica"))
-            return QStringLiteral("qrc:/icons/music.png");
+            return QStringLiteral("qrc:/icons/music-folder.png");
+        if (name == QStringLiteral("videos"))
+            return QStringLiteral("qrc:/icons/file-video.png");
         if (name == QStringLiteral("developer") || name == QStringLiteral("proyectos") || name == QStringLiteral("codigo") || name == QStringLiteral("código") || name == QStringLiteral("src"))
             return QStringLiteral("qrc:/icons/developer.png");
         if (path.contains(QStringLiteral("Trash")))
@@ -347,14 +412,39 @@ QString FinderBackend::resolveIcon(const QFileInfo &info) const
     // Audio
     if (ext == QStringLiteral("mp3") || ext == QStringLiteral("wav") || ext == QStringLiteral("ogg") ||
         ext == QStringLiteral("flac") || ext == QStringLiteral("m4a") || ext == QStringLiteral("aac")) {
-        return QStringLiteral("qrc:/icons/music.png");
+        return QStringLiteral("qrc:/icons/file-audio.png");
     }
 
-    // Documentos y textos
-    if (ext == QStringLiteral("txt") || ext == QStringLiteral("md") || ext == QStringLiteral("pdf") ||
-        ext == QStringLiteral("doc") || ext == QStringLiteral("docx") || ext == QStringLiteral("odt") ||
-        ext == QStringLiteral("log") || ext == QStringLiteral("conf") || ext == QStringLiteral("ini")) {
-        return QStringLiteral("qrc:/icons/notes.png");
+    // Video
+    if (ext == QStringLiteral("mp4") || ext == QStringLiteral("mkv") || ext == QStringLiteral("avi") ||
+        ext == QStringLiteral("mov") || ext == QStringLiteral("webm") || ext == QStringLiteral("flv")) {
+        return QStringLiteral("qrc:/icons/file-video.png");
+    }
+
+    // PDF
+    if (ext == QStringLiteral("pdf")) {
+        return QStringLiteral("qrc:/icons/file-pdf.png");
+    }
+
+    // Documentos Word
+    if (ext == QStringLiteral("doc") || ext == QStringLiteral("docx") || ext == QStringLiteral("odt")) {
+        return QStringLiteral("qrc:/icons/file-word.png");
+    }
+
+    // Hojas de cálculo Excel
+    if (ext == QStringLiteral("xls") || ext == QStringLiteral("xlsx") || ext == QStringLiteral("ods") || ext == QStringLiteral("csv")) {
+        return QStringLiteral("qrc:/icons/file-excel.png");
+    }
+
+    // Presentaciones PowerPoint
+    if (ext == QStringLiteral("ppt") || ext == QStringLiteral("pptx") || ext == QStringLiteral("odp")) {
+        return QStringLiteral("qrc:/icons/file-powerpoint.png");
+    }
+
+    // Documentos y textos planos
+    if (ext == QStringLiteral("txt") || ext == QStringLiteral("md") || ext == QStringLiteral("log") ||
+        ext == QStringLiteral("conf") || ext == QStringLiteral("ini") || ext == QStringLiteral("cfg")) {
+        return QStringLiteral("qrc:/icons/file-text.png");
     }
 
     // Código, scripts y desarrollo
@@ -362,20 +452,28 @@ QString FinderBackend::resolveIcon(const QFileInfo &info) const
         ext == QStringLiteral("hpp") || ext == QStringLiteral("py") || ext == QStringLiteral("rs") ||
         ext == QStringLiteral("js") || ext == QStringLiteral("ts") || ext == QStringLiteral("qml") ||
         ext == QStringLiteral("html") || ext == QStringLiteral("css") || ext == QStringLiteral("json") ||
-        ext == QStringLiteral("xml") || ext == QStringLiteral("sh") || ext == QStringLiteral("bash")) {
-        return QStringLiteral("qrc:/icons/developer.png");
+        ext == QStringLiteral("xml") || ext == QStringLiteral("sh") || ext == QStringLiteral("bash") ||
+        ext == QStringLiteral("go") || ext == QStringLiteral("java") || ext == QStringLiteral("sql")) {
+        return QStringLiteral("qrc:/icons/file-code.png");
     }
 
-    // Ejecutables y aplicaciones
+    // Archivos comprimidos y paquetes
+    if (ext == QStringLiteral("zip") || ext == QStringLiteral("tar") || ext == QStringLiteral("gz") ||
+        ext == QStringLiteral("bz2") || ext == QStringLiteral("xz") || ext == QStringLiteral("7z") ||
+        ext == QStringLiteral("rar") || ext == QStringLiteral("zst") || ext == QStringLiteral("iso")) {
+        return QStringLiteral("qrc:/icons/file-archive.png");
+    }
+
+    // Accesos directos y ejecutables
     if (ext == QStringLiteral("desktop")) {
         return QStringLiteral("qrc:/icons/launchpad.png");
     }
     if (info.isExecutable() || ext == QStringLiteral("bin") || ext == QStringLiteral("run")) {
-        return QStringLiteral("qrc:/icons/terminal.png");
+        return QStringLiteral("qrc:/icons/file-exec.png");
     }
 
-    // Archivos comprimidos y generales
-    return QStringLiteral("qrc:/icons/files.png");
+    // Archivos generales con icono de documento limpio
+    return QStringLiteral("qrc:/icons/file-generic.png");
 }
 
 QString FinderBackend::resolveType(const QFileInfo &info) const
@@ -507,8 +605,12 @@ void FinderBackend::openItem(const QString &path)
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
         if (!exec.isEmpty()) {
-            QProcess::startDetached(exec, QStringList());
-            return;
+            QStringList parts = QProcess::splitCommand(exec);
+            if (!parts.isEmpty()) {
+                QString prog = resolveFinderBinary(parts.takeFirst());
+                QProcess::startDetached(prog, parts);
+                return;
+            }
         }
     }
 
@@ -516,6 +618,20 @@ void FinderBackend::openItem(const QString &path)
     if (info.isExecutable() && (info.suffix() == QStringLiteral("sh") || info.suffix() == QStringLiteral("bin") || info.suffix().isEmpty())) {
         QProcess::startDetached(info.absoluteFilePath(), QStringList());
         return;
+    }
+
+    // Documentos ofimáticos -> ONLYOFFICE DEBE SER EL PREDETERMINADO
+    const QString ext = info.suffix().toLower();
+    if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc")  ||
+        ext == QStringLiteral("xlsx") || ext == QStringLiteral("xls")  ||
+        ext == QStringLiteral("pptx") || ext == QStringLiteral("ppt")  ||
+        ext == QStringLiteral("odt")  || ext == QStringLiteral("ods")  || ext == QStringLiteral("odp") ||
+        ext == QStringLiteral("rtf")  || ext == QStringLiteral("csv")) {
+        QString oo = resolveFinderBinary(QStringLiteral("onlyoffice-desktopeditors"));
+        if (!oo.isEmpty() && QFile::exists(oo)) {
+            QProcess::startDetached(oo, QStringList() << info.absoluteFilePath());
+            return;
+        }
     }
 
     // Abrir con aplicación asociada del sistema
@@ -620,7 +736,39 @@ bool FinderBackend::sendToDesktop(const QString &path)
         return QFile::copy(path, destPath);
     }
 
+    // Crear acceso directo como enlace simbólico (mantiene tipo, extensión y apertura nativa)
     if (QFile::link(path, destPath)) {
+        return true;
+    }
+
+    // Si el sistema de archivos no admite enlaces simbólicos, generar archivo .desktop
+    QString desktopShortcut = desktopDir + QStringLiteral("/") + srcInfo.completeBaseName() + QStringLiteral(".desktop");
+    QFile f(desktopShortcut);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&f);
+        out << "[Desktop Entry]\n";
+        out << "Version=1.0\n";
+        out << "Type=Application\n";
+        out << "Name=" << srcInfo.fileName() << "\n";
+
+        QString ext = srcInfo.suffix().toLower();
+        if (srcInfo.isDir()) {
+            out << "Exec=titan-finder \"" << srcInfo.absoluteFilePath() << "\"\n";
+            out << "Icon=/usr/share/titan/icons/folder.png\n";
+        } else if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc") ||
+                   ext == QStringLiteral("xlsx") || ext == QStringLiteral("xls") ||
+                   ext == QStringLiteral("pptx") || ext == QStringLiteral("ppt") ||
+                   ext == QStringLiteral("odt")  || ext == QStringLiteral("ods") || ext == QStringLiteral("odp") ||
+                   ext == QStringLiteral("rtf")  || ext == QStringLiteral("csv")) {
+            out << "Exec=onlyoffice-desktopeditors \"" << srcInfo.absoluteFilePath() << "\"\n";
+            out << "Icon=onlyoffice-desktopeditors\n";
+        } else {
+            out << "Exec=xdg-open \"" << srcInfo.absoluteFilePath() << "\"\n";
+            out << "Icon=system\n";
+        }
+        out << "Terminal=false\n";
+        f.close();
+        f.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ReadGroup | QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther);
         return true;
     }
 
@@ -628,5 +776,364 @@ bool FinderBackend::sendToDesktop(const QString &path)
         return QFile::copy(path, destPath);
     }
 
+    return false;
+}
+
+void FinderBackend::startDrag(const QString &path)
+{
+    if (path.isEmpty()) return;
+    QString local = path;
+    if (local.startsWith(QLatin1String("file://"))) {
+        local = QUrl(path).toLocalFile();
+    }
+    if (!QFile::exists(local)) return;
+
+    QDrag *drag = new QDrag(this);
+    QMimeData *mimeData = new QMimeData();
+    QList<QUrl> urls;
+    urls.append(QUrl::fromLocalFile(local));
+    mimeData->setUrls(urls);
+    mimeData->setText(local);
+    drag->setMimeData(mimeData);
+
+    QFileInfo fi(local);
+    QString iconPath = resolveIcon(fi);
+    if (!iconPath.isEmpty()) {
+        QString cleanIcon = iconPath;
+        if (cleanIcon.startsWith(QLatin1String("qrc:"))) {
+            cleanIcon = cleanIcon.mid(3);
+        }
+        QPixmap pm(cleanIcon);
+        if (!pm.isNull()) {
+            drag->setPixmap(pm.scaled(56, 56, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            drag->setHotSpot(QPoint(28, 28));
+        }
+    }
+
+    drag->exec(Qt::CopyAction | Qt::MoveAction);
+}
+
+static bool copyPathRecursively(const QString &srcFilePath, const QString &tgtFilePath);
+
+bool FinderBackend::importFile(const QString &urlOrPath, const QString &targetDir)
+{
+    QString localPath = urlOrPath;
+    if (localPath.startsWith(QLatin1String("file://"))) {
+        localPath = QUrl(urlOrPath).toLocalFile();
+    }
+    if (localPath.isEmpty() || !QFile::exists(localPath)) return false;
+
+    QString destDir = targetDir.isEmpty() ? m_currentPath : targetDir;
+    QDir().mkpath(destDir);
+
+    QFileInfo fi(localPath);
+    if (fi.absolutePath() == destDir) return true;
+
+    QString destPath = destDir + QStringLiteral("/") + fi.fileName();
+    int counter = 1;
+    while (QFile::exists(destPath)) {
+        QString base = fi.completeBaseName();
+        QString ext = fi.suffix().isEmpty() ? QString() : (QStringLiteral(".") + fi.suffix());
+        destPath = destDir + QStringLiteral("/") + base + QStringLiteral(" (") + QString::number(++counter) + QStringLiteral(")") + ext;
+    }
+
+    bool ok = false;
+    if (fi.isDir()) {
+        ok = copyPathRecursively(localPath, destPath);
+    } else {
+        ok = QFile::copy(localPath, destPath);
+    }
+
+    if (ok) refresh();
+    return ok;
+}
+
+static bool copyPathRecursively(const QString &srcFilePath, const QString &tgtFilePath)
+{
+    QFileInfo srcFileInfo(srcFilePath);
+    if (srcFileInfo.isDir()) {
+        QDir targetDir(tgtFilePath);
+        targetDir.cdUp();
+        if (!targetDir.mkdir(QFileInfo(tgtFilePath).fileName()))
+            return false;
+        QDir sourceDir(srcFilePath);
+        QStringList fileNames = sourceDir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        for (const QString &fileName : fileNames) {
+            const QString newSrcFilePath = srcFilePath + QLatin1Char('/') + fileName;
+            const QString newTgtFilePath = tgtFilePath + QLatin1Char('/') + fileName;
+            if (!copyPathRecursively(newSrcFilePath, newTgtFilePath))
+                return false;
+        }
+    } else {
+        if (!QFile::copy(srcFilePath, tgtFilePath))
+            return false;
+    }
+    return true;
+}
+
+void FinderBackend::copyItem(const QString &path)
+{
+    if (path.isEmpty() || (!QFile::exists(path) && !QDir(path).exists())) return;
+    m_clipboardPath = path;
+    emit clipboardChanged();
+}
+
+bool FinderBackend::paste(const QString &destinationDir)
+{
+    if (m_clipboardPath.isEmpty()) return false;
+    QFileInfo srcInfo(m_clipboardPath);
+    if (!srcInfo.exists()) return false;
+
+    QString destDir = destinationDir.isEmpty() ? m_currentPath : destinationDir;
+    QFileInfo destDirInfo(destDir);
+    if (!destDirInfo.isDir()) {
+        destDir = m_currentPath;
+    }
+
+    QString baseName = srcInfo.completeBaseName();
+    QString suffix = srcInfo.suffix();
+    QString destName = srcInfo.fileName();
+    QString target = destDir + QLatin1Char('/') + destName;
+
+    int counter = 1;
+    while (QFile::exists(target) || QDir(target).exists()) {
+        if (srcInfo.isDir() || suffix.isEmpty()) {
+            destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
+        } else {
+            destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
+        }
+        target = destDir + QLatin1Char('/') + destName;
+        counter++;
+    }
+
+    bool ok = copyPathRecursively(m_clipboardPath, target);
+    if (ok) refresh();
+    return ok;
+}
+
+QVariantMap FinderBackend::getFileProperties(const QString &path)
+{
+    QString target = path.isEmpty() ? m_currentPath : path;
+    QFileInfo fi(target);
+    QVariantMap map;
+    if (!fi.exists()) return map;
+
+    map[QStringLiteral("name")] = fi.fileName().isEmpty() ? fi.absoluteFilePath() : fi.fileName();
+    map[QStringLiteral("path")] = fi.absoluteFilePath();
+    map[QStringLiteral("dir")] = fi.absolutePath();
+    map[QStringLiteral("isDir")] = fi.isDir();
+    map[QStringLiteral("type")] = resolveType(fi);
+    map[QStringLiteral("icon")] = resolveIcon(fi);
+    map[QStringLiteral("size")] = fi.isDir() ? QStringLiteral("--") : formatBytes(fi.size());
+    map[QStringLiteral("bytes")] = QString::number(fi.size()) + QStringLiteral(" bytes");
+    map[QStringLiteral("modified")] = fi.lastModified().toString(QStringLiteral("dd/MM/yyyy HH:mm:ss"));
+    map[QStringLiteral("created")] = fi.birthTime().isValid() ? fi.birthTime().toString(QStringLiteral("dd/MM/yyyy HH:mm:ss")) : fi.metadataChangeTime().toString(QStringLiteral("dd/MM/yyyy HH:mm:ss"));
+
+    QFile::Permissions p = fi.permissions();
+    QString permStr;
+    permStr += (p & QFileDevice::ReadUser) ? 'r' : '-';
+    permStr += (p & QFileDevice::WriteUser) ? 'w' : '-';
+    permStr += (p & QFileDevice::ExeUser) ? 'x' : '-';
+    permStr += (p & QFileDevice::ReadGroup) ? 'r' : '-';
+    permStr += (p & QFileDevice::WriteGroup) ? 'w' : '-';
+    permStr += (p & QFileDevice::ExeGroup) ? 'x' : '-';
+    permStr += (p & QFileDevice::ReadOther) ? 'r' : '-';
+    permStr += (p & QFileDevice::WriteOther) ? 'w' : '-';
+    permStr += (p & QFileDevice::ExeOther) ? 'x' : '-';
+    map[QStringLiteral("permissions")] = permStr;
+    map[QStringLiteral("owner")] = fi.owner();
+    map[QStringLiteral("group")] = fi.group();
+
+    return map;
+}
+
+void FinderBackend::refreshDevices()
+{
+    QProcess proc;
+    proc.start(QStringLiteral("lsblk"), {QStringLiteral("-J"), QStringLiteral("-o"), QStringLiteral("NAME,KNAME,LABEL,MOUNTPOINT,SIZE,TYPE,TRAN,RM,HOTPLUG,FSTYPE,MODEL")});
+    if (!proc.waitForFinished(1200)) {
+        return;
+    }
+
+    QByteArray data = proc.readAllStandardOutput();
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isObject()) return;
+
+    QJsonObject root = doc.object();
+    QJsonArray blockdevices = root[QStringLiteral("blockdevices")].toArray();
+
+    QVariantList newDevices;
+
+    auto processDev = [&](const QJsonObject &obj, bool parentIsUsb, const QString &parentModel) {
+        QString type = obj[QStringLiteral("type")].toString();
+        QString kname = obj[QStringLiteral("kname")].toString();
+        QString tran = obj[QStringLiteral("tran")].toString();
+        bool rm = obj[QStringLiteral("rm")].toBool();
+        bool hotplug = obj[QStringLiteral("hotplug")].toBool();
+        QString fstype = obj[QStringLiteral("fstype")].toString();
+        QString size = obj[QStringLiteral("size")].toString();
+        QString label = obj[QStringLiteral("label")].toString().trimmed();
+        QString model = obj[QStringLiteral("model")].toString().trimmed();
+        if (model.isEmpty()) model = parentModel;
+        QJsonValue mpVal = obj[QStringLiteral("mountpoint")];
+        QString mountpoint = mpVal.isNull() ? QString() : mpVal.toString();
+
+        if (kname.startsWith(QStringLiteral("zram")) || kname.startsWith(QStringLiteral("loop")) || mountpoint == QStringLiteral("[SWAP]")) {
+            return;
+        }
+
+        bool isUsb = parentIsUsb || (tran == QStringLiteral("usb") || rm || hotplug);
+
+        if (type == QStringLiteral("part") || (!fstype.isEmpty() && type == QStringLiteral("disk"))) {
+            QVariantMap dev;
+            QString devNode = QStringLiteral("/dev/") + kname;
+            dev[QStringLiteral("deviceNode")] = devNode;
+            dev[QStringLiteral("kname")] = kname;
+            dev[QStringLiteral("isUsb")] = isUsb;
+            dev[QStringLiteral("size")] = size;
+            dev[QStringLiteral("fsType")] = fstype;
+
+            bool isMounted = !mountpoint.isEmpty() && QFile::exists(mountpoint);
+            dev[QStringLiteral("isMounted")] = isMounted;
+            dev[QStringLiteral("mountPoint")] = mountpoint;
+            dev[QStringLiteral("path")] = isMounted ? mountpoint : (QStringLiteral("device:") + devNode);
+
+            QString displayName;
+            if (!label.isEmpty()) {
+                displayName = label;
+            } else if (isUsb) {
+                displayName = QStringLiteral("USB (") + kname + QStringLiteral(" - ") + size + QStringLiteral(")");
+            } else if (!model.isEmpty()) {
+                displayName = model + QStringLiteral(" (") + size + QStringLiteral(")");
+            } else {
+                displayName = QStringLiteral("Disco (") + kname + QStringLiteral(" - ") + size + QStringLiteral(")");
+            }
+
+            dev[QStringLiteral("name")] = displayName;
+            dev[QStringLiteral("icon")] = isUsb ? QStringLiteral("qrc:/icons/usb.png") : QStringLiteral("qrc:/icons/system.png");
+            dev[QStringLiteral("section")] = QStringLiteral("Dispositivos");
+            dev[QStringLiteral("isDevice")] = true;
+
+            newDevices.append(dev);
+        }
+    };
+
+    for (const QJsonValue &v : blockdevices) {
+        QJsonObject bdev = v.toObject();
+        QString tran = bdev[QStringLiteral("tran")].toString();
+        bool rm = bdev[QStringLiteral("rm")].toBool();
+        bool hotplug = bdev[QStringLiteral("hotplug")].toBool();
+        bool isUsb = (tran == QStringLiteral("usb") || rm || hotplug);
+        QString model = bdev[QStringLiteral("model")].toString().trimmed();
+
+        if (bdev.contains(QStringLiteral("children")) && bdev[QStringLiteral("children")].isArray()) {
+            QJsonArray children = bdev[QStringLiteral("children")].toArray();
+            for (const QJsonValue &cv : children) {
+                processDev(cv.toObject(), isUsb, model);
+            }
+        } else {
+            processDev(bdev, isUsb, model);
+        }
+    }
+
+    if (newDevices != m_devices) {
+        m_devices = newDevices;
+        emit devicesChanged();
+        initFavorites();
+    }
+}
+
+bool FinderBackend::mountDevice(const QString &deviceNode)
+{
+    if (deviceNode.isEmpty()) return false;
+
+    // Regla de seguridad: montar solo bajo demanda cuando el usuario da clic una vez
+    QProcess proc;
+    proc.start(QStringLiteral("udisksctl"), {QStringLiteral("mount"), QStringLiteral("-b"), deviceNode, QStringLiteral("--no-user-interaction")});
+    if (proc.waitForFinished(5000) && proc.exitCode() == 0) {
+        refreshDevices();
+        return true;
+    }
+
+    QString kname = QFileInfo(deviceNode).fileName();
+    QString user = qgetenv("USER");
+    if (user.isEmpty()) user = QStringLiteral("titan");
+    QString userMediaDir = QStringLiteral("/run/media/") + user + QStringLiteral("/") + kname;
+    QDir().mkpath(userMediaDir);
+
+    QProcess sudoMount;
+    sudoMount.start(QStringLiteral("sudo"), {QStringLiteral("-n"), QStringLiteral("mount"), QStringLiteral("-o"), QStringLiteral("nodev,nosuid"), deviceNode, userMediaDir});
+    if (sudoMount.waitForFinished(3000) && sudoMount.exitCode() == 0) {
+        refreshDevices();
+        return true;
+    }
+    return false;
+}
+
+bool FinderBackend::unmountDevice(const QString &deviceNode)
+{
+    if (deviceNode.isEmpty()) return false;
+
+    for (const QVariant &v : m_devices) {
+        QVariantMap d = v.toMap();
+        if (d[QStringLiteral("deviceNode")].toString() == deviceNode) {
+            QString mp = d[QStringLiteral("mountPoint")].toString();
+            if (!mp.isEmpty() && (m_currentPath == mp || m_currentPath.startsWith(mp + QStringLiteral("/")))) {
+                goTo(QDir::homePath());
+            }
+            break;
+        }
+    }
+
+    QProcess proc;
+    proc.start(QStringLiteral("udisksctl"), {QStringLiteral("unmount"), QStringLiteral("-b"), deviceNode, QStringLiteral("--no-user-interaction")});
+    if (!proc.waitForFinished(4000) || proc.exitCode() != 0) {
+        QProcess sudoUmount;
+        sudoUmount.start(QStringLiteral("sudo"), {QStringLiteral("-n"), QStringLiteral("umount"), deviceNode});
+        sudoUmount.waitForFinished(3000);
+    }
+    refreshDevices();
+    return true;
+}
+
+bool FinderBackend::mountAndOpen(const QString &deviceNode)
+{
+    for (const QVariant &v : m_devices) {
+        QVariantMap d = v.toMap();
+        if (d[QStringLiteral("deviceNode")].toString() == deviceNode && d[QStringLiteral("isMounted")].toBool()) {
+            QString mp = d[QStringLiteral("mountPoint")].toString();
+            if (!mp.isEmpty() && QDir(mp).exists()) {
+                goTo(mp);
+                return true;
+            }
+        }
+    }
+
+    if (mountDevice(deviceNode)) {
+        for (const QVariant &v : m_devices) {
+            QVariantMap d = v.toMap();
+            if (d[QStringLiteral("deviceNode")].toString() == deviceNode && d[QStringLiteral("isMounted")].toBool()) {
+                QString mp = d[QStringLiteral("mountPoint")].toString();
+                if (!mp.isEmpty() && QDir(mp).exists()) {
+                    goTo(mp);
+                    return true;
+                }
+            }
+        }
+
+        QFile mounts(QStringLiteral("/proc/mounts"));
+        if (mounts.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            while (!mounts.atEnd()) {
+                QString line = QString::fromUtf8(mounts.readLine());
+                if (line.startsWith(deviceNode + QLatin1Char(' '))) {
+                    QStringList parts = line.split(QLatin1Char(' '));
+                    if (parts.size() >= 2) {
+                        goTo(parts.at(1));
+                        return true;
+                    }
+                }
+            }
+        }
+    }
     return false;
 }

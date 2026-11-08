@@ -1,0 +1,23 @@
+[General]
+ShowFullPath=false
+ShowToolTips=true
+Version=200
+
+[IconsMode]
+IconSize=64
+PreviewSize=96
+
+[KFileDialog Settings]
+Places Icons Auto-resize=false
+Places Icons Static Size=22
+
+[MainWindow]
+MenuBar=Disabled
+ToolBarsMovable=Disabled
+
+[PreviewSettings]
+MaximumSize=5242880
+Plugins=audiothumbnail,comicbookthumbnail,cursorthumbnail,djvuthumbnail,ebookthumbnail,fontthumbnail,imagethumbnail,jpegthumbnail,svgthumbnail
+
+[Trash]
+ConfirmDelete=true

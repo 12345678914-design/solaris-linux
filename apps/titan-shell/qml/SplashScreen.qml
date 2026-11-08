@@ -99,11 +99,12 @@ Rectangle {
                     if (ic === "utilities-terminal" || ic === "terminal" || ic === "titan-terminal") return "qrc:/icons/terminal.png";
                     if (ic === "system-file-manager" || ic === "pcmanfm-qt" || ic === "files") return "qrc:/icons/files.png";
                     if (ic === "help-about" || ic === "titan-acerca") return "qrc:/icons/about.png";
-                    if (ic === "firefox" || ic === "safari") return "qrc:/icons/safari.png";
+                    if (ic === "firefox" || ic === "safari") return "qrc:/icons/firefox.png";
                     if (ic === "vscode" || ic === "code") return "qrc:/icons/vscode.png";
                     if (ic === "system" || ic === "titan-settings") return "qrc:/icons/system.png";
                     if (ic === "onlyoffice" || ic === "onlyoffice-desktopeditors") return "qrc:/icons/onlyoffice.png";
-                    return "qrc:/icons/developer.png";
+                    if (ic === "developer" || ic === "vim") return "qrc:/icons/developer.png";
+                    return "qrc:/icons/system.png";
                 }
             }
         }

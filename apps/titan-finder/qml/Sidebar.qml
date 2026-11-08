@@ -41,7 +41,9 @@ Item {
             width: favList.width
             height: 32
 
-            property bool isSelected: finderBackend.currentPath === modelData.path
+            property bool isSelected: (modelData.isDevice && modelData.isMounted)
+                ? (finderBackend.currentPath === modelData.mountPoint)
+                : (finderBackend.currentPath === modelData.path)
 
             Rectangle {
                 anchors.fill: parent
@@ -80,13 +82,47 @@ Item {
                     }
                 }
 
+                Item {
+                    id: ejectBtn
+                    visible: !!modelData.isDevice && !!modelData.isMounted && sidebar.width > 60
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 20
+                    height: 20
+                    z: 5
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 4
+                        color: ejectMouse.containsMouse ? (isSelected ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⏏"
+                        font.pixelSize: 13
+                        color: ejectMouse.containsMouse ? "#ff4d4d" : (isSelected ? "#ffffff" : theme.sidebarTextMuted)
+                    }
+
+                    MouseArea {
+                        id: ejectMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            finderBackend.unmountDevice(modelData.deviceNode)
+                        }
+                    }
+                }
+
                 Text {
                     visible: sidebar.width > 60
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: iconHolder.right
                     anchors.leftMargin: 8
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
+                    anchors.right: (modelData.isDevice && modelData.isMounted) ? ejectBtn.left : parent.right
+                    anchors.rightMargin: (modelData.isDevice && modelData.isMounted) ? 4 : 8
                     text: modelData.name
                     color: isSelected ? "#ffffff" : theme.sidebarText
                     font.pixelSize: 12
@@ -100,7 +136,15 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        finderBackend.goTo(modelData.path)
+                        if (modelData.isDevice) {
+                            if (!modelData.isMounted) {
+                                finderBackend.mountAndOpen(modelData.deviceNode)
+                            } else {
+                                finderBackend.goTo(modelData.mountPoint ? modelData.mountPoint : modelData.path)
+                            }
+                        } else {
+                            finderBackend.goTo(modelData.path)
+                        }
                     }
                 }
             }

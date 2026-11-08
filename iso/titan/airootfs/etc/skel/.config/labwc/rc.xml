@@ -42,7 +42,35 @@
     <windowRule identifier="DesktopEditors*" serverDecoration="yes" />
     <windowRule title="*ONLYOFFICE*" serverDecoration="yes" />
     <windowRule title="*DesktopEditors*" serverDecoration="yes" />
+
+    <!-- Delimitar tamaño y centrar ventanas de diálogo y guardado para que los botones sean siempre accesibles -->
+    <windowRule type="dialog">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule type="utility">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule title="*Guardar*">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule title="*Save*">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule title="*Abrir*">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule title="*Open*">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
+    <windowRule title="*Chooser*">
+      <action name="ResizeTo" width="760" height="480" />
+    </windowRule>
   </windowRules>
+
+  <!-- Centrado automático de ventanas para evitar que queden fuera de la pantalla -->
+  <placement>
+    <policy>center</policy>
+  </placement>
 
   <!-- Suavizado de bordes, resistencia y ajuste suave estilo macOS -->
   <resistance>
@@ -89,9 +117,35 @@
     </context>
   </mouse>
 
+  <!-- Espacios de trabajo (Desktops / Workspaces) -->
+  <desktops number="8">
+    <popupTime>0</popupTime>
+    <names>
+      <name>Escritorio 1</name>
+      <name>Escritorio 2</name>
+      <name>Escritorio 3</name>
+      <name>Escritorio 4</name>
+      <name>Escritorio 5</name>
+      <name>Escritorio 6</name>
+      <name>Escritorio 7</name>
+      <name>Escritorio 8</name>
+    </names>
+  </desktops>
+
   <!-- Atajos de teclado estilo macOS -->
   <keyboard>
     <default/>
+    
+    <!-- Espacios de trabajo: Super + 1..8 y Super + Arriba (Mission Control) -->
+    <keybind key="W-1"><action name="GoToDesktop" to="1" /></keybind>
+    <keybind key="W-2"><action name="GoToDesktop" to="2" /></keybind>
+    <keybind key="W-3"><action name="GoToDesktop" to="3" /></keybind>
+    <keybind key="W-4"><action name="GoToDesktop" to="4" /></keybind>
+    <keybind key="W-5"><action name="GoToDesktop" to="5" /></keybind>
+    <keybind key="W-6"><action name="GoToDesktop" to="6" /></keybind>
+    <keybind key="W-7"><action name="GoToDesktop" to="7" /></keybind>
+    <keybind key="W-8"><action name="GoToDesktop" to="8" /></keybind>
+    <keybind key="W-Up"><action name="Execute" command="titan-shell --toggle-workspaces" /></keybind>
     
     <!-- Tecla Mod / Super suelta (al pulsar y soltar): abre el menú de inicio / Launchpad -->
     <keybind key="Super_L" onRelease="yes">

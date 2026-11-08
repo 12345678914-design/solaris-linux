@@ -149,7 +149,7 @@ paquetes_base() {
   # 'vmlinuz' en /boot y dos entradas en el menu de GRUB: el usuario ve un
   # kernel que el proyecto no quiere, y el que se arranca es el segundo de la
   # lista en cuanto un hook lo reordena.
-  printf '%s' "base base-devel linux-firmware sudo nano git wget curl \
+  printf '%s' "base base-devel systemd linux-firmware sudo nano git wget curl \
 reflector arch-install-scripts grub efibootmgr os-prober btrfs-progs"
 }
 

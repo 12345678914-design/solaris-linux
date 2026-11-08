@@ -1,0 +1,8 @@
+[Mouse]
+cursorSize=24
+cursorTheme=breeze_cursors
+
+[Touchpad]
+NaturalScroll=true
+TapToClick=true
+

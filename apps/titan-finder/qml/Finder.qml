@@ -41,6 +41,34 @@ TitanWindow {
         sequence: "Ctrl+Shift+N"
         onActivated: fileList.openNewFolderDialog()
     }
+    Shortcut {
+        sequences: [ StandardKey.Copy ]
+        onActivated: {
+            if (fileList.selectedPath.length > 0) {
+                finderBackend.copyItem(fileList.selectedPath)
+            }
+        }
+    }
+    Shortcut {
+        sequences: [ StandardKey.Paste ]
+        onActivated: {
+            if (finderBackend.hasClipboard) {
+                finderBackend.paste()
+            }
+        }
+    }
+    Shortcut {
+        sequence: "Ctrl+I"
+        onActivated: fileList.openProperties(fileList.selectedPath)
+    }
+    Shortcut {
+        sequence: "Delete"
+        onActivated: {
+            if (fileList.selectedPath.length > 0) {
+                finderBackend.deleteItem(fileList.selectedPath)
+            }
+        }
+    }
 
     // 1. CONTENIDO DE LA BARRA SUPERIOR (TOOLBAR / PANEL NORMAL CON BLUR)
     headerContentData: Item {
@@ -274,6 +302,38 @@ TitanWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: fileList.openNewFolderDialog()
+                }
+            }
+
+            // Botón Eliminar elemento seleccionado (Papelera)
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30; height: 26; radius: 5
+                color: deleteToolbarMouse.containsMouse && fileList.selectedPath.length > 0
+                       ? Qt.rgba(0.9, 0.2, 0.2, 0.25)
+                       : (theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04))
+                border.color: theme.glassBorder
+                border.width: 1
+                opacity: fileList.selectedPath.length > 0 ? 1.0 : 0.4
+
+                Image {
+                    source: "qrc:/icons/trash.png"
+                    anchors.centerIn: parent
+                    width: 15; height: 15
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
+
+                MouseArea {
+                    id: deleteToolbarMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: fileList.selectedPath.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: {
+                        if (fileList.selectedPath.length > 0) {
+                            finderBackend.deleteItem(fileList.selectedPath)
+                        }
+                    }
                 }
             }
 

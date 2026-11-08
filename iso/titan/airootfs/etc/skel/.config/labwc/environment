@@ -1,8 +1,18 @@
 # Variables de entorno para la sesion Wayland con Labwc
+LANG=es_ES.UTF-8
+LANGUAGE=es_ES:es
+LC_ALL=es_ES.UTF-8
 XDG_CURRENT_DESKTOP=Titan:labwc
 XDG_SESSION_TYPE=wayland
 QT_QPA_PLATFORM=wayland;xcb
 QT_WAYLAND_DISABLE_WINDOWDECORATION=0
 GDK_BACKEND=wayland,x11
 MOZ_ENABLE_WAYLAND=1
+
+# Optimizaciones de aceleración por hardware y caché de shaders/QML
+QT_QUICK_BACKEND=rhi
+QSG_RHI_BACKEND=opengl
+QML_DISABLE_DISK_CACHE=0
+MESA_SHADER_CACHE_DISABLE=false
+NO_AT_BRIDGE=1
 

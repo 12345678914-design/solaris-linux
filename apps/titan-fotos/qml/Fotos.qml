@@ -5,7 +5,7 @@ TitanWindow {
     id: fotosWindow
 
     title: fotosBackend.currentIndex >= 0 ? (fotosBackend.currentPhoto.name + " — Fotos") : "Fotos"
-    sidebarWidth: 195
+    sidebarWidth: fotosBackend.currentIndex >= 0 ? 0 : 195
 
     Shortcut {
         sequence: "Escape"
@@ -218,15 +218,15 @@ TitanWindow {
 
             // Establecer como fondo
             Rectangle {
-                width: 140; height: 26; radius: 6
-                color: wpMouse.containsMouse ? Qt.rgba(0, 0.44, 0.89, 0.6) : Qt.rgba(0, 0.44, 0.89, 0.35)
+                width: 154; height: 26; radius: 6
+                color: wpMouse.containsMouse ? Qt.rgba(0, 0.44, 0.89, 0.7) : Qt.rgba(0, 0.44, 0.89, 0.4)
                 border.color: theme.accent
 
                 Row {
                     anchors.centerIn: parent
-                    spacing: 4
-                    Text { text: "🖼️"; font.pixelSize: 11 }
-                    Text { text: "Fondo de pantalla"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                    spacing: 5
+                    Text { text: "🖌️"; font.pixelSize: 12 }
+                    Text { text: "Fondo (Ctrl+W)"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
                 }
 
                 MouseArea {

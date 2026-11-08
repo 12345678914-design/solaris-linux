@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="80" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <!-- active-center: normal -->
+  <g id="active-center" transform="translate(0, 0)">
+    <rect width="16" height="16" fill="none"/>
+    <circle cx="8" cy="8" r="6" fill="#27c93f" stroke="#1aab29" stroke-width="0.8"/>
+  </g>
+  <!-- hover-center: con simbolo -->
+  <g id="hover-center" transform="translate(16, 0)">
+    <rect width="16" height="16" fill="none"/>
+    <circle cx="8" cy="8" r="6" fill="#27c93f" stroke="#1aab29" stroke-width="0.8"/>
+    <path d="M 5.5,10.5 L 10.5,5.5 M 5.5,8 L 5.5,10.5 L 8,10.5 M 10.5,8 L 10.5,5.5 L 8,5.5" stroke="#004d11" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <!-- pressed-center: oscurecido -->
+  <g id="pressed-center" transform="translate(32, 0)">
+    <rect width="16" height="16" fill="none"/>
+    <circle cx="8" cy="8" r="6" fill="#27c93f" stroke="#1aab29" stroke-width="0.8" opacity="0.75"/>
+    <path d="M 5.5,10.5 L 10.5,5.5 M 5.5,8 L 5.5,10.5 L 8,10.5 M 10.5,8 L 10.5,5.5 L 8,5.5" stroke="#004d11" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <!-- inactive-center: gris macOS -->
+  <g id="inactive-center" transform="translate(48, 0)">
+    <rect width="16" height="16" fill="none"/>
+    <circle cx="8" cy="8" r="6" fill="#3a3d45" stroke="#2e3037" stroke-width="0.8"/>
+  </g>
+  <!-- deactivated-center -->
+  <g id="deactivated-center" transform="translate(64, 0)">
+    <rect width="16" height="16" fill="none"/>
+    <circle cx="8" cy="8" r="6" fill="#2a2c32" stroke="#222428" stroke-width="0.8"/>
+  </g>
+</svg>

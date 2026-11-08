@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Calculadora
+Name[es]=Calculadora
+Comment=Calculadora estándar y científica
+Comment[es]=Calculadora estándar y científica
+Exec=titan-calc
+Icon=/usr/share/titan/icons/calculator.png
+Terminal=false
+Categories=Utility;Calculator;
+StartupWMClass=titan-calc

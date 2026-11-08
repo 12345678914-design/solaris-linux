@@ -20,6 +20,14 @@
 # kernel propio ya esta construido o no.
 linux
 
+# --- Microcódigo y Firmware para hardware real ---
+intel-ucode
+amd-ucode
+linux-firmware
+linux-firmware-whence
+sof-firmware
+alsa-firmware
+
 # --- Sistema base ----------------------------------------------------------
 # base aporta bash, coreutils, util-linux, findutils, grep, sed, gawk, pacman,
 # systemd, file, shadow, y el resto del arbol de utilidades basicas.
@@ -177,6 +185,9 @@ qt6-svg
 layer-shell-qt
 hicolor-icon-theme
 mesa
+mesa-utils
+vulkan-intel
+vulkan-radeon
 kitty
 pcmanfm-qt
 ttf-dejavu
@@ -191,6 +202,48 @@ qmltermwidget
 # --- Soporte de AppImages y aplicaciones adicionales ---
 fuse2
 
+# --- Control de Hardware: Audio, Brillo, Red, Bluetooth y Discos/USBs ---
+brightnessctl
+ddcutil
+wlr-randr
+rfkill
+bluez
+bluez-utils
+pipewire
+pipewire-pulse
+pipewire-alsa
+pipewire-jack
+wireplumber
+alsa-utils
+alsa-firmware
+alsa-ucm-conf
+sof-firmware
+pavucontrol
+networkmanager
+udisks2
+
+# --- Tienda de Aplicaciones (Arch Linux Pacman + Flatpak) y Apps GNOME ---
+gnome-software
+packagekit
+gnome-calculator
+gnome-calendar
+gnome-clocks
+totem
+celluloid
+flatpak
+archlinux-appstream-data
+qqc2-desktop-style
+fwupd
+mpv
+
+# --- Optimización de Rendimiento y Gráficos (Intel Celeron / 4 GB RAM) ---
+zram-generator
+intel-media-driver
+libva-intel-driver
+
 # --- Aplicaciones incluidas en la ISO ---
 firefox
 
+
+
+wtype

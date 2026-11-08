@@ -6,7 +6,10 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QFileInfo>
+#include <QDir>
+#include <QFile>
 #include <QFileSystemWatcher>
+#include <QTimer>
 
 class FinderBackend : public QObject
 {
@@ -18,7 +21,8 @@ class FinderBackend : public QObject
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY currentPathChanged)
     Q_PROPERTY(QVariantList pathSegments READ pathSegments NOTIFY currentPathChanged)
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
-    Q_PROPERTY(QVariantList favorites READ favorites CONSTANT)
+    Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
+    Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(bool showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
@@ -26,6 +30,8 @@ class FinderBackend : public QObject
     Q_PROPERTY(bool sortAscending READ sortAscending WRITE setSortAscending NOTIFY sortChanged)
     Q_PROPERTY(QString totalItemsText READ totalItemsText NOTIFY entriesChanged)
     Q_PROPERTY(QString freeSpaceText READ freeSpaceText NOTIFY freeSpaceTextChanged)
+    Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
+    Q_PROPERTY(QString clipboardPath READ clipboardPath NOTIFY clipboardChanged)
 
 public:
     explicit FinderBackend(QObject *parent = nullptr);
@@ -39,6 +45,7 @@ public:
     QVariantList pathSegments() const;
     QVariantList entries() const { return m_filteredEntries; }
     QVariantList favorites() const { return m_favorites; }
+    QVariantList devices() const { return m_devices; }
 
     bool showHiddenFiles() const { return m_showHiddenFiles; }
     void setShowHiddenFiles(bool show);
@@ -57,6 +64,8 @@ public:
 
     QString totalItemsText() const;
     QString freeSpaceText() const { return m_freeSpaceText; }
+    bool hasClipboard() const { return !m_clipboardPath.isEmpty() && (QFile::exists(m_clipboardPath) || QDir(m_clipboardPath).exists()); }
+    QString clipboardPath() const { return m_clipboardPath; }
 
     Q_INVOKABLE void goTo(const QString &path);
     Q_INVOKABLE void goBack();
@@ -69,17 +78,29 @@ public:
     Q_INVOKABLE bool deleteItem(const QString &path);
     Q_INVOKABLE bool renameItem(const QString &oldPath, const QString &newName);
     Q_INVOKABLE bool sendToDesktop(const QString &path);
+    Q_INVOKABLE void startDrag(const QString &path);
+    Q_INVOKABLE bool importFile(const QString &urlOrPath, const QString &targetDir = QString());
+    Q_INVOKABLE void copyItem(const QString &path);
+    Q_INVOKABLE bool paste(const QString &destinationDir = QString());
+    Q_INVOKABLE QVariantMap getFileProperties(const QString &path);
     Q_INVOKABLE void sort(const QString &criteria);
+    Q_INVOKABLE void refreshDevices();
+    Q_INVOKABLE bool mountDevice(const QString &deviceNode);
+    Q_INVOKABLE bool unmountDevice(const QString &deviceNode);
+    Q_INVOKABLE bool mountAndOpen(const QString &deviceNode);
 
 signals:
     void currentPathChanged();
     void historyChanged();
     void entriesChanged();
+    void favoritesChanged();
+    void devicesChanged();
     void showHiddenFilesChanged();
     void searchQueryChanged();
     void viewModeChanged();
     void sortChanged();
     void freeSpaceTextChanged();
+    void clipboardChanged();
 
 private slots:
     void onDirectoryChanged(const QString &path);
@@ -106,6 +127,9 @@ private:
     QVariantList m_rawEntries;
     QVariantList m_filteredEntries;
     QVariantList m_favorites;
+    QVariantList m_devices;
     QFileSystemWatcher *m_watcher;
+    QTimer *m_deviceTimer;
+    QString m_clipboardPath;
 };
 

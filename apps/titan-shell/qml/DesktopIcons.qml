@@ -28,18 +28,37 @@ Item {
         onClicked: desktopIconsRoot.ctxVisible = false
     }
 
+    // Área de recepción de archivos arrastrados hacia el escritorio
+    DropArea {
+        id: desktopDropArea
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onDropped: (drop) => {
+            if (drop.hasUrls) {
+                var isMoveAction = (drop.action === Qt.MoveAction || drop.proposedAction === Qt.MoveAction || drop.proposedAction === undefined)
+                for (var i = 0; i < drop.urls.length; ++i) {
+                    var snapped = desktopIconsRoot.snapToGrid(drop.x + (i * 14), drop.y + (i * 14), "")
+                    desktopBackend.importFile(drop.urls[i], snapped.x, snapped.y, isMoveAction)
+                }
+                drop.acceptProposedAction()
+            }
+        }
+    }
+
     // Función para obtener la posición por defecto simétrica en columnas desde la derecha
     function defaultPositionForIndex(idx) {
+        var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width
         var col = Math.floor(idx / maxRows)
         var row = idx % maxRows
-        var posX = desktopIconsRoot.width - gridRight - 90 - (col * cellWidth)
+        var posX = w - gridRight - 90 - (col * cellWidth)
         var posY = gridTop + (row * cellHeight)
         return { x: posX, y: posY }
     }
 
     // Función para calcular la celda de la rejilla más cercana y evitar colisiones
     function snapToGrid(reqX, reqY, currentItemPath) {
-        var rawCol = Math.round((desktopIconsRoot.width - gridRight - 90 - reqX) / cellWidth)
+        var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width
+        var rawCol = Math.round((w - gridRight - 90 - reqX) / cellWidth)
         var rawRow = Math.round((reqY - gridTop) / cellHeight)
         var col = Math.max(0, rawCol)
         var row = Math.max(0, Math.min(maxRows - 1, rawRow))
@@ -51,8 +70,8 @@ Item {
             occupied = false
             for (var i = 0; i < iconRepeater.count; ++i) {
                 var it = iconRepeater.itemAt(i)
-                if (it && it.itemPath !== currentItemPath) {
-                    var itCol = Math.round((desktopIconsRoot.width - gridRight - 90 - it.x) / cellWidth)
+                if (it && it.itemPath && it.itemPath !== currentItemPath) {
+                    var itCol = Math.round((w - gridRight - 90 - it.x) / cellWidth)
                     var itRow = Math.round((it.y - gridTop) / cellHeight)
                     if (itCol === col && itRow === row) {
                         occupied = true
@@ -68,7 +87,7 @@ Item {
             attempts++
         }
 
-        var snapX = desktopIconsRoot.width - gridRight - 90 - (col * cellWidth)
+        var snapX = w - gridRight - 90 - (col * cellWidth)
         var snapY = gridTop + (row * cellHeight)
         return { x: snapX, y: snapY }
     }
@@ -81,11 +100,32 @@ Item {
             id: iconWrapper
 
             readonly property string itemPath: modelData.path
-            property var savedPos: desktopBackend.iconPosition(modelData.path)
-            property var defPos: desktopIconsRoot.defaultPositionForIndex(index)
+            readonly property bool hasSaved: (modelData.hasSavedPos === true && modelData.savedX !== undefined && modelData.savedX >= 0)
+            readonly property real targetX: {
+                if (hasSaved) return modelData.savedX;
+                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
+                    var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width;
+                    return w - desktopIconsRoot.gridRight - 90 - (modelData.gridCol * desktopIconsRoot.cellWidth);
+                }
+                return desktopIconsRoot.defaultPositionForIndex(index).x;
+            }
+            readonly property real targetY: {
+                if (hasSaved) return modelData.savedY;
+                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
+                    return desktopIconsRoot.gridTop + (modelData.gridRow * desktopIconsRoot.cellHeight);
+                }
+                return desktopIconsRoot.defaultPositionForIndex(index).y;
+            }
 
-            x: (savedPos && savedPos.x >= 0) ? savedPos.x : defPos.x
-            y: (savedPos && savedPos.y >= 0) ? savedPos.y : defPos.y
+            x: targetX
+            y: targetY
+
+            onTargetXChanged: {
+                if (!iconMouse.drag.active) x = targetX
+            }
+            onTargetYChanged: {
+                if (!iconMouse.drag.active) y = targetY
+            }
 
             width: 90
             height: 92
@@ -120,21 +160,39 @@ Item {
                 spacing: 4
                 width: parent.width
 
-                // Icono de la aplicación
+                // Icono de la aplicación / archivo con sombreado sutil
                 Item {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 52
-                    height: 52
+                    width: 54
+                    height: 54
                     scale: iconWrapper.isHovered ? 1.08 : 1.0
                     Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-                    Image {
+                    Rectangle {
                         anchors.fill: parent
-                        source: modelData.icon ? modelData.icon : ""
+                        anchors.margins: -1
+                        radius: modelData.isApp ? 14 : 6
+                        color: Qt.rgba(0, 0, 0, 0.22)
+                        visible: modelData.isApp
+                        z: -1
+                    }
+
+                    Image {
+                        id: appIconImage
+                        anchors.fill: parent
+                        source: modelData.icon ? modelData.icon : (modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png")
+                        sourceSize: Qt.size(128, 128)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                         mipmap: true
                         asynchronous: true
+                        cache: true
+
+                        onStatusChanged: {
+                            if (status === Image.Error && source !== "qrc:/icons/apps-folder.png" && source !== "qrc:/icons/file-generic.png") {
+                                source = modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png";
+                            }
+                        }
                     }
                 }
 
@@ -142,7 +200,7 @@ Item {
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: Math.min(84, labelText.implicitWidth + 10)
-                    height: labelText.implicitHeight + 4
+                    height: Math.min(32, labelText.implicitHeight + 4)
                     radius: 4
                     color: iconWrapper.isHovered ? Qt.rgba(0, 0.44, 0.89, 0.88) : Qt.rgba(0, 0, 0, 0.44)
                     Behavior on color { ColorAnimation { duration: 120 } }
@@ -152,7 +210,7 @@ Item {
                         anchors.centerIn: parent
                         text: modelData.name ? modelData.name : ""
                         color: "#ffffff"
-                        font.pixelSize: 10
+                        font.pixelSize: 11
                         font.weight: Font.Medium
                         elide: Text.ElideMiddle
                         maximumLineCount: 2
@@ -179,23 +237,34 @@ Item {
 
                 property real pressStartX: 0
                 property real pressStartY: 0
+                property bool wasDragged: false
 
                 onPressed: (mouse) => {
                     pressStartX = iconWrapper.x
                     pressStartY = iconWrapper.y
+                    wasDragged = false
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (pressed && (Math.abs(iconWrapper.x - pressStartX) > 4 || Math.abs(iconWrapper.y - pressStartY) > 4)) {
+                        wasDragged = true
+                    }
                 }
 
                 onReleased: (mouse) => {
-                    // Ajuste estricto a la cuadrícula de filas y columnas evitando choques
-                    var snapped = desktopIconsRoot.snapToGrid(iconWrapper.x, iconWrapper.y, modelData.path)
-                    iconWrapper.x = snapped.x
-                    iconWrapper.y = snapped.y
-                    desktopBackend.moveItem(modelData.path, snapped.x, snapped.y)
+                    if (wasDragged) {
+                        var snapped = desktopIconsRoot.snapToGrid(iconWrapper.x, iconWrapper.y, modelData.path)
+                        desktopBackend.moveItem(modelData.path, snapped.x, snapped.y)
+                        iconWrapper.x = snapped.x
+                        iconWrapper.y = snapped.y
+                    }
                 }
 
                 onDoubleClicked: (mouse) => {
                     if (mouse.button === Qt.LeftButton) {
-                        shellBackend.showSplash(modelData.name, modelData.icon, (modelData.exec ? modelData.exec : modelData.path))
+                        if (modelData.isApp) {
+                            dockModel.setAppLaunching(modelData.exec ? modelData.exec : modelData.name, modelData.exec, modelData.name, modelData.icon)
+                        }
                         desktopBackend.openItem(modelData.path)
                     }
                 }

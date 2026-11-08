@@ -1,0 +1,17 @@
+# Optimizaciones de GNOME Software y GTK para Titan Linux
+# Evitar procesos pesados de descarga y actualización automática en segundo plano
+
+[org/gnome/software]
+download-updates=false
+download-updates-notify=false
+allow-updates=true
+first-run=false
+
+[org/gnome/desktop/interface]
+enable-animations=true
+font-antialiasing='rgba'
+font-hinting='slight'
+
+[org/gnome/desktop/privacy]
+report-technical-problems=false
+send-software-usage-stats=false

@@ -1,0 +1,13 @@
+[krunner.desktop]
+_k_friendly_name=KRunner
+run clipboard content=none,none,Ejecutar contenido del portapapeles
+_launch=Meta+Space\tAlt+Space,Meta+Space\tAlt+Space,KRunner
+
+[org.kde.kwin]
+ShowDesktopGrid=Ctrl+F8,none,Mostrar cuadrícula de escritorios
+Window Close=Alt+F4\tMeta+W,Alt+F4,Cerrar ventana
+Window Maximize=Meta+Page Up\tMeta+Up,Meta+Page Up,Maximizar ventana
+Window Minimize=Meta+Page Down\tMeta+M,Meta+Page Down,Minimizar ventana
+Walk Through Windows=Alt+Tab\tMeta+Tab,Alt+Tab,Pasar por las ventanas
+Walk Through Windows (Reverse)=Alt+Shift+Tab\tMeta+Shift+Tab,Alt+Shift+Tab,Pasar por las ventanas (sentido inverso)
+

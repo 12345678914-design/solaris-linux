@@ -41,6 +41,7 @@ public:
 public slots:
     Q_INVOKABLE void selectCategory(const QString &category);
     Q_INVOKABLE void selectPhoto(int index);
+    Q_INVOKABLE void openFile(const QString &filePath);
     Q_INVOKABLE void nextPhoto();
     Q_INVOKABLE void previousPhoto();
     Q_INVOKABLE void rotateClockwise();

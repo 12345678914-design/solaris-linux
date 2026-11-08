@@ -1,0 +1,12 @@
+// Titan Linux: permitir a usuarios de wheel y storage montar dispositivos extraibles sin prompt
+polkit.addRule(function(action, subject) {
+    if ((action.id.indexOf("org.freedesktop.udisks2.filesystem-mount") === 0 ||
+         action.id.indexOf("org.freedesktop.udisks2.filesystem-unmount") === 0 ||
+         action.id.indexOf("org.freedesktop.udisks2.encrypted-unlock") === 0 ||
+         action.id.indexOf("org.freedesktop.udisks2.eject-media") === 0 ||
+         action.id.indexOf("org.freedesktop.udisks2.power-off-drive") === 0) &&
+        (subject.isInGroup("wheel") || subject.isInGroup("storage") || subject.user === "titan")) {
+        return polkit.Result.YES;
+    }
+});
+

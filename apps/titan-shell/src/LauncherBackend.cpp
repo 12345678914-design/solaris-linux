@@ -38,20 +38,27 @@ void LauncherBackend::loadApps()
 {
     m_apps.clear();
     QSet<QString> seenExecs;
+    QSet<QString> seenNames;
 
     // Aplicaciones principales integradas de Titan Linux
-    auto addApp = [this, &seenExecs](const QString &name, const QString &exec, const QString &icon) {
+    auto addApp = [this, &seenExecs, &seenNames](const QString &name, const QString &exec, const QString &icon) {
+        if (seenExecs.contains(exec)) return;
+        seenExecs.insert(exec);
+        seenNames.insert(name.trimmed().toLower());
+
         QVariantMap app;
         app[QStringLiteral("name")] = name;
         app[QStringLiteral("exec")] = exec;
         app[QStringLiteral("icon")] = icon;
         m_apps.append(app);
-        seenExecs.insert(exec);
     };
 
     auto resolverIcono = [](const QString &icono, const QString &exec) -> QString {
-        if (icono.startsWith(QStringLiteral("qrc:/")) || icono.startsWith(QLatin1Char('/'))) {
+        if (icono.startsWith(QStringLiteral("qrc:/"))) {
             return icono;
+        }
+        if (icono.startsWith(QLatin1Char('/'))) {
+            return QUrl::fromLocalFile(icono).toString();
         }
 
         // Buscar en rutas comunes de iconos del sistema (Pacman y Flatpak)
@@ -77,10 +84,20 @@ void LauncherBackend::loadApps()
         // Mapeo a iconos de estilo macOS
         QString lower = icono.toLower();
         QString execLower = exec.toLower();
+        if (lower.contains(QStringLiteral("calc")) || execLower.contains(QStringLiteral("calc")))
+            return QStringLiteral("file:///usr/share/titan/icons/calculator.png");
+        if (lower.contains(QStringLiteral("calendar")) || execLower.contains(QStringLiteral("calendar")))
+            return QStringLiteral("file:///usr/share/titan/icons/calendar.png");
+        if (lower.contains(QStringLiteral("clock")) || execLower.contains(QStringLiteral("clock")))
+            return QStringLiteral("file:///usr/share/titan/icons/clock.png");
+        if (lower.contains(QStringLiteral("celluloid")) || execLower.contains(QStringLiteral("celluloid")) || lower.contains(QStringLiteral("video")))
+            return QStringLiteral("file:///usr/share/titan/icons/video.png");
+        if (lower.contains(QStringLiteral("software")) || execLower.contains(QStringLiteral("software")))
+            return QStringLiteral("file:///usr/share/titan/icons/apps-folder.png");
         if (lower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("kitty")))
             return QStringLiteral("qrc:/icons/terminal.png");
         if (lower.contains(QStringLiteral("firefox")) || lower.contains(QStringLiteral("browser")) || execLower.contains(QStringLiteral("firefox")) || execLower.contains(QStringLiteral("chrome")))
-            return QStringLiteral("qrc:/icons/safari.png");
+            return QStringLiteral("qrc:/icons/firefox.png");
         if (lower.contains(QStringLiteral("vim")) || execLower.contains(QStringLiteral("vim")))
             return QStringLiteral("qrc:/icons/developer.png");
         if (lower.contains(QStringLiteral("htop")) || execLower.contains(QStringLiteral("htop")) || lower.contains(QStringLiteral("top")) || execLower.contains(QStringLiteral("top")))
@@ -101,18 +118,25 @@ void LauncherBackend::loadApps()
             return QStringLiteral("qrc:/icons/notes.png");
         if (lower.contains(QStringLiteral("trash")))
             return QStringLiteral("qrc:/icons/trash.png");
+        if (lower.contains(QStringLiteral("dev")) || lower.contains(QStringLiteral("build")) || execLower.contains(QStringLiteral("gcc")) || execLower.contains(QStringLiteral("clang")) || execLower.contains(QStringLiteral("cmake")))
+            return QStringLiteral("qrc:/icons/developer.png");
 
-        return QStringLiteral("qrc:/icons/developer.png");
+        return QStringLiteral("qrc:/icons/system.png");
     };
 
     addApp(QStringLiteral("Finder"), QStringLiteral("titan-finder"), QStringLiteral("qrc:/icons/finder.png"));
-    addApp(QStringLiteral("Firefox"), QStringLiteral("firefox"), QStringLiteral("qrc:/icons/safari.png"));
+    addApp(QStringLiteral("Firefox"), QStringLiteral("firefox"), QStringLiteral("qrc:/icons/firefox.png"));
     addApp(QStringLiteral("Fotos"), QStringLiteral("titan-fotos"), QStringLiteral("qrc:/icons/pictures.png"));
-    addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music.png"));
+    addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music-app.png"));
     addApp(QStringLiteral("Terminal"), QStringLiteral("titan-terminal"), QStringLiteral("qrc:/icons/terminal.png"));
+    addApp(QStringLiteral("Calculadora"), QStringLiteral("gnome-calculator"), QStringLiteral("file:///usr/share/titan/icons/calculator.png"));
+    addApp(QStringLiteral("Calendario"), QStringLiteral("gnome-calendar"), QStringLiteral("file:///usr/share/titan/icons/calendar.png"));
+    addApp(QStringLiteral("Reloj"), QStringLiteral("gnome-clocks"), QStringLiteral("file:///usr/share/titan/icons/clock.png"));
+    addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("celluloid"), QStringLiteral("file:///usr/share/titan/icons/video.png"));
+    addApp(QStringLiteral("App Store"), QStringLiteral("gnome-software"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
     addApp(QStringLiteral("Ajustes del Sistema"), QStringLiteral("titan-settings"), QStringLiteral("qrc:/icons/system.png"));
     addApp(QStringLiteral("ONLYOFFICE"), QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("qrc:/icons/onlyoffice.png"));
-    addApp(QStringLiteral("Acerca de Titan"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));
+    addApp(QStringLiteral("Acerca de Solaris"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));
 
     // Directorios de aplicaciones: Pacman (sistema), Local y Flatpak
     const QStringList directorios = {
@@ -157,6 +181,16 @@ void LauncherBackend::loadApps()
 
             if (nombre.isEmpty() || exec.isEmpty()) continue;
             if (exec.contains(QLatin1String("pcmanfm")) || info.fileName().contains(QLatin1String("pcmanfm"))) continue;
+            if (exec.contains(QLatin1String("kitty")) || info.fileName().contains(QLatin1String("kitty"))) continue;
+            if (exec.contains(QLatin1String("alacritty")) || info.fileName().contains(QLatin1String("alacritty"))) continue;
+            if (nombre.trimmed().compare(QStringLiteral("Terminal"), Qt::CaseInsensitive) == 0) continue;
+            if (seenNames.contains(nombre.trimmed().toLower())) continue;
+            if (exec.contains(QLatin1String("noctalia"), Qt::CaseInsensitive) ||
+                info.fileName().contains(QLatin1String("noctalia"), Qt::CaseInsensitive) ||
+                nombre.contains(QLatin1String("noctalia"), Qt::CaseInsensitive)) continue;
+            if (exec.contains(QLatin1String("brightnessctl")) || info.fileName().contains(QLatin1String("brightnessctl"))) continue;
+            if (exec.contains(QLatin1String("ddcutil")) || info.fileName().contains(QLatin1String("ddcutil"))) continue;
+            if (exec.contains(QLatin1String("cage")) || exec.contains(QLatin1String("labwc"))) continue;
 
             // Si es una aplicación que requiere terminal (como vim, htop, nano)
             if (inTerminal) {

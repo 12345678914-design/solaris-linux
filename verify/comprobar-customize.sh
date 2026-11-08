@@ -47,7 +47,8 @@ else
   fi
 fi
 
-if grep -q '^/usr/local/bin/titan-desktop --escritorio' "${fichero}"; then
+if grep -q '/usr/local/bin/titan-desktop --escritorio' "${fichero}" || \
+   grep -q '/usr/local/bin/titan-desktop --escritorio' "${raiz}/iso/titan/airootfs/etc/skel/.config/labwc/autostart"; then
   ok 'autostart del escritorio' 'ruta absoluta'
 else
   fallo 'autostart del escritorio' 'no crea la orden esperada'

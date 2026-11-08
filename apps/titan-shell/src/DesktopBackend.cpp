@@ -125,15 +125,49 @@ void DesktopBackend::loadItems()
     QDir desk(m_desktopPath);
     const QFileInfoList list = desk.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries, QDir::DirsFirst | QDir::Name);
 
+    const qreal cellWidth = 96.0;
+    const qreal cellHeight = 102.0;
+    const qreal gridTop = 36.0;
+    const qreal gridRight = 16.0;
+    const int maxRows = 7;
+
+    QSet<QPair<int, int>> occupiedSlots;
+    for (auto it = m_positions.begin(); it != m_positions.end(); ++it) {
+        QVariantMap pos = it.value().toMap();
+        qreal px = pos.value(QStringLiteral("x"), -1.0).toDouble();
+        qreal py = pos.value(QStringLiteral("y"), -1.0).toDouble();
+        if (px >= 0 && py >= 0) {
+            int col = qMax(0, qRound((1920.0 - gridRight - 90.0 - px) / cellWidth));
+            int row = qMax(0, qMin(maxRows - 1, qRound((py - gridTop) / cellHeight)));
+            occupiedSlots.insert(qMakePair(col, row));
+        }
+    }
+
+    int nextFreeCol = 0;
+    int nextFreeRow = 0;
+    auto findNextSlot = [&]() -> QPair<int, int> {
+        while (occupiedSlots.contains(qMakePair(nextFreeCol, nextFreeRow))) {
+            nextFreeRow++;
+            if (nextFreeRow >= maxRows) {
+                nextFreeRow = 0;
+                nextFreeCol++;
+            }
+        }
+        QPair<int, int> slot = qMakePair(nextFreeCol, nextFreeRow);
+        occupiedSlots.insert(slot);
+        return slot;
+    };
+
     for (const QFileInfo &fi : list) {
         if (fi.fileName().startsWith(QLatin1Char('.'))) continue;
 
         QVariantMap item;
-        item[QStringLiteral("path")] = fi.absoluteFilePath();
+        QString path = fi.absoluteFilePath();
+        item[QStringLiteral("path")] = path;
         item[QStringLiteral("isDir")] = fi.isDir();
 
         if (fi.suffix().toLower() == QStringLiteral("desktop")) {
-            QSettings ini(fi.absoluteFilePath(), QSettings::IniFormat);
+            QSettings ini(path, QSettings::IniFormat);
             ini.beginGroup(QStringLiteral("Desktop Entry"));
 
             QString name = ini.value(QStringLiteral("Name[es]")).toString();
@@ -152,9 +186,41 @@ void DesktopBackend::loadItems()
             item[QStringLiteral("isApp")] = true;
             item[QStringLiteral("exec")] = exec;
         } else {
+            QString iconToUse;
+            if (fi.isSymLink()) {
+                QFileInfo targetFi(fi.symLinkTarget());
+                if (targetFi.exists()) {
+                    iconToUse = resolveIcon(targetFi.fileName(), targetFi.isDir());
+                } else {
+                    iconToUse = resolveIcon(fi.fileName(), fi.isDir());
+                }
+            } else {
+                iconToUse = resolveIcon(fi.fileName(), fi.isDir());
+            }
+
             item[QStringLiteral("name")] = fi.fileName();
-            item[QStringLiteral("icon")] = resolveIcon(fi.fileName(), fi.isDir());
-            item[QStringLiteral("isApp")] = false;
+            item[QStringLiteral("icon")] = iconToUse;
+            item[QStringLiteral("isApp")] = fi.isExecutable();
+            item[QStringLiteral("exec")] = fi.isExecutable() ? path : QString();
+        }
+
+        qreal posX = -1.0;
+        qreal posY = -1.0;
+        if (m_positions.contains(path)) {
+            QVariantMap pos = m_positions[path].toMap();
+            posX = pos.value(QStringLiteral("x"), -1.0).toDouble();
+            posY = pos.value(QStringLiteral("y"), -1.0).toDouble();
+        }
+
+        if (posX < 0 || posY < 0) {
+            auto slot = findNextSlot();
+            item[QStringLiteral("gridCol")] = slot.first;
+            item[QStringLiteral("gridRow")] = slot.second;
+            item[QStringLiteral("hasSavedPos")] = false;
+        } else {
+            item[QStringLiteral("savedX")] = posX;
+            item[QStringLiteral("savedY")] = posY;
+            item[QStringLiteral("hasSavedPos")] = true;
         }
 
         m_items.append(item);
@@ -165,50 +231,161 @@ void DesktopBackend::loadItems()
 
 QString DesktopBackend::resolveAppIcon(const QString &iconName, const QString &exec) const
 {
-    QString lower = iconName.toLower();
-    QString execLower = exec.toLower();
+    QString icon = iconName.trimmed();
+    QString ex = exec.trimmed();
 
-    if (lower.contains(QStringLiteral("onlyoffice")) || execLower.contains(QStringLiteral("onlyoffice"))) {
+    if (icon.startsWith(QStringLiteral("qrc:/"))) {
+        return icon;
+    }
+
+    if (icon.startsWith(QLatin1Char('/'))) {
+        if (QFile::exists(icon)) {
+            return QUrl::fromLocalFile(icon).toString();
+        }
+        int lastSlash = icon.lastIndexOf(QLatin1Char('/'));
+        icon = icon.mid(lastSlash + 1);
+    }
+
+    QString iconBase = icon;
+    if (iconBase.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive) ||
+        iconBase.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive) ||
+        iconBase.endsWith(QStringLiteral(".xpm"), Qt::CaseInsensitive)) {
+        iconBase.chop(4);
+    }
+
+    QString lower = iconBase.toLower();
+    QString execLower = ex.toLower();
+
+    // 1. Mapeo específico a iconos macOS incorporados (qrc:/icons/...)
+    if (lower.contains(QStringLiteral("onlyoffice")) || lower.contains(QStringLiteral("desktopeditors")) ||
+        execLower.contains(QStringLiteral("onlyoffice")) || execLower.contains(QStringLiteral("desktopeditors"))) {
         return QStringLiteral("qrc:/icons/onlyoffice.png");
     }
-    if (lower.contains(QStringLiteral("firefox")) || lower.contains(QStringLiteral("browser")) || execLower.contains(QStringLiteral("firefox"))) {
-        return QStringLiteral("qrc:/icons/safari.png");
+
+    if (lower.contains(QStringLiteral("calc")) || execLower.contains(QStringLiteral("calc")) ||
+        lower.contains(QStringLiteral("calculator"))) {
+        return QStringLiteral("qrc:/icons/calculator.png");
     }
-    if (lower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("kitty"))) {
+
+    if (lower.contains(QStringLiteral("calendar")) || execLower.contains(QStringLiteral("calendar"))) {
+        return QStringLiteral("qrc:/icons/calendar.png");
+    }
+
+    if (lower.contains(QStringLiteral("clock")) || execLower.contains(QStringLiteral("clock"))) {
+        return QStringLiteral("qrc:/icons/clock.png");
+    }
+
+    if (lower.contains(QStringLiteral("celluloid")) || lower.contains(QStringLiteral("video")) ||
+        execLower.contains(QStringLiteral("celluloid")) || execLower.contains(QStringLiteral("video")) ||
+        execLower.contains(QStringLiteral("mpv")) || execLower.contains(QStringLiteral("vlc"))) {
+        return QStringLiteral("qrc:/icons/video.png");
+    }
+
+    if (lower.contains(QStringLiteral("software")) || lower.contains(QStringLiteral("store")) ||
+        lower.contains(QStringLiteral("discover")) || execLower.contains(QStringLiteral("software")) ||
+        execLower.contains(QStringLiteral("discover")) || lower.contains(QStringLiteral("package"))) {
+        return QStringLiteral("qrc:/icons/apps-folder.png");
+    }
+
+    if (lower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("terminal")) ||
+        lower.contains(QStringLiteral("kitty")) || execLower.contains(QStringLiteral("kitty")) ||
+        lower.contains(QStringLiteral("alacritty")) || execLower.contains(QStringLiteral("alacritty")) ||
+        lower.contains(QStringLiteral("foot")) || execLower.contains(QStringLiteral("foot")) ||
+        lower.contains(QStringLiteral("console"))) {
         return QStringLiteral("qrc:/icons/terminal.png");
     }
-    if (lower.contains(QStringLiteral("finder")) || lower.contains(QStringLiteral("pcmanfm")) || execLower.contains(QStringLiteral("finder"))) {
+
+    if (lower.contains(QStringLiteral("firefox")) || lower.contains(QStringLiteral("browser")) ||
+        lower.contains(QStringLiteral("navigator")) || lower.contains(QStringLiteral("safari")) ||
+        execLower.contains(QStringLiteral("firefox")) || execLower.contains(QStringLiteral("chrome")) ||
+        execLower.contains(QStringLiteral("chromium")) || execLower.contains(QStringLiteral("brave"))) {
+        return QStringLiteral("qrc:/icons/firefox.png");
+    }
+
+    if (lower.contains(QStringLiteral("finder")) || lower.contains(QStringLiteral("pcmanfm")) ||
+        lower.contains(QStringLiteral("dolphin")) || lower.contains(QStringLiteral("nautilus")) ||
+        execLower.contains(QStringLiteral("finder")) || execLower.contains(QStringLiteral("pcmanfm")) ||
+        lower.contains(QStringLiteral("file-manager"))) {
         return QStringLiteral("qrc:/icons/finder.png");
     }
-    if (lower.contains(QStringLiteral("photo")) || lower.contains(QStringLiteral("picture")) || execLower.contains(QStringLiteral("foto"))) {
+
+    if (lower.contains(QStringLiteral("photo")) || lower.contains(QStringLiteral("picture")) ||
+        lower.contains(QStringLiteral("foto")) || lower.contains(QStringLiteral("loupe")) ||
+        lower.contains(QStringLiteral("eog")) || lower.contains(QStringLiteral("gimp")) ||
+        execLower.contains(QStringLiteral("foto")) || execLower.contains(QStringLiteral("picture"))) {
         return QStringLiteral("qrc:/icons/pictures.png");
     }
-    if (lower.contains(QStringLiteral("music")) || execLower.contains(QStringLiteral("musica"))) {
+
+    if (lower.contains(QStringLiteral("music")) || lower.contains(QStringLiteral("musica")) ||
+        lower.contains(QStringLiteral("audio")) || lower.contains(QStringLiteral("player")) ||
+        lower.contains(QStringLiteral("rhythmbox")) || lower.contains(QStringLiteral("spotify")) ||
+        execLower.contains(QStringLiteral("musica")) || execLower.contains(QStringLiteral("music"))) {
         return QStringLiteral("qrc:/icons/music.png");
     }
-    if (lower.contains(QStringLiteral("code")) || lower.contains(QStringLiteral("develop")) || execLower.contains(QStringLiteral("code"))) {
+
+    if (lower.contains(QStringLiteral("code")) || lower.contains(QStringLiteral("develop")) ||
+        lower.contains(QStringLiteral("vim")) || lower.contains(QStringLiteral("neovim")) ||
+        execLower.contains(QStringLiteral("code")) || execLower.contains(QStringLiteral("vim"))) {
         return QStringLiteral("qrc:/icons/vscode.png");
     }
 
-    if (QFile::exists(iconName)) {
-        return QUrl::fromLocalFile(iconName).toString();
+    if (lower.contains(QStringLiteral("notes")) || lower.contains(QStringLiteral("kate")) ||
+        lower.contains(QStringLiteral("gedit")) || lower.contains(QStringLiteral("mousepad")) ||
+        lower.contains(QStringLiteral("text-editor")) || execLower.contains(QStringLiteral("gedit")) ||
+        execLower.contains(QStringLiteral("kate"))) {
+        return QStringLiteral("qrc:/icons/notes.png");
     }
+
+    if (lower.contains(QStringLiteral("setting")) || lower.contains(QStringLiteral("config")) ||
+        lower.contains(QStringLiteral("control")) || lower.contains(QStringLiteral("preference")) ||
+        execLower.contains(QStringLiteral("settings"))) {
+        return QStringLiteral("qrc:/icons/system.png");
+    }
+
+    if (lower.contains(QStringLiteral("about")) || lower.contains(QStringLiteral("info")) ||
+        lower.contains(QStringLiteral("acerca"))) {
+        return QStringLiteral("qrc:/icons/about.png");
+    }
+
+    // 2. Búsqueda profunda en directorios estándar del sistema Linux
     static const QStringList iconSearchPaths = {
-        QStringLiteral("/usr/share/icons/hicolor/128x128/apps/"),
+        QStringLiteral("/usr/share/icons/hicolor/scalable/apps/"),
+        QStringLiteral("/usr/share/icons/hicolor/512x512/apps/"),
         QStringLiteral("/usr/share/icons/hicolor/256x256/apps/"),
+        QStringLiteral("/usr/share/icons/hicolor/128x128/apps/"),
         QStringLiteral("/usr/share/icons/hicolor/64x64/apps/"),
-        QStringLiteral("/usr/share/pixmaps/")
+        QStringLiteral("/usr/share/icons/hicolor/48x48/apps/"),
+        QStringLiteral("/usr/share/icons/hicolor/32x32/apps/"),
+        QStringLiteral("/usr/share/icons/Adwaita/scalable/apps/"),
+        QStringLiteral("/usr/share/icons/Adwaita/48x48/apps/"),
+        QStringLiteral("/usr/share/pixmaps/"),
+        QStringLiteral("/usr/share/titan/icons/"),
+        QStringLiteral("/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/"),
+        QStringLiteral("/var/lib/flatpak/exports/share/icons/hicolor/128x128/apps/"),
+        QDir::homePath() + QStringLiteral("/.local/share/icons/hicolor/scalable/apps/"),
+        QDir::homePath() + QStringLiteral("/.local/share/icons/hicolor/128x128/apps/")
     };
-    for (const QString &p : iconSearchPaths) {
-        if (QFile::exists(p + iconName + QStringLiteral(".png"))) {
-            return QUrl::fromLocalFile(p + iconName + QStringLiteral(".png")).toString();
-        }
-        if (QFile::exists(p + iconName + QStringLiteral(".svg"))) {
-            return QUrl::fromLocalFile(p + iconName + QStringLiteral(".svg")).toString();
+
+    QStringList candidates = { iconBase, iconBase.toLower(), icon };
+    if (!ex.isEmpty()) {
+        QString exBase = ex.split(QLatin1Char(' ')).first();
+        if (exBase.contains(QLatin1Char('/'))) exBase = exBase.mid(exBase.lastIndexOf(QLatin1Char('/')) + 1);
+        candidates.append(exBase);
+        candidates.append(exBase.toLower());
+    }
+
+    for (const QString &cand : candidates) {
+        if (cand.isEmpty()) continue;
+        for (const QString &p : iconSearchPaths) {
+            QString png = p + cand + QStringLiteral(".png");
+            if (QFile::exists(png)) return QUrl::fromLocalFile(png).toString();
+            QString svg = p + cand + QStringLiteral(".svg");
+            if (QFile::exists(svg)) return QUrl::fromLocalFile(svg).toString();
         }
     }
 
-    return QStringLiteral("qrc:/icons/system.png");
+    // 3. Icono de fallback estilizado macOS
+    return QStringLiteral("qrc:/icons/apps-folder.png");
 }
 
 QString DesktopBackend::resolveIcon(const QString &fileName, bool isDir) const
@@ -218,17 +395,89 @@ QString DesktopBackend::resolveIcon(const QString &fileName, bool isDir) const
     }
 
     const QString lower = fileName.toLower();
-    if (lower.endsWith(QStringLiteral(".png")) || lower.endsWith(QStringLiteral(".jpg")) || lower.endsWith(QStringLiteral(".jpeg")) || lower.endsWith(QStringLiteral(".webp"))) {
+
+    // 1. Imágenes: mostrar vista previa local directa si existe
+    if (lower.endsWith(QStringLiteral(".png")) || lower.endsWith(QStringLiteral(".jpg")) ||
+        lower.endsWith(QStringLiteral(".jpeg")) || lower.endsWith(QStringLiteral(".webp")) ||
+        lower.endsWith(QStringLiteral(".svg"))) {
+        QString fullPath = m_desktopPath + QStringLiteral("/") + fileName;
+        if (QFile::exists(fullPath)) {
+            return QUrl::fromLocalFile(fullPath).toString();
+        }
         return QStringLiteral("qrc:/icons/pictures.png");
     }
-    if (lower.endsWith(QStringLiteral(".mp3")) || lower.endsWith(QStringLiteral(".wav")) || lower.endsWith(QStringLiteral(".ogg")) || lower.endsWith(QStringLiteral(".flac"))) {
-        return QStringLiteral("qrc:/icons/music.png");
-    }
-    if (lower.endsWith(QStringLiteral(".sh")) || lower.endsWith(QStringLiteral(".py")) || lower.endsWith(QStringLiteral(".cpp")) || lower.endsWith(QStringLiteral(".rs"))) {
-        return QStringLiteral("qrc:/icons/developer.png");
+
+    // 2. Audio
+    if (lower.endsWith(QStringLiteral(".mp3")) || lower.endsWith(QStringLiteral(".wav")) ||
+        lower.endsWith(QStringLiteral(".ogg")) || lower.endsWith(QStringLiteral(".flac")) ||
+        lower.endsWith(QStringLiteral(".m4a")) || lower.endsWith(QStringLiteral(".aac"))) {
+        return QStringLiteral("qrc:/icons/file-audio.png");
     }
 
-    return QStringLiteral("qrc:/icons/notes.png");
+    // 3. Video
+    if (lower.endsWith(QStringLiteral(".mp4")) || lower.endsWith(QStringLiteral(".mkv")) ||
+        lower.endsWith(QStringLiteral(".webm")) || lower.endsWith(QStringLiteral(".avi")) ||
+        lower.endsWith(QStringLiteral(".mov"))) {
+        return QStringLiteral("qrc:/icons/file-video.png");
+    }
+
+    // 4. Documentos PDF
+    if (lower.endsWith(QStringLiteral(".pdf"))) {
+        return QStringLiteral("qrc:/icons/file-pdf.png");
+    }
+
+    // 5. Documentos Word / Writer
+    if (lower.endsWith(QStringLiteral(".doc")) || lower.endsWith(QStringLiteral(".docx")) ||
+        lower.endsWith(QStringLiteral(".odt")) || lower.endsWith(QStringLiteral(".rtf"))) {
+        return QStringLiteral("qrc:/icons/file-word.png");
+    }
+
+    // 6. Hojas de Cálculo Excel / Calc
+    if (lower.endsWith(QStringLiteral(".xls")) || lower.endsWith(QStringLiteral(".xlsx")) ||
+        lower.endsWith(QStringLiteral(".ods")) || lower.endsWith(QStringLiteral(".csv"))) {
+        return QStringLiteral("qrc:/icons/file-excel.png");
+    }
+
+    // 7. Presentaciones PowerPoint / Impress
+    if (lower.endsWith(QStringLiteral(".ppt")) || lower.endsWith(QStringLiteral(".pptx")) ||
+        lower.endsWith(QStringLiteral(".odp"))) {
+        return QStringLiteral("qrc:/icons/file-powerpoint.png");
+    }
+
+    // 8. Archivos de Código y Scripts
+    if (lower.endsWith(QStringLiteral(".sh")) || lower.endsWith(QStringLiteral(".py")) ||
+        lower.endsWith(QStringLiteral(".cpp")) || lower.endsWith(QStringLiteral(".h")) ||
+        lower.endsWith(QStringLiteral(".rs")) || lower.endsWith(QStringLiteral(".js")) ||
+        lower.endsWith(QStringLiteral(".json")) || lower.endsWith(QStringLiteral(".qml")) ||
+        lower.endsWith(QStringLiteral(".html")) || lower.endsWith(QStringLiteral(".css"))) {
+        return QStringLiteral("qrc:/icons/file-code.png");
+    }
+
+    // 9. Archivos Comprimidos
+    if (lower.endsWith(QStringLiteral(".zip")) || lower.endsWith(QStringLiteral(".tar")) ||
+        lower.endsWith(QStringLiteral(".gz")) || lower.endsWith(QStringLiteral(".xz")) ||
+        lower.endsWith(QStringLiteral(".7z")) || lower.endsWith(QStringLiteral(".bz2"))) {
+        return QStringLiteral("qrc:/icons/file-archive.png");
+    }
+
+    // 10. Texto plano
+    if (lower.endsWith(QStringLiteral(".txt")) || lower.endsWith(QStringLiteral(".md")) ||
+        lower.endsWith(QStringLiteral(".log")) || lower.endsWith(QStringLiteral(".conf"))) {
+        return QStringLiteral("qrc:/icons/file-text.png");
+    }
+
+    // 11. Ejecutables / Binarios
+    QString fullPath = m_desktopPath + QStringLiteral("/") + fileName;
+    QFileInfo fi(fullPath);
+    if (fi.isExecutable()) {
+        QString appIcon = resolveAppIcon(fileName, fileName);
+        if (appIcon != QStringLiteral("qrc:/icons/apps-folder.png")) {
+            return appIcon;
+        }
+        return QStringLiteral("qrc:/icons/file-exec.png");
+    }
+
+    return QStringLiteral("qrc:/icons/file-generic.png");
 }
 
 void DesktopBackend::openItem(const QString &path)
@@ -239,6 +488,16 @@ void DesktopBackend::openItem(const QString &path)
     if (fi.suffix().toLower() == QStringLiteral("desktop")) {
         QSettings ini(path, QSettings::IniFormat);
         ini.beginGroup(QStringLiteral("Desktop Entry"));
+
+        QString type = ini.value(QStringLiteral("Type")).toString();
+        QString url = ini.value(QStringLiteral("URL")).toString();
+        if (type == QLatin1String("Link") && !url.isEmpty()) {
+            QUrl targetUrl(url);
+            QString localPath = targetUrl.isLocalFile() ? targetUrl.toLocalFile() : url;
+            openItem(localPath);
+            return;
+        }
+
         QString exec = ini.value(QStringLiteral("Exec")).toString();
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
@@ -266,24 +525,47 @@ void DesktopBackend::openItem(const QString &path)
         return;
     }
 
-    if (fi.isDir()) {
-        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-finder")), {path});
+    // Resolver destino si es un enlace simbólico para determinar tipo y ruta real
+    QString realPath = fi.isSymLink() ? fi.symLinkTarget() : path;
+    QFileInfo realFi(realPath.isEmpty() ? path : realPath);
+
+    if (fi.isDir() || realFi.isDir()) {
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-finder")), {realFi.absoluteFilePath()});
         return;
     }
 
-    const QString ext = fi.suffix().toLower();
+    const QString ext = realFi.suffix().toLower();
+
+    // Documentos ofimáticos -> ONLYOFFICE DEBE SER EL PREDETERMINADO
+    if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc")  ||
+        ext == QStringLiteral("xlsx") || ext == QStringLiteral("xls")  ||
+        ext == QStringLiteral("pptx") || ext == QStringLiteral("ppt")  ||
+        ext == QStringLiteral("odt")  || ext == QStringLiteral("ods")  || ext == QStringLiteral("odp") ||
+        ext == QStringLiteral("rtf")  || ext == QStringLiteral("csv")) {
+        QString oo = resolveDesktopBinary(QStringLiteral("onlyoffice-desktopeditors"));
+        if (!oo.isEmpty() && QFile::exists(oo)) {
+            QProcess::startDetached(oo, {realFi.absoluteFilePath()});
+            return;
+        }
+    }
+
     if (ext == QStringLiteral("png") || ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg") || ext == QStringLiteral("webp")) {
-        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-fotos")), {path});
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-fotos")), {realFi.absoluteFilePath()});
         return;
     }
 
     if (ext == QStringLiteral("mp3") || ext == QStringLiteral("wav") || ext == QStringLiteral("ogg") || ext == QStringLiteral("flac")) {
-        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-musica")), {path});
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-musica")), {realFi.absoluteFilePath()});
+        return;
+    }
+
+    if (realFi.isExecutable() && (ext == QStringLiteral("sh") || ext == QStringLiteral("bin") || ext.isEmpty())) {
+        QProcess::startDetached(realFi.absoluteFilePath(), QStringList());
         return;
     }
 
     // Default opener
-    QProcess::startDetached(QStringLiteral("xdg-open"), {path});
+    QProcess::startDetached(QStringLiteral("xdg-open"), {realFi.absoluteFilePath()});
 }
 
 void DesktopBackend::openInFinder()
@@ -318,6 +600,7 @@ void DesktopBackend::moveItem(const QString &path, qreal x, qreal y)
     pos[QStringLiteral("y")] = y;
     m_positions[path] = pos;
     savePositions();
+    emit positionsChanged();
 }
 
 QVariantMap DesktopBackend::iconPosition(const QString &path)
@@ -372,5 +655,63 @@ void DesktopBackend::savePositions()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     file.close();
+}
+
+bool DesktopBackend::importFile(const QString &urlOrPath, qreal x, qreal y, bool isMove)
+{
+    QString localPath = urlOrPath;
+    if (localPath.startsWith(QLatin1String("file://"))) {
+        localPath = QUrl(urlOrPath).toLocalFile();
+    }
+    if (localPath.isEmpty() || !QFile::exists(localPath)) return false;
+
+    QFileInfo fi(localPath);
+    if (fi.absolutePath() == m_desktopPath) {
+        if (x >= 0 && y >= 0) {
+            moveItem(localPath, x, y);
+        }
+        return true;
+    }
+
+    QString destName = fi.fileName();
+    QString destPath = m_desktopPath + QStringLiteral("/") + destName;
+    int counter = 1;
+    while (QFile::exists(destPath)) {
+        QString base = fi.completeBaseName();
+        QString ext = fi.suffix().isEmpty() ? QString() : (QStringLiteral(".") + fi.suffix());
+        destPath = m_desktopPath + QStringLiteral("/") + base + QStringLiteral(" (") + QString::number(++counter) + QStringLiteral(")") + ext;
+    }
+
+    bool ok = false;
+    if (isMove) {
+        ok = QFile::rename(localPath, destPath);
+        if (!ok) {
+            if (fi.isDir()) {
+                ok = QFile::link(localPath, destPath);
+            } else {
+                ok = QFile::copy(localPath, destPath);
+                if (ok && fi.isWritable()) {
+                    QFile::remove(localPath);
+                }
+            }
+        }
+    } else {
+        if (fi.isDir()) {
+            ok = QFile::link(localPath, destPath);
+        } else {
+            ok = QFile::copy(localPath, destPath);
+            if (!ok) {
+                ok = QFile::link(localPath, destPath);
+            }
+        }
+    }
+
+    if (ok) {
+        if (x >= 0 && y >= 0) {
+            moveItem(destPath, x, y);
+        }
+        refresh();
+    }
+    return ok;
 }
 

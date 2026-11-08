@@ -82,10 +82,12 @@ EOF
 
 # Locale: espanol si se puede generar, C.UTF-8 si no.
 if localedef -i es_ES -f UTF-8 es_ES.UTF-8 2>/dev/null; then
-  printf 'LANG=es_ES.UTF-8\n' >/etc/locale.conf
+  printf 'LANG=es_ES.UTF-8\nLANGUAGE=es_ES:es\nLC_ALL=es_ES.UTF-8\n' >/etc/locale.conf
 else
   printf 'LANG=C.UTF-8\n' >/etc/locale.conf
 fi
+printf 'LANG=es_ES.UTF-8\nLANGUAGE=es_ES:es\n' >/etc/environment
+command -v dconf >/dev/null 2>&1 && dconf update 2>/dev/null || true
 rm -f /etc/locale.gen
 
 # ------------------------------------------------------------------ 2. usuario
@@ -96,21 +98,23 @@ if ! getent passwd titan >/dev/null; then
   useradd --create-home --home-dir /home/titan --shell /bin/bash \
           --comment "Titan Linux" --groups wheel titan
 fi
-# Sin contrasena: es una ISO en vivo, y asi `su titan` no pide nada.
-passwd -d titan >/dev/null 2>&1 || true
+for grp in video input audio storage optical power; do
+  if getent group "${grp}" >/dev/null 2>&1; then
+    usermod -aG "${grp}" titan 2>/dev/null || true
+  fi
+done
+# Contraseña para el usuario titan y root: 1234
+echo "titan:1234" | chpasswd
+echo "root:1234" | chpasswd
 
-# sudo sin contrasena, para que 'sudo pacman -S ...' funcione de verdad.
-# Hace falta porque en el sudoers de Arch la regla de wheel esta COMENTADA
-# (# %wheel ALL=(ALL:ALL) ALL): sin esto, sudo responde "titan is not in the
-# sudoers file", y aunque estuviera, pediria una contrasena que este usuario no
-# tiene.
-log "sudo: sin contrasena para el usuario titan"
+# Configuración de sudo con contraseña 1234 para el usuario titan
+log "sudo: contrasena 1234 para el usuario titan"
 install -d -m 0750 /etc/sudoers.d
 cat >/etc/sudoers.d/10-titan <<'EOF'
-# Titan Linux (live): el usuario titan no tiene contrasena, asi que sudo
-# tiene que funcionar sin prompt. Es lo mismo que hace la ISO oficial de Arch
-# con su usuario archlive.
-titan ALL=(ALL:ALL) NOPASSWD: ALL
+# Titan Linux: contrasena sudo para el usuario titan es 1234
+Defaults lecture = never
+titan ALL=(ALL:ALL) ALL
+titan ALL=(ALL:ALL) NOPASSWD: /usr/bin/mount, /usr/bin/umount
 EOF
 chmod 0440 /etc/sudoers.d/10-titan
 chown root:root /etc/sudoers.d/10-titan
@@ -121,6 +125,14 @@ if [[ ! -f /home/titan/.bashrc ]]; then
 fi
 printf '\n# Titan Linux\n[[ $- == *i* ]] && . /etc/profile.d/10-titan.sh\n' \
   >>/home/titan/.bashrc
+install -d -m 0755 -o titan -g titan \
+  /home/titan/Descargas \
+  /home/titan/Documentos \
+  /home/titan/Musica \
+  /home/titan/Proyectos \
+  /home/titan/Pictures \
+  /home/titan/Videos \
+  /home/titan/Escritorio
 chown -R titan:titan /home/titan
 
 # fastfetch: que 'fastfetch' a secas ya salga con el logo y las claves en
@@ -149,6 +161,7 @@ for fichero in \
     /usr/local/bin/titan-desktop \
     /usr/local/bin/titan-panel \
     /usr/local/bin/titan-acerca \
+    /usr/local/bin/titan-audio-setup \
     /usr/share/applications/titan-acerca.desktop \
     /etc/titan/base.conf \
     /etc/profile.d/15-titan-grafico.sh \
@@ -161,6 +174,8 @@ for fichero in \
     exit 1
   }
 done
+
+chmod 0755 /usr/local/bin/* 2>/dev/null || true
 
 install -d -m 0755 -o titan -g titan /home/titan/.config/labwc
 
@@ -190,6 +205,118 @@ for xbm in /etc/skel/.config/labwc/*.xbm; do
 done
 
 chown -R titan:titan /home/titan/.config/labwc
+
+# Sincronizar dotfiles y configuraciones de usuario (KDE Plasma y temas)
+if [[ -d /etc/skel/.config ]]; then
+  cp -rf /etc/skel/.config/* /home/titan/.config/ 2>/dev/null || true
+  chown -R titan:titan /home/titan/.config
+fi
+
+# Personalizar accesos directos estilo macOS (Finder, Terminal) y Firefox nativo
+log "aplicaciones: temas y nombres del sistema"
+if [[ -f /usr/share/applications/org.kde.dolphin.desktop ]]; then
+  sed -i 's|^Name=.*|Name=Finder|g' /usr/share/applications/org.kde.dolphin.desktop
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/finder.png|g' /usr/share/applications/org.kde.dolphin.desktop
+fi
+
+if [[ -f /usr/share/applications/kitty.desktop ]]; then
+  sed -i 's|^Name=.*|Name=Terminal|g' /usr/share/applications/kitty.desktop
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/terminal.png|g' /usr/share/applications/kitty.desktop
+fi
+
+if [[ -f /usr/share/applications/org.gnome.Calculator.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/calculator.png|g' /usr/share/applications/org.gnome.Calculator.desktop
+  sed -i 's|^Name=.*|Name=Calculadora|g' /usr/share/applications/org.gnome.Calculator.desktop
+fi
+
+if [[ -f /usr/share/applications/org.gnome.Calendar.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/calendar.png|g' /usr/share/applications/org.gnome.Calendar.desktop
+  sed -i 's|^Name=.*|Name=Calendario|g' /usr/share/applications/org.gnome.Calendar.desktop
+fi
+
+if [[ -f /usr/share/applications/org.gnome.clocks.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/clock.png|g' /usr/share/applications/org.gnome.clocks.desktop
+  sed -i 's|^Name=.*|Name=Reloj|g' /usr/share/applications/org.gnome.clocks.desktop
+fi
+
+if [[ -f /usr/share/applications/org.gnome.Software.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/apps-folder.png|g' /usr/share/applications/org.gnome.Software.desktop
+  sed -i 's|^Name=.*|Name=App Store|g' /usr/share/applications/org.gnome.Software.desktop
+fi
+
+if [[ -f /usr/share/applications/io.github.celluloid_player.Celluloid.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/video.png|g' /usr/share/applications/io.github.celluloid_player.Celluloid.desktop
+  sed -i 's|^Name=.*|Name=Reproductor de Video|g' /usr/share/applications/io.github.celluloid_player.Celluloid.desktop
+fi
+
+# Enlaces de compatibilidad en /usr/local/bin (mantener binarios nativos de Titan si existen)
+mkdir -p /usr/local/bin
+if [[ ! -f /usr/local/bin/titan-calc || -L /usr/local/bin/titan-calc ]]; then
+  [[ -x /usr/bin/gnome-calculator ]] && ln -sf /usr/bin/gnome-calculator /usr/local/bin/titan-calc || true
+fi
+if [[ ! -f /usr/local/bin/titan-calendar || -L /usr/local/bin/titan-calendar ]]; then
+  [[ -x /usr/bin/gnome-calendar ]] && ln -sf /usr/bin/gnome-calendar /usr/local/bin/titan-calendar || true
+fi
+if [[ ! -f /usr/local/bin/titan-clock || -L /usr/local/bin/titan-clock ]]; then
+  [[ -x /usr/bin/gnome-clocks ]] && ln -sf /usr/bin/gnome-clocks /usr/local/bin/titan-clock || true
+fi
+if [[ ! -f /usr/local/bin/titan-video || -L /usr/local/bin/titan-video ]]; then
+  [[ -x /usr/bin/celluloid ]] && ln -sf /usr/bin/celluloid /usr/local/bin/titan-video || true
+fi
+if [[ -x /usr/bin/gnome-software ]] && [[ ! -f /usr/bin/discover ]]; then
+  ln -sf /usr/bin/gnome-software /usr/local/bin/discover || true
+fi
+
+# ----------------------------------------------- Seguridad Antimalware y Permisos
+log "seguridad: permisos de raiz (root) y aislamiento de usuario"
+chown root:root /
+chmod 0755 /
+
+# Directorios de nivel raiz bajo control exclusivo de root (no recursivo para preservar permisos y bits SUID de paquetes)
+for dir_sistema in /bin /sbin /usr /etc /boot /var /opt /root; do
+  if [[ -d "${dir_sistema}" ]]; then
+    chown root:root "${dir_sistema}" 2>/dev/null || true
+    chmod 0755 "${dir_sistema}" 2>/dev/null || true
+  fi
+done
+chmod 0750 /root 2>/dev/null || true
+
+# Asegurar permisos SUID indispensables para herramientas de elevacion
+for suid_bin in /usr/bin/sudo /usr/bin/su /usr/bin/passwd /usr/bin/mount /usr/bin/umount /usr/bin/pkexec; do
+  if [[ -f "${suid_bin}" ]]; then
+    chown root:root "${suid_bin}" 2>/dev/null || true
+    chmod 4755 "${suid_bin}" 2>/dev/null || true
+  fi
+done
+
+# Asegurar permisos estrictos de sudoers y fichero 10-titan
+if [[ -f /etc/sudoers ]]; then
+  chmod 0440 /etc/sudoers 2>/dev/null || true
+  chown root:root /etc/sudoers 2>/dev/null || true
+fi
+install -d -m 0750 -o root -g root /etc/sudoers.d
+if [[ -f /etc/sudoers.d/10-titan ]]; then
+  chmod 0440 /etc/sudoers.d/10-titan
+  chown root:root /etc/sudoers.d/10-titan
+fi
+
+# /tmp con sticky bit antimalware
+chmod 1777 /tmp /var/tmp
+
+# Nivel usuario exclusivo a partir del directorio del usuario
+if [[ -d /home/titan ]]; then
+  chown -R titan:titan /home/titan
+  chmod 0750 /home/titan
+fi
+
+# Reglas de polkit para almacenamiento extraible (udisks2 sin prompt para titan)
+if [[ -f /etc/polkit-1/rules.d/10-titan-storage.rules ]]; then
+  chmod 0644 /etc/polkit-1/rules.d/10-titan-storage.rules
+  chown root:root /etc/polkit-1/rules.d/10-titan-storage.rules
+fi
+
+# Directorio de montaje de medios extraibles (USBs) con control de usuario
+install -d -m 0750 -o titan -g titan /run/media/titan
 
 # El MOTD de Arch (paquete 'filesystem') no viene en el perfil: se sustituye.
 rm -f /etc/motd
@@ -272,7 +399,7 @@ chmod 0644 /etc/pacman.d/mirrorlist.candidatos
 
 # ------------------------------------------------------------- 5. red en el live
 
-log "red: systemd-networkd + systemd-resolved"
+log "red: NetworkManager + systemd-resolved"
 install -d -m 0755 /etc/systemd/network
 cat >/etc/systemd/network/20-ethernet.network <<'EOF'
 [Match]
@@ -291,13 +418,27 @@ DHCP=yes
 DNS=1.1.1.1 8.8.8.8
 EOF
 
-for unit in systemd-networkd systemd-resolved; do
+for unit in NetworkManager systemd-resolved bluetooth; do
   if [[ -e "/usr/lib/systemd/system/${unit}.service" ]]; then
     # install -d: el directorio no tiene por que existir todavia y ln -sf con
     # set -e abortaria el build entero.
     install -d -m 0755 "/etc/systemd/system/multi-user.target.wants"
     ln -sf "/usr/lib/systemd/system/${unit}.service" \
            "/etc/systemd/system/multi-user.target.wants/${unit}.service"
+  fi
+done
+
+# Habilitar servicios de audio PipeWire y WirePlumber para sesiones de usuario
+install -d -m 0755 /etc/systemd/user/default.target.wants
+install -d -m 0755 /etc/systemd/user/sockets.target.wants
+for u_unit in pipewire.service pipewire-pulse.service wireplumber.service; do
+  if [[ -e "/usr/lib/systemd/user/${u_unit}" ]]; then
+    ln -sf "/usr/lib/systemd/user/${u_unit}" "/etc/systemd/user/default.target.wants/${u_unit}"
+  fi
+done
+for u_sock in pipewire.socket pipewire-pulse.socket; do
+  if [[ -e "/usr/lib/systemd/user/${u_sock}" ]]; then
+    ln -sf "/usr/lib/systemd/user/${u_sock}" "/etc/systemd/user/sockets.target.wants/${u_sock}"
   fi
 done
 
@@ -378,15 +519,15 @@ for programa in dbus-run-session labwc kitty pcmanfm-qt; do
     "Falta ${programa}: revisa iso/titan/packages.x86_64."
 done
 
-# sudo tiene que servir PARA ALGO: poder instalar paquetes en el live. Ojo a que
-# 'command -v sudo' no dira nada (ver la nota de mas abajo): hay que ejecutarlo
-# como el usuario titan y sin contrasena.
-if [[ "$(su titan -c 'sudo -n id -u' 2>/dev/null)" != 0 ]]; then
-  echo "ERROR: 'sudo -n' no da root para el usuario titan." >&2
+# sudo con contraseña 1234 tiene que servir para administrar paquetes
+sudo_uid="$(echo 1234 | su titan -c 'sudo -S id -u 2>/dev/null' 2>/dev/null || true)"
+if [[ "${sudo_uid}" != "0" ]]; then
+  sudo_err="$(echo 1234 | su titan -c 'sudo -S id -u' 2>&1 || true)"
+  echo "ERROR: 'sudo' no da root para el usuario titan con la contraseña 1234. Salida: ${sudo_err}" >&2
   echo "       Revisa /etc/sudoers.d/10-titan y el modo 0440 de ese fichero." >&2
   exit 1
 fi
-run_check 'sudo -n pacman --version' \
+run_check 'echo 1234 | sudo -S pacman --version' \
   'pacman deberia estar en la ISO para poder instalar paquetes en el live.'
 
 # Que pacman tenga espejos es justo lo que rompia el live, y no lo detecta

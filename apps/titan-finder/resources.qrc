@@ -16,11 +16,32 @@
         <file>icons/music.png</file>
         <file>icons/notes.png</file>
         <file>icons/pictures.png</file>
+        <file>icons/firefox.png</file>
         <file>icons/safari.png</file>
         <file>icons/system.png</file>
         <file>icons/terminal.png</file>
         <file>icons/trash.png</file>
         <file>icons/vscode.png</file>
         <file>icons/onlyoffice.png</file>
+        <file>icons/usb.png</file>
+        <file>icons/file-generic.png</file>
+        <file>icons/file-text.png</file>
+        <file>icons/file-code.png</file>
+        <file>icons/file-office.png</file>
+        <file>icons/file-word.png</file>
+        <file>icons/file-excel.png</file>
+        <file>icons/file-powerpoint.png</file>
+        <file>icons/apps-folder.png</file>
+        <file>icons/music-app.png</file>
+        <file>icons/music-folder.png</file>
+        <file>icons/file-archive.png</file>
+        <file>icons/file-pdf.png</file>
+        <file>icons/file-audio.png</file>
+        <file>icons/file-video.png</file>
+        <file>icons/file-exec.png</file>
+        <file>icons/calculator.png</file>
+        <file>icons/calendar.png</file>
+        <file>icons/clock.png</file>
+        <file>icons/video.png</file>
     </qresource>
 </RCC>

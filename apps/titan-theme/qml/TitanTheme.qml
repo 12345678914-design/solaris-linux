@@ -21,6 +21,7 @@ QtObject {
     readonly property color headerBottom: isDark ? Qt.rgba(0.14, 0.16, 0.24, 0.72) : Qt.rgba(0.92, 0.93, 0.97, 0.76)
     readonly property color headerBorder: isDark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.12)
     readonly property color headerText: isDark ? "#ffffff" : "#1d1d1f"
+    readonly property color headerTextMuted: isDark ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(0, 0, 0, 0.50)
 
     // Barra lateral / Sidebar (translúcido acrílico)
     readonly property color sidebarTop: isDark ? Qt.rgba(0.12, 0.14, 0.20, 0.65) : Qt.rgba(0.95, 0.96, 0.98, 0.65)

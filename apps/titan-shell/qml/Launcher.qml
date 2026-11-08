@@ -126,6 +126,7 @@ Rectangle {
                     if (launcher.selectedIndex >= 0 && launcher.selectedIndex < appGrid.count) {
                         var item = launcherBackend.apps[launcher.selectedIndex]
                         if (item) {
+                            dockModel.setAppLaunching(item.exec, item.exec, item.name, item.icon)
                             launcherBackend.launch(item.exec)
                             shellBackend.closeLauncher()
                         }
@@ -165,27 +166,205 @@ Rectangle {
         }
     }
 
-    // 2. Encabezado de sección
-    Text {
-        id: sectionLabel
+    // 2. Encabezado de sección y botón de 3 puntos (Opciones de energía)
+    Item {
+        id: headerRow
         anchors.top: searchContainer.bottom
         anchors.topMargin: 12
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.leftMargin: 28
-        text: searchField.text.length > 0 ? "Resultados de búsqueda" : "Todas las aplicaciones"
-        color: titanTheme.contentTextSecondary
-        font.pixelSize: 11
-        font.weight: Font.DemiBold
-        font.letterSpacing: 0.6
+        anchors.rightMargin: 28
+        height: 24
+
+        Text {
+            id: sectionLabel
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            text: searchField.text.length > 0 ? "Resultados de búsqueda" : "Todas las aplicaciones"
+            color: titanTheme.contentTextSecondary
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            font.letterSpacing: 0.6
+        }
+
+        // Botón de tres puntos estilo macOS / Sonoma
+        Rectangle {
+            id: powerMenuBtn
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            width: 28
+            height: 22
+            radius: 6
+            color: powerMenuMouse.containsMouse || powerMenuPopup.visible ? Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.15 : 0.22) : Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.06 : 0.10)
+            border.color: powerMenuMouse.containsMouse || powerMenuPopup.visible ? titanTheme.accent : titanTheme.glassBorder
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "•••"
+                color: titanTheme.contentTextPrimary
+                font.pixelSize: 12
+                font.bold: true
+            }
+
+            MouseArea {
+                id: powerMenuMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: powerMenuPopup.visible = !powerMenuPopup.visible
+            }
+        }
     }
 
-    // 3. Rejilla simétrica de aplicaciones en filas y columnas
+    // Fondo detector para cerrar menú de energía si se hace clic fuera
+    MouseArea {
+        anchors.fill: parent
+        enabled: powerMenuPopup.visible
+        z: 99
+        onClicked: powerMenuPopup.visible = false
+    }
+
+    // Menú flotante de opciones de energía (Apagar, Reiniciar, Suspender)
+    Rectangle {
+        id: powerMenuPopup
+        visible: false
+        z: 100
+        anchors.top: headerRow.bottom
+        anchors.topMargin: 4
+        anchors.right: headerRow.right
+        width: 165
+        height: powerCol.implicitHeight + 12
+        radius: 12
+        color: titanTheme.isDark ? Qt.rgba(0.18, 0.18, 0.22, 0.94) : Qt.rgba(0.98, 0.98, 1.0, 0.94)
+        border.color: titanTheme.glassBorder
+        border.width: 1
+
+        Column {
+            id: powerCol
+            anchors.centerIn: parent
+            width: parent.width - 12
+            spacing: 2
+
+            // Opción Suspender
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                color: suspMouse.containsMouse ? titanTheme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    spacing: 8
+                    Text { text: "🌙"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                    Text {
+                        text: "Suspender"
+                        color: suspMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                MouseArea {
+                    id: suspMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        powerMenuPopup.visible = false
+                        shellBackend.closeLauncher()
+                        shellBackend.suspend()
+                    }
+                }
+            }
+
+            // Opción Reiniciar
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                color: rebtMouse.containsMouse ? titanTheme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    spacing: 8
+                    Text { text: "🔄"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                    Text {
+                        text: "Reiniciar…"
+                        color: rebtMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                MouseArea {
+                    id: rebtMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        powerMenuPopup.visible = false
+                        shellBackend.closeLauncher()
+                        shellBackend.reboot()
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width - 8
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: 1
+                color: titanTheme.glassBorder
+            }
+
+            // Opción Apagar
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                color: pwrMouse.containsMouse ? "#ff453a" : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    spacing: 8
+                    Text { text: "⏻"; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; color: pwrMouse.containsMouse ? "#ffffff" : "#ff453a" }
+                    Text {
+                        text: "Apagar equipo…"
+                        color: pwrMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                MouseArea {
+                    id: pwrMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        powerMenuPopup.visible = false
+                        shellBackend.closeLauncher()
+                        shellBackend.powerOff()
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Rejilla simétrica de aplicaciones con scroll vertical si supera las columnas
     GridView {
         id: appGrid
-        anchors.top: sectionLabel.bottom
+        anchors.top: headerRow.bottom
         anchors.topMargin: 10
-        anchors.bottom: pageDotsRow.top
-        anchors.bottomMargin: 8
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 14
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 24
@@ -195,12 +374,23 @@ Rectangle {
         cellWidth: Math.floor(width / 5)
         cellHeight: 106
         model: launcherBackend.apps
-        cacheBuffer: 300
+        cacheBuffer: 500
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
 
         ScrollBar.vertical: ScrollBar {
-            active: appGrid.moving || appGrid.flicking
-            width: 5
+            id: vScrollBar
+            active: appGrid.moving || appGrid.flicking || hovered
+            width: 6
+            anchors.right: parent.right
+            anchors.rightMargin: -12
             policy: ScrollBar.AsNeeded
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: 3
+                color: vScrollBar.pressed ? titanTheme.accent : (vScrollBar.hovered ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(1, 1, 1, 0.28))
+                Behavior on color { ColorAnimation { duration: 140 } }
+            }
         }
 
         delegate: Item {
@@ -210,25 +400,6 @@ Rectangle {
 
             property int itemIndex: index
             property bool isSelected: launcher.selectedIndex === index
-
-            // Animación de entrada fluida escalonada
-            opacity: 0
-            y: 8
-
-            Component.onCompleted: {
-                entranceAnim.delay = Math.min(index * 16, 180)
-                entranceAnim.start()
-            }
-
-            SequentialAnimation {
-                id: entranceAnim
-                property int delay: 0
-                PauseAnimation { duration: entranceAnim.delay }
-                ParallelAnimation {
-                    NumberAnimation { target: gridDelegate; property: "opacity"; to: 1.0; duration: 200; easing.type: Easing.OutCubic }
-                    NumberAnimation { target: gridDelegate; property: "y"; to: 0; duration: 200; easing.type: Easing.OutCubic }
-                }
-            }
 
             Rectangle {
                 anchors.fill: parent
@@ -253,6 +424,9 @@ Rectangle {
 
                     Image {
                         anchors.fill: parent
+                        sourceSize: Qt.size(80, 80)
+                        asynchronous: true
+                        cache: true
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                         mipmap: true
@@ -263,11 +437,12 @@ Rectangle {
                             if (ic === "utilities-terminal" || ic === "terminal" || ic === "titan-terminal") return "qrc:/icons/terminal.png";
                             if (ic === "system-file-manager" || ic === "pcmanfm-qt" || ic === "files") return "qrc:/icons/files.png";
                             if (ic === "help-about" || ic === "titan-acerca") return "qrc:/icons/about.png";
-                            if (ic === "firefox" || ic === "safari") return "qrc:/icons/safari.png";
+                            if (ic === "firefox" || ic === "safari") return "qrc:/icons/firefox.png";
                             if (ic === "vscode" || ic === "code") return "qrc:/icons/vscode.png";
                             if (ic === "system" || ic === "titan-settings") return "qrc:/icons/system.png";
                             if (ic === "onlyoffice" || ic === "onlyoffice-desktopeditors") return "qrc:/icons/onlyoffice.png";
-                            return "qrc:/icons/developer.png";
+                            if (ic === "developer" || ic === "vim") return "qrc:/icons/developer.png";
+                            return "qrc:/icons/system.png";
                         }
                     }
                 }
@@ -294,30 +469,10 @@ Rectangle {
                 onEntered: launcher.selectedIndex = index
                 onExited: if (launcher.selectedIndex === index) launcher.selectedIndex = -1
                 onClicked: {
-                    shellBackend.showSplash(modelData.name, modelData.icon, modelData.exec)
+                    dockModel.setAppLaunching(modelData.exec, modelData.exec, modelData.name, modelData.icon)
                     launcherBackend.launch(modelData.exec)
                     shellBackend.closeLauncher()
                 }
-            }
-        }
-    }
-
-    // 4. Indicador de páginas inferior
-    Row {
-        id: pageDotsRow
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 14
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 6
-
-        Repeater {
-            model: Math.max(1, Math.ceil(appGrid.count / 15))
-            delegate: Rectangle {
-                width: index === 0 ? 14 : 6
-                height: 6
-                radius: 3
-                color: index === 0 ? titanTheme.accent : Qt.rgba(0.5, 0.5, 0.5, 0.4)
-                Behavior on width { NumberAnimation { duration: 180 } }
             }
         }
     }

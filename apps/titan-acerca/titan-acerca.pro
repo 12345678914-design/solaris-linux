@@ -24,3 +24,7 @@ SOURCES += \
 HEADERS += \
     src/acerca.h \
     ../titan-desktop/src/config.h
+
+RESOURCES += \
+    resources.qrc
+

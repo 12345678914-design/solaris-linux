@@ -23,20 +23,18 @@ QtObject {
         }
     }
 
-    // 2. Dock flotante estilo macOS centrado en la parte inferior
+    // 2. Dock flotante estilo macOS centrado en la parte inferior (LayerOverlay)
     property var dockWin: Window {
         objectName: "dockWindow"
         visible: false
         width: Screen.width
-        height: 82
+        height: 320
         color: "transparent"
         flags: Qt.FramelessWindowHint
 
         Dock {
             id: dock
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 6
+            anchors.fill: parent
         }
     }
 
@@ -120,23 +118,7 @@ QtObject {
         }
     }
 
-    // 6. Pantalla de carga (Splash Screen) con el mismo tamaño al de la ventana que abre
-    property var splashWin: Window {
-        objectName: "splashWindow"
-        visible: false
-        width: Screen.width
-        height: Screen.height
-        color: "transparent"
-        flags: Qt.FramelessWindowHint
-
-        SplashScreen {
-            anchors.centerIn: parent
-            width: shellBackend.splashWidth
-            height: shellBackend.splashHeight
-        }
-    }
-
-    // 7. Alerta de Batería Baja a pantalla completa oscurecida
+    // 6. Alerta de Batería Baja a pantalla completa oscurecida
     property var lowBatteryWin: Window {
         objectName: "lowBatteryWindow"
         visible: false
@@ -248,6 +230,71 @@ QtObject {
         Item {
             focus: true
             Keys.onEscapePressed: shellBackend.closeControlCenter()
+        }
+    }
+
+    // 9. Centro de Notificaciones en ventana Overlay independiente
+    property var notificationCenterWin: Window {
+        objectName: "notificationCenterWindow"
+        visible: false
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: shellBackend.closeNotificationCenter()
+        }
+
+        NotificationCenter {
+            id: notifCenter
+            anchors.top: parent.top
+            anchors.topMargin: 34
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            visible: shellBackend.notificationCenterVisible
+            scale: shellBackend.notificationCenterVisible ? 1.0 : 0.94
+            opacity: shellBackend.notificationCenterVisible ? 1.0 : 0.0
+            transformOrigin: Item.TopRight
+
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack; easing.overshoot: 1.05 } }
+            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        }
+
+        Item {
+            focus: true
+            Keys.onEscapePressed: shellBackend.closeNotificationCenter()
+        }
+    }
+
+    // 10. Isla Dinámica (Notificación emergente en la parte superior)
+    property var dynamicIslandWin: Window {
+        objectName: "dynamicIslandWindow"
+        visible: false
+        width: Screen.width
+        height: 100
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        DynamicIsland {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 4
+        }
+    }
+
+    // 11. Sistema de Escritorios / Mission Control (Hot Corner superior derecho)
+    property var workspacesWin: Window {
+        objectName: "workspacesWindow"
+        visible: false
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        WorkspacesView {
+            anchors.fill: parent
         }
     }
 }

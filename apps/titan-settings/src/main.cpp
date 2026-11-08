@@ -10,11 +10,13 @@
 
 int main(int argc, char *argv[])
 {
+    bool modoComprobar = false;
     for (int i = 1; i < argc; ++i) {
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--comprobar")) {
-            std::cout << "titan-settings=ok" << std::endl;
-            std::cout << "estilo=macos" << std::endl;
-            return 0;
+            modoComprobar = true;
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            qputenv("QT_QPA_PLATFORMTHEME", "");
+            break;
         }
     }
 
@@ -66,6 +68,18 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     engine.load(url);
+
+    if (engine.rootObjects().isEmpty()) {
+        std::cerr << "titan-settings: fallo critico al cargar los componentes QML" << std::endl;
+        return 1;
+    }
+
+    if (modoComprobar) {
+        std::cout << "titan-settings=ok" << std::endl;
+        std::cout << "estilo=macos" << std::endl;
+        std::cout << "qml-componentes=ok" << std::endl;
+        return 0;
+    }
 
     return app.exec();
 }

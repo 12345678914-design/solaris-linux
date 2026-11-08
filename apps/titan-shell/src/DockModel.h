@@ -5,10 +5,12 @@
 #include <QAbstractListModel>
 #include <QString>
 #include <QList>
+#include <QMap>
 #include <QVariantMap>
 
 class WindowTracker;
 class ShellBackend;
+class QTimer;
 
 class DockModel : public QAbstractListModel
 {
@@ -22,7 +24,11 @@ public:
         ExecRole,
         RunningRole,
         HasWindowRole,
-        ActiveRole
+        ActiveRole,
+        LaunchingRole,
+        IsPinnedRole,
+        ShowSeparatorRole,
+        WindowsListRole
     };
     
     explicit DockModel(WindowTracker *tracker, ShellBackend *backend, QObject *parent = nullptr);
@@ -32,16 +38,32 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     
     Q_INVOKABLE void activateApp(const QString &appId);
+    Q_INVOKABLE void launchApp(const QString &appId, const QString &exec = QString(), const QString &name = QString(), const QString &icon = QString());
+    Q_INVOKABLE void setAppLaunching(const QString &appId, const QString &exec = QString(), const QString &name = QString(), const QString &icon = QString());
     Q_INVOKABLE void moveItem(int fromIndex, int toIndex);
+
+    Q_INVOKABLE void pinApp(const QString &appId);
+    Q_INVOKABLE void unpinApp(const QString &appId);
+    Q_INVOKABLE bool isAppPinned(const QString &appId) const;
+    Q_INVOKABLE void closeApp(const QString &appId);
+    Q_INVOKABLE QVariantList getWindowsForApp(const QString &appId) const;
+    Q_INVOKABLE void activateWindowById(qulonglong windowId);
     
 private slots:
     void updateWindowStates();
     
 private:
+    void loadPinnedApps();
+    void savePinnedApps();
+    void initDefaultPinnedApps();
+    QString resolveDynamicIcon(const QString &appId, const QString &title) const;
+
     WindowTracker *m_tracker = nullptr;
     ShellBackend *m_backend = nullptr;
     QList<QVariantMap> m_pinnedApps;
     QList<QVariantMap> m_apps;
+    QMap<QString, QTimer*> m_launchTimers;
+    QMap<QString, QVariantMap> m_launchingAppInfo;
 };
 
 #endif

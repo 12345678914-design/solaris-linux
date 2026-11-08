@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Calendario
+Name[es]=Calendario
+Comment=Calendario y eventos
+Comment[es]=Calendario y eventos
+Exec=titan-calendar
+Icon=/usr/share/titan/icons/calendar.png
+Terminal=false
+Categories=Utility;Office;Calendar;
+StartupWMClass=titan-calendar
