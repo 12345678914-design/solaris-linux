@@ -1,0 +1,67 @@
+SOLARIS LINUX 1.8 — x86_64
+==========================
+
+La ISO completa pesa 3,2 GB y GitHub solo permite archivos de hasta 2 GB por
+asset. Por eso se publica dividida en dos partes:
+
+  solaris-linux-1.8-x86_64.iso.part-aa   (~1,9 GB)
+  solaris-linux-1.8-x86_64.iso.part-ab   (~1,2 GB)
+
+Unir las partes
+---------------
+
+Descarga las dos partes y el archivo .sha256 en la misma carpeta y ejecuta:
+
+  cat solaris-linux-1.8-x86_64.iso.part-aa \
+      solaris-linux-1.8-x86_64.iso.part-ab \
+      > solaris-linux-1.8-x86_64.iso
+
+En Windows PowerShell:
+
+  Get-Content -AsByteStream solaris-linux-1.8-x86_64.iso.part-aa,
+      solaris-linux-1.8-x86_64.iso.part-ab |
+    Set-Content -AsByteStream solaris-linux-1.8-x86_64.iso
+
+Verificar la ISO
+----------------
+
+  sha256sum -c solaris-linux-1.8-x86_64.iso.sha256
+
+Debe mostrar:
+
+  solaris-linux-1.8-x86_64.iso: La suma coincide
+
+El SHA-256 esperado es:
+
+  e686b923cc22fa8564facdd636e4d5abb1c41cc9babaa41fd16205af7e5379ca
+
+Si no coincide, vuelve a descargar las partes: alguna está incompleta o dañada.
+
+Arrancar en QEMU
+----------------
+
+  qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4096 \
+    -machine q35 -device virtio-vga \
+    -cdrom "solaris-linux-1.8-x86_64.iso"
+
+`-enable-kvm` necesita /dev/kvm y permisos sobre él. Si no está disponible,
+elimina esa opción. `-machine q35` arranca en modo BIOS; para UEFI añade la BIOS
+de OVMF (`-bios /usr/share/edk2/x64/OVMF.4m.fd`).
+
+Novedades: drivers y compatibilidad
+-----------------------------------
+
+- vulkan-nouveau (NVIDIA Nouveau) y vulkan-swrast (renderizado por software).
+- linux-firmware, sof-firmware, alsa-firmware e intel-ucode.
+- mesa, vulkan-intel, vulkan-radeon, intel-media-driver y libva-intel-driver.
+- networkmanager, wpa_supplicant, iw, bluez y bluez-utils.
+- PipeWire con pipewire-pulse, pipewire-alsa, pipewire-jack y wireplumber.
+- Modo compatibilidad gráfica para QEMU/KVM, VMware, VirtualBox, Hyper-V, Xen,
+  Intel Celeron y equipos sin aceleración 3D.
+- Kernel 6.18.54 LTS.
+
+Código fuente
+-------------
+
+https://github.com/12345678914-design/solaris-linux
+Commit: 608f7f4
