@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-iso.sh - construye la ISO en vivo de Titan Linux 0.1 con archiso.
+# build-iso.sh - construye la ISO en vivo de Solaris Linux 1.8 con archiso.
 #
 # Que hace, en orden:
 #   1. comprueba que el host tiene lo necesario (Arch, archiso, xorriso, disco)
@@ -25,7 +25,7 @@
 # colarse.
 #
 # Variables de entorno:
-#   TITAN_VERSION   version de la ISO            (0.1.0)
+#   TITAN_VERSION   version de la ISO            (1.8)
 #   TITAN_CODENAME  apodo de la release          (TITÁN)
 #   TITAN_OUT       directorio de salida         (<distro>/out)
 #   TITAN_WORK      directorio de trabajo        (<proyecto>/build/archiso)
@@ -39,7 +39,7 @@ PROJECT="$(cd "${DISTRO}/.." && pwd)"
 PROFILE="${DISTRO}/iso/titan"
 APP="${DISTRO}/apps/titan-cli"
 
-TITAN_VERSION="${TITAN_VERSION:-0.1.0}"
+TITAN_VERSION="${TITAN_VERSION:-1.8}"
 TITAN_CODENAME="${TITAN_CODENAME:-TITÁN}"
 TITAN_BUILD_DATE="${TITAN_BUILD_DATE:-$(date -u +%Y-%m-%d)}"
 OUT_DIR="${TITAN_OUT:-${DISTRO}/out}"
@@ -638,8 +638,8 @@ args=(-C "${generated_conf}"
       -o "${OUT_DIR}"
       -w "${WORK_DIR}"
       -L "TITAN_$(date +%Y%m)"
-      -P "Titan Linux Project"
-      -A "Titan Linux ${TITAN_VERSION} (${TITAN_CODENAME})")
+      -P "Solaris Linux Project"
+      -A "Solaris Linux ${TITAN_VERSION} (${TITAN_CODENAME})")
 (( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[@]}")
 args+=("${PROFILE}")
 [[ -n "$verbose" ]] && args+=(-v)

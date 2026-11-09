@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Titan Linux 0.1 - personalizacion de la ISO en vivo.
+# Solaris Linux 1.8 - personalizacion de la ISO en vivo.
 #
 # Lo ejecuta archiso DENTRO del chroot de airootfs, despues de pacstrap.
 # Por eso se puede escribir /usr/lib/os-release y /etc/passwd: aqui ya no hay
@@ -25,7 +25,7 @@ if [[ -r /etc/titan-build.env ]]; then
   # shellcheck disable=SC1091
   . /etc/titan-build.env
 fi
-TITAN_VERSION="${TITAN_VERSION:-0.1.0}"
+TITAN_VERSION="${TITAN_VERSION:-1.8}"
 TITAN_CODENAME="${TITAN_CODENAME:-TITÁN}"
 TITAN_VARIANT="${TITAN_VARIANT:-live}"
 TITAN_BUILD_DATE="${TITAN_BUILD_DATE:-$(date -u +%Y-%m-%d)}"

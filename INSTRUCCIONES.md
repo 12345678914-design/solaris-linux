@@ -4,6 +4,24 @@ Esta carpeta contiene todo el código fuente de **Solaris Linux**, sus aplicacio
 
 ---
 
+## 🆕 Novedades de la versión 1.8
+
+- **Nuevos drivers Vulkan**: `vulkan-nouveau` (NVIDIA Nouveau) y `vulkan-swrast`
+  (renderizado por software).
+- **Firmware y microcódigo**: `linux-firmware`, `linux-firmware-whence`,
+  `sof-firmware`, `alsa-firmware` e `intel-ucode`.
+- **Aceleración Intel/AMD**: `mesa`, `vulkan-intel`, `vulkan-radeon`,
+  `intel-media-driver` y `libva-intel-driver`.
+- **Red y Bluetooth**: `networkmanager`, `wpa_supplicant`, `iw`, `bluez` y
+  `bluez-utils`.
+- **Audio**: PipeWire con `pipewire-pulse`, `pipewire-alsa`, `pipewire-jack` y
+  `wireplumber`.
+- **Modo compatibilidad gráfica**: entrada de arranque para QEMU/KVM, VMware,
+  VirtualBox, Hyper-V, Xen, Intel Celeron y equipos sin aceleración 3D.
+- **Kernel 6.18.54 LTS** con la base de drivers de Arch Linux.
+
+---
+
 ## 📋 Requisitos Previos
 
 - Una máquina con **Arch Linux** instalada.
@@ -55,13 +73,25 @@ sudo ./scripts/build-iso.sh
 3. Detecta automáticamente el paquete del kernel propio que ya viene incluido en `kernel/linux-titanlinux/linux-titanlinux-6.18.54-1-x86_64.pkg.tar.zst` y lo integra en la imagen sin necesidad de recompilar Linux.
 4. Aplica la configuración de **Labwc** (ventanas libres flotantes, botones semáforo rojo/amarillo/verde y atajos de teclado).
 5. Empaqueta la ISO final lista para usar en:
-   `out/solaris-linux-0.1.0-x86_64.iso`
+   `out/solaris-linux-1.8-x86_64.iso`
 
 ---
 
 ### Paso 4: Probar la ISO en QEMU
 
 Una vez terminada la compilación, puedes probar el sistema ejecutando:
+
+```bash
+qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4096 \
+  -machine q35 -device virtio-vga \
+  -cdrom "solaris-linux-1.8-x86_64.iso"
+```
+
+> **Nota:** `-enable-kvm` requiere `/dev/kvm` y permisos sobre él. Si no está
+> disponible, elimina esa opción. `-machine q35` arranca en modo BIOS; para UEFI
+> añade la BIOS de OVMF (`-bios /usr/share/edk2/x64/OVMF.4m.fd`).
+
+También puedes usar el script del repositorio:
 
 ```bash
 ./scripts/run-qemu.sh

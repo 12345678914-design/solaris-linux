@@ -239,10 +239,10 @@ BUENO_ARRANQUE = {
     r"^hostname": "titan\n",
     r"whoami": "isai\n",
     r"tmux -V": "3.4\n",
-    r"titan version": "titan 0.1.0\n",
+    r"titan version": "titan 1.8\n",
     # El fastfetch REAL con el idioma forzado a C (leido de un arranque de
     # verdad). Sin 'LC_ALL=C' el rotulo seria 'Sistema:' y no casaria.
-    r"fastfetch": "OS: Titan Linux 0.1.0 (TIT\u00c1N) x86_64\nHost: titan\n"
+    r"fastfetch": "OS: Titan Linux 1.8 (TIT\u00c1N) x86_64\nHost: titan\n"
                   "Kernel: 6.18.54-1-titanlinux\n",
     r"gnome-shell": "SI-GNOME\n",
     r"usr/bin/kitty": "SI-KITTY\n",
@@ -1121,9 +1121,9 @@ def main() -> int:
         # el os-release de verdad la lleva, pero aqui se compone.
         "usr/lib/os-release": (
             "NAME=\"Titan Linux\"\n"
-            "PRETTY_NAME=\"Titan Linux 0.1.0 (TIT\u00c1N)\"\n"
-            "VERSION_ID=\"0.1.0\"\n"
-            "VERSION=\"0.1.0 (TIT\u00c1N)\"\n"
+            "PRETTY_NAME=\"Titan Linux 1.8 (TIT\u00c1N)\"\n"
+            "VERSION_ID=\"1.8\"\n"
+            "VERSION=\"1.8 (TIT\u00c1N)\"\n"
             "ID=arch\n"
             "ID_LIKE=arch\n"
             "ANSI_COLOR=\"38;2;56;214;255\"\n"
@@ -1131,9 +1131,9 @@ def main() -> int:
         ),
         "etc/titan-release": (
             "NAME=Titan Linux\n"
-            "PRETTY_NAME=Titan Linux 0.1.0 (TIT\u00c1N)\n"
-            "VERSION=0.1.0 (TIT\u00c1N)\n"
-            "VERSION_ID=0.1.0\n"
+            "PRETTY_NAME=Titan Linux 1.8 (TIT\u00c1N)\n"
+            "VERSION=1.8 (TIT\u00c1N)\n"
+            "VERSION_ID=1.8\n"
             "VARIANT=installed\n"
             "ID=arch\n"
             "ID_LIKE=arch\n"
@@ -1482,11 +1482,11 @@ esac
         # 'OS:'. Con LC_ALL=C sale 'OS:'. Leido de un arranque de verdad.
         "fastfetch": "#!/bin/sh\n"
         "if [ \"${LC_ALL:-}\" = \"C\" ]; then\n"
-        r"  printf 'OS: Titan Linux 0.1.0 (TIT\303\211N) x86_64\n'" "\n"
+        r"  printf 'OS: Titan Linux 1.8 (TIT\303\211N) x86_64\n'" "\n"
         "  printf 'Host: titan\n'\n"
         "  printf 'Kernel: 6.18.54-1-titanlinux\n'\n"
         "else\n"
-        r"  printf 'Sistema: Titan Linux 0.1.0 (TIT\303\211N) x86_64\n'" "\n"
+        r"  printf 'Sistema: Titan Linux 1.8 (TIT\303\211N) x86_64\n'" "\n"
         "  printf 'Anfitrion: titan\n'\n"
         "  printf 'Nucleo: 6.18.54-1-titanlinux\n'\n"
         "fi\n",

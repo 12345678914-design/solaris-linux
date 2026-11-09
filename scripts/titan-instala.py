@@ -15,7 +15,7 @@ punta, sin tocar el teclado de nadie:
      instalado nada.
 
 Uso:
-  ./scripts/titan-instala.sh --iso out/titan-linux-0.1.0-x86_64.iso
+  ./scripts/titan-instala.sh --iso out/solaris-linux-1.8-x86_64.iso
   ./scripts/titan-instala.sh --iso ... --bios      # arranque por BIOS
   ./scripts/titan-instala.sh --iso ... --solo-instalar   # no prueba arrancar
 

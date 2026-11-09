@@ -20,6 +20,12 @@ Rectangle {
     border.width: 1
     clip: true
 
+    // Absorber clics dentro de la tarjeta para evitar que caigan en el fondo y cierren el Centro de Control
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {}
+    }
+
     // Brillo especular superior del cristal
     Rectangle {
         anchors.top: parent.top
@@ -556,37 +562,44 @@ Rectangle {
                 width: parent.width
                 height: 32
 
-                Row {
+                // Botón Volver con área generosa (flecha + título interactivo)
+                Rectangle {
+                    id: backWifiBtn
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
+                    width: backWifiRow.implicitWidth + 16
+                    height: 30
+                    radius: 8
+                    color: backWifiMouse.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
 
-                    Rectangle {
-                        width: 28; height: 28; radius: 14
-                        color: backWifiMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.08)
+                    Row {
+                        id: backWifiRow
+                        anchors.centerIn: parent
+                        spacing: 6
 
                         Text {
-                            anchors.centerIn: parent
                             text: "‹"
-                            color: titanTheme.contentTextPrimary
-                            font.pixelSize: 20
+                            color: titanTheme.accent
+                            font.pixelSize: 22
                             font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        MouseArea {
-                            id: backWifiMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: shellBackend.setControlCenterPage(0)
+                        Text {
+                            text: "Wi-Fi"
+                            color: titanTheme.contentTextPrimary
+                            font.pixelSize: 15
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
 
-                    Text {
-                        text: "Wi-Fi"
-                        color: titanTheme.contentTextPrimary
-                        font.pixelSize: 15
-                        font.bold: true
-                        anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        id: backWifiMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: shellBackend.setControlCenterPage(0)
                     }
                 }
 
@@ -906,37 +919,44 @@ Rectangle {
                 width: parent.width
                 height: 32
 
-                Row {
+                // Botón Volver con área generosa (flecha + título interactivo)
+                Rectangle {
+                    id: backBtBtn
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
+                    width: backBtRow.implicitWidth + 16
+                    height: 30
+                    radius: 8
+                    color: backBtMouse.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
 
-                    Rectangle {
-                        width: 28; height: 28; radius: 14
-                        color: backBtMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.08)
+                    Row {
+                        id: backBtRow
+                        anchors.centerIn: parent
+                        spacing: 6
 
                         Text {
-                            anchors.centerIn: parent
                             text: "‹"
-                            color: titanTheme.contentTextPrimary
-                            font.pixelSize: 20
+                            color: titanTheme.accent
+                            font.pixelSize: 22
                             font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        MouseArea {
-                            id: backBtMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: shellBackend.setControlCenterPage(0)
+                        Text {
+                            text: "Bluetooth"
+                            color: titanTheme.contentTextPrimary
+                            font.pixelSize: 15
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
 
-                    Text {
-                        text: "Bluetooth"
-                        color: titanTheme.contentTextPrimary
-                        font.pixelSize: 15
-                        font.bold: true
-                        anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        id: backBtMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: shellBackend.setControlCenterPage(0)
                     }
                 }
 

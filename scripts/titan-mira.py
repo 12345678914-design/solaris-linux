@@ -48,7 +48,7 @@ os.chdir(DISTRO)
 
 OVMF_CODE = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
 OVMF_VARS = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
-ISO_POR_DEFECTO = "out/titan-linux-0.1.0-x86_64.iso"
+ISO_POR_DEFECTO = "out/solaris-linux-1.8-x86_64.iso"
 
 
 def cargar_serial():

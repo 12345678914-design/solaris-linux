@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Titan Linux 0.1 - lista de paquetes de la ISO en vivo.
+# Titan Linux 1.8 - lista de paquetes de la ISO en vivo.
 #
 # Criterio: lo minimo para que un Titan Linux arranque y sirva para trabajar
 # desde la consola, mas la cadena de herramientas que el proyecto necesita.
@@ -188,6 +188,8 @@ mesa
 mesa-utils
 vulkan-intel
 vulkan-radeon
+vulkan-nouveau
+vulkan-swrast
 kitty
 pcmanfm-qt
 ttf-dejavu

@@ -11,6 +11,28 @@ en **Qt 6 / QML** con aspecto macOS.
 > técnica ampliada (kernel, ISO, verificaciones y arquitectura) está en
 > [`README.en.md`](README.en.md).
 
+## Novedades de Solaris Linux 1.8: drivers y compatibilidad
+
+Esta versión amplía el soporte de hardware y el arranque en equipos modestos,
+máquinas virtuales y GPUs sin aceleración 3D:
+
+- **Nuevos drivers Vulkan**: `vulkan-nouveau` para las GPU NVIDIA con el driver
+  libre Nouveau y `vulkan-swrast` como respaldo de renderizado por software.
+- **Gráficos**: `mesa`, `vulkan-intel`, `vulkan-radeon`, `intel-media-driver` y
+  `libva-intel-driver` para aceleración Intel/AMD; `mesa-utils` para diagnóstico.
+- **Firmware**: `linux-firmware`, `linux-firmware-whence`, `sof-firmware`,
+  `alsa-firmware` e `intel-ucode` para Wi-Fi, Bluetooth, audio y microcódigo.
+- **Red y Bluetooth**: `networkmanager`, `wpa_supplicant`, `iw`, `bluez` y
+  `bluez-utils`.
+- **Audio**: PipeWire con `pipewire-pulse`, `pipewire-alsa`, `pipewire-jack` y
+  `wireplumber`.
+- **Modo compatibilidad gráfica**: nueva entrada de arranque (`titan.compat=1
+  nomodeset`) para QEMU/KVM, VMware, VirtualBox, Hyper-V, Xen, Intel Celeron y
+  equipos sin `/dev/dri/renderD*`. Usa pixman/llvmpipe, fuerza renderizado por
+  software y reintenta automáticamente si falla el arranque acelerado.
+- **Kernel 6.18.54 LTS**: incluye la base de drivers de Arch Linux (VirtIO,
+  NVMe/AHCI, USB, Ethernet Intel/Realtek, Wi-Fi y Bluetooth habituales).
+
 ## Contenido del repositorio
 
 - `apps/` — aplicaciones propias: `titan-shell`, `titan-finder`,
@@ -84,7 +106,7 @@ El script realiza automáticamente estas tareas:
 5. Genera la ISO final en:
 
    ```text
-   out/solaris-linux-0.1.0-x86_64.iso
+   out/solaris-linux-1.8-x86_64.iso
    ```
 
 ### Si no existe el paquete del kernel
@@ -109,6 +131,21 @@ sudo ./scripts/build-iso.sh --no-kernel
 ```
 
 ## Paso 4: probar la ISO en QEMU
+
+Si ya tienes la ISO publicada (por ejemplo, después de unir las partes del
+release), puedes arrancarla directamente con:
+
+```bash
+qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4096 \
+  -machine q35 -device virtio-vga \
+  -cdrom "solaris-linux-1.8-x86_64.iso"
+```
+
+> `-enable-kvm` requiere `/dev/kvm` y permisos sobre él. Si no está disponible,
+> elimina esa opción. `-machine q35` arranca en modo BIOS; para UEFI añade la
+> BIOS de OVMF (`-bios /usr/share/edk2/x64/OVMF.4m.fd`).
+
+También puedes usar el script del repositorio, que detecta la ISO compilada:
 
 ```bash
 ./scripts/run-qemu.sh

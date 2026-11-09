@@ -1,6 +1,6 @@
 # /etc/profile.d/10-titan.sh
 # shellcheck shell=bash
-# Titan Linux 0.1 - entorno de shell de la ISO en vivo.
+# Titan Linux 1.8 - entorno de shell de la ISO en vivo.
 #
 # Define el prompt, los alias comodos y el mensaje de bienvenida. Lo carga
 # bash en cada shell de login (que es lo que arranca getty con autologin).

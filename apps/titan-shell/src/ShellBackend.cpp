@@ -575,9 +575,11 @@ void ShellBackend::scanWifi()
     // Asegurarse de que el Wi-Fi esté desbloqueado y activo
     QProcess::startDetached(QStringLiteral("rfkill"), {QStringLiteral("unblock"), QStringLiteral("wifi")});
     QProcess::startDetached(QStringLiteral("nmcli"), {QStringLiteral("radio"), QStringLiteral("wifi"), QStringLiteral("on")});
+    QProcess::startDetached(QStringLiteral("nmcli"), {QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("rescan")});
 
     QProcess *proc = new QProcess(this);
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, proc](int exitCode, QProcess::ExitStatus) {
+        Q_UNUSED(exitCode);
         QByteArray out = proc->readAllStandardOutput();
         proc->deleteLater();
         m_wifiScanning = false;
@@ -586,21 +588,27 @@ void ShellBackend::scanWifi()
         QList<QVariantMap> found;
         QSet<QString> seenSsids;
 
-        if (exitCode == 0 && !out.isEmpty()) {
+        if (!out.isEmpty()) {
             QString text = QString::fromUtf8(out);
             QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
             for (const QString &line : lines) {
-                QStringList fields = line.split(QLatin1Char(':'));
+                // nmcli -t escapa dos puntos dentro del SSID como \:
+                QString unescaped = line;
+                unescaped.replace(QStringLiteral("\\:"), QStringLiteral("__COLON__"));
+                QStringList fields = unescaped.split(QLatin1Char(':'));
                 if (fields.size() >= 3) {
                     bool inUse = fields.at(0).trimmed() == QStringLiteral("*");
-                    QString ssid = fields.at(1).trimmed();
+                    QString rawSsid = fields.at(1);
+                    QString ssid = rawSsid.replace(QStringLiteral("__COLON__"), QStringLiteral(":")).trimmed();
                     if (ssid.isEmpty() || ssid == QStringLiteral("--")) continue;
                     if (seenSsids.contains(ssid)) continue;
                     seenSsids.insert(ssid);
 
                     int signal = fields.at(2).trimmed().toInt();
                     QString security = fields.size() > 3 ? fields.at(3).trimmed() : QString();
-                    if (security.isEmpty()) security = QStringLiteral("Abierta");
+                    if (security.isEmpty() || security == QStringLiteral("--")) {
+                        security = QStringLiteral("Abierta");
+                    }
 
                     QVariantMap net;
                     net[QStringLiteral("ssid")] = ssid;
@@ -666,7 +674,7 @@ void ShellBackend::scanWifi()
         emit wifiNetworksChanged();
     });
 
-    proc->start(QStringLiteral("nmcli"), {QStringLiteral("--rescan"), QStringLiteral("auto"), QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"), QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list")});
+    proc->start(QStringLiteral("nmcli"), {QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"), QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list")});
 }
 
 void ShellBackend::connectWifi(const QString &ssid, const QString &password)

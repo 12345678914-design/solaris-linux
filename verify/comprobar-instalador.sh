@@ -3033,9 +3033,9 @@ tildes="$(printf '\303\241')"   # 'a' con tilde, en UTF-8
 os_release_live="${lab_n}/os-release-del-live"
 {
   printf 'NAME="Titan Linux"\n'
-  printf 'PRETTY_NAME="Titan Linux 0.1.0 (TIT%sN)"\n' "${tildes}"
-  printf 'VERSION_ID="0.1.0"\n'
-  printf 'VERSION="0.1.0 (TIT%sN)"\n' "${tildes}"
+  printf 'PRETTY_NAME="Titan Linux 1.8 (TIT%sN)"\n' "${tildes}"
+  printf 'VERSION_ID="1.8"\n'
+  printf 'VERSION="1.8 (TIT%sN)"\n' "${tildes}"
   # ID=arch es deliberado: Titan Linux es una derivada de Arch y pacman, los
   # hooks y las herramientas de /etc dependen de ese identificador.
   printf 'ID=arch\n'

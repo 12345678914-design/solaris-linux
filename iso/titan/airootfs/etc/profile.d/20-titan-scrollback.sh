@@ -1,7 +1,7 @@
 # /etc/profile.d/20-titan-scrollback.sh
 # shellcheck shell=bash
 #
-# Titan Linux 0.1 - historial de la salida en la consola de texto.
+# Titan Linux 1.8 - historial de la salida en la consola de texto.
 #
 # Este fichero envuelve la shell de tty1 dentro de una sesion de tmux para que
 # la salida que se sale de la pantalla se pueda volver a leer. El porque esta
