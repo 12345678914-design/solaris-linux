@@ -11,7 +11,7 @@ en **Qt 6 / QML** con aspecto macOS.
 > técnica ampliada (kernel, ISO, verificaciones y arquitectura) está en
 > [`README.en.md`](README.en.md).
 
-## Novedades de Solaris Linux 1.8: drivers y compatibilidad
+## ACTUALIZACIÓN: ABIERTAS COMPATIBILIDADES
 
 Esta versión amplía el soporte de hardware y el arranque en equipos modestos,
 máquinas virtuales y GPUs sin aceleración 3D:

@@ -4,7 +4,7 @@ Esta carpeta contiene todo el código fuente de **Solaris Linux**, sus aplicacio
 
 ---
 
-## 🆕 Novedades de la versión 1.8
+## 🆕 ACTUALIZACIÓN: ABIERTAS COMPATIBILIDADES
 
 - **Nuevos drivers Vulkan**: `vulkan-nouveau` (NVIDIA Nouveau) y `vulkan-swrast`
   (renderizado por software).
