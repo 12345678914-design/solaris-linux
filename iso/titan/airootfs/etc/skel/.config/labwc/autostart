@@ -22,15 +22,31 @@ fi
 # 0.2 Desbloquear radio Wi-Fi en el arranque si existe hardware inalámbrico
 (sleep 1 && rfkill unblock wifi 2>/dev/null && nmcli radio wifi on 2>/dev/null) &
 
-# 1. Fondo de pantalla (capa LayerBackground)
-if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
-    /usr/local/bin/titan-desktop --escritorio >/tmp/titan-desktop.log 2>&1 &
-fi
+# 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
+lanzar_titan_desktop() {
+    if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
+        /usr/local/bin/titan-desktop --escritorio >/tmp/titan-desktop.log 2>&1
+        local ret=$?
+        if [ $ret -ne 0 ]; then
+            echo "Aviso: titan-desktop salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-desktop.log
+            QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>/tmp/titan-desktop.log 2>&1
+        fi
+    fi
+}
+(lanzar_titan_desktop) &
 
-# 2. Solaris Shell (TopBar, Dock flotante, Iconos y Launchpad)
-if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
-    /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1 &
-fi
+# 2. Solaris Shell (TopBar, Dock flotante, Iconos y Launchpad) con autorecuperacion
+lanzar_titan_shell() {
+    if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
+        /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1
+        local ret=$?
+        if [ $ret -ne 0 ]; then
+            echo "Aviso: titan-shell salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-shell.log
+            QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>/tmp/titan-shell.log 2>&1
+        fi
+    fi
+}
+(lanzar_titan_shell) &
 
 # 3. Exportar variables de entorno en segundo plano para terminales y servicios
 (

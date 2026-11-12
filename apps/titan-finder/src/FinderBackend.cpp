@@ -22,6 +22,8 @@
 #include <QDrag>
 #include <QMimeData>
 #include <QPixmap>
+#include <QGuiApplication>
+#include <QClipboard>
 
 static QString resolveFinderBinary(const QString &program)
 {
@@ -874,21 +876,108 @@ static bool copyPathRecursively(const QString &srcFilePath, const QString &tgtFi
 void FinderBackend::copyItem(const QString &path)
 {
     if (path.isEmpty() || (!QFile::exists(path) && !QDir(path).exists())) return;
-    m_clipboardPath = path;
+    copyItems(QStringList() << path);
+}
+
+void FinderBackend::copyItems(const QStringList &paths)
+{
+    if (paths.isEmpty()) return;
+    m_clipboardPath = paths.first();
+    QMimeData *mime = new QMimeData();
+    QList<QUrl> urls;
+    for (const QString &p : paths) {
+        if (QFile::exists(p) || QDir(p).exists()) {
+            urls.append(QUrl::fromLocalFile(p));
+        }
+    }
+    mime->setUrls(urls);
+    mime->setText(paths.join(QLatin1Char('\n')));
+    QGuiApplication::clipboard()->setMimeData(mime);
     emit clipboardChanged();
+}
+
+bool FinderBackend::deleteItems(const QStringList &paths)
+{
+    bool allOk = true;
+    for (const QString &p : paths) {
+        if (!deleteItem(p)) {
+            allOk = false;
+        }
+    }
+    refresh();
+    return allOk;
+}
+
+bool FinderBackend::moveItems(const QStringList &paths, const QString &targetDir)
+{
+    QString destDir = targetDir.isEmpty() ? m_currentPath : targetDir;
+    QFileInfo destInfo(destDir);
+    if (!destInfo.isDir()) destDir = m_currentPath;
+
+    bool allOk = true;
+    for (const QString &p : paths) {
+        QFileInfo fi(p);
+        if (!fi.exists()) continue;
+        QString destPath = destDir + QLatin1Char('/') + fi.fileName();
+        if (destPath != p) {
+            if (!QFile::rename(p, destPath)) {
+                if (copyPathRecursively(p, destPath)) {
+                    deleteItem(p);
+                } else {
+                    allOk = false;
+                }
+            }
+        }
+    }
+    refresh();
+    return allOk;
 }
 
 bool FinderBackend::paste(const QString &destinationDir)
 {
-    if (m_clipboardPath.isEmpty()) return false;
-    QFileInfo srcInfo(m_clipboardPath);
-    if (!srcInfo.exists()) return false;
-
     QString destDir = destinationDir.isEmpty() ? m_currentPath : destinationDir;
     QFileInfo destDirInfo(destDir);
     if (!destDirInfo.isDir()) {
         destDir = m_currentPath;
     }
+
+    const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+    if (mime && mime->hasUrls()) {
+        bool anyPasted = false;
+        for (const QUrl &url : mime->urls()) {
+            QString srcPath = url.toLocalFile();
+            if (srcPath.isEmpty() || (!QFile::exists(srcPath) && !QDir(srcPath).exists())) continue;
+
+            QFileInfo srcInfo(srcPath);
+            QString baseName = srcInfo.completeBaseName();
+            QString suffix = srcInfo.suffix();
+            QString destName = srcInfo.fileName();
+            QString target = destDir + QLatin1Char('/') + destName;
+
+            int counter = 1;
+            while (QFile::exists(target) || QDir(target).exists()) {
+                if (srcInfo.isDir() || suffix.isEmpty()) {
+                    destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
+                } else {
+                    destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
+                }
+                target = destDir + QLatin1Char('/') + destName;
+                counter++;
+            }
+
+            if (copyPathRecursively(srcPath, target)) {
+                anyPasted = true;
+            }
+        }
+        if (anyPasted) {
+            refresh();
+            return true;
+        }
+    }
+
+    if (m_clipboardPath.isEmpty()) return false;
+    QFileInfo srcInfo(m_clipboardPath);
+    if (!srcInfo.exists()) return false;
 
     QString baseName = srcInfo.completeBaseName();
     QString suffix = srcInfo.suffix();

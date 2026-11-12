@@ -69,11 +69,13 @@ class ShellBackend : public QObject
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QVariantList wallpapers READ wallpapers NOTIFY wallpapersChanged)
     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY currentWallpaperChanged)
+    Q_PROPERTY(QString blurredWallpaper READ blurredWallpaper NOTIFY blurredWallpaperChanged)
     Q_PROPERTY(QVariantList notifications READ notifications NOTIFY notificationsChanged)
     Q_PROPERTY(int unreadNotificationCount READ unreadNotificationCount NOTIFY notificationsChanged)
     Q_PROPERTY(bool notificationCenterVisible READ notificationCenterVisible WRITE setNotificationCenterVisible NOTIFY notificationCenterVisibleChanged)
     Q_PROPERTY(bool islandActive READ islandActive NOTIFY islandChanged)
     Q_PROPERTY(QVariantMap currentIslandNotification READ currentIslandNotification NOTIFY islandChanged)
+    Q_PROPERTY(int islandQueueCount READ islandQueueCount NOTIFY islandChanged)
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
@@ -127,6 +129,7 @@ public:
 
     QVariantList wallpapers() const;
     QString currentWallpaper() const;
+    QString blurredWallpaper() const { return QString(); }
     
     Q_INVOKABLE void toggleLauncher();
     Q_INVOKABLE void openLauncher();
@@ -161,6 +164,7 @@ public:
     void setNotificationCenterVisible(bool visible);
     bool islandActive() const { return m_islandActive; }
     QVariantMap currentIslandNotification() const { return m_currentIslandNotification; }
+    int islandQueueCount() const { return 0; }
 
     Q_INVOKABLE void toggleNotificationCenter();
     Q_INVOKABLE void closeNotificationCenter();
@@ -226,6 +230,7 @@ signals:
     void volumeChanged();
     void wallpapersChanged();
     void currentWallpaperChanged();
+    void blurredWallpaperChanged();
     void notificationsChanged();
     void notificationCenterVisibleChanged();
     void islandChanged();

@@ -1,0 +1,8 @@
+/* Permitir la ejecución de Calamares con privilegios de root sin contraseña */
+polkit.addRule(function(action, subject) {
+    if ((action.id == "com.github.calamares.calamares" ||
+         action.id == "org.freedesktop.policykit.exec") &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

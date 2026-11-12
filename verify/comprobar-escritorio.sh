@@ -114,6 +114,13 @@ else
     reportar_fallo "titan-video" "Fallo al inicializar: ${out}"
 fi
 
+# 13. Comprobación de titan-installer (Instalador Nativo Solaris Linux)
+if out=$(apps/titan-installer/titan-installer --comprobar 2>&1); then
+    reportar_ok "titan-installer" "Instalador nativo gráfico QML validado offscreen"
+else
+    reportar_fallo "titan-installer" "Fallo al inicializar: ${out}"
+fi
+
 # 13. Comprobación de binarios sincronizados en airootfs
 echo -e "\n${AZUL}=== COMPROBACIÓN DE BINARIOS EN AIROOTFS ===${SIN_COLOR}"
 binarios=(
@@ -130,6 +137,7 @@ binarios=(
     "titan-calendar"
     "titan-clock"
     "titan-video"
+    "titan-installer"
 )
 
 for b in "${binarios[@]}"; do

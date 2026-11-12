@@ -1,0 +1,5 @@
+# Permitir al usuario live ejecutar Calamares, titan-installer e instalar sin requerir contraseña
+Defaults:titan !authenticate
+Defaults:titan setenv
+Defaults env_keep += "WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE QT_QPA_PLATFORM"
+titan ALL=(ALL:ALL) NOPASSWD: ALL

@@ -106,6 +106,32 @@ if [ ! -e /dev/dri/renderD* ]; then
   SIN_ACCEL_3D=1
 fi
 
+# 3.1 Detección detallada de GPUs físicas (Intel, AMD, NVIDIA) y topología de gráficos híbridos
+ES_INTEL=0
+ES_AMD=0
+ES_NVIDIA=0
+if command -v lspci >/dev/null 2>&1; then
+  lspci | grep -qiE "(vga|display).*intel" && ES_INTEL=1
+  lspci | grep -qiE "(vga|display).*(amd|ati|radeon)" && ES_AMD=1
+  lspci | grep -qiE "(vga|3d).*nvidia" && ES_NVIDIA=1
+elif [ -e /dev/nvidia0 ] || (command -v lsmod >/dev/null 2>&1 && lsmod | grep -q "^nvidia"); then
+  ES_NVIDIA=1
+fi
+
+ES_HIBRIDA=0
+if [ "${ES_NVIDIA}" -eq 1 ] && { [ "${ES_INTEL}" -eq 1 ] || [ "${ES_AMD}" -eq 1 ]; }; then
+  ES_HIBRIDA=1
+fi
+
+# Detectar qué tarjeta DRM tiene conectada físicamente la pantalla (eDP-1 en laptop, HDMI/DP en sobremesa)
+CARD_PANTALLA=""
+for status_file in /sys/class/drm/card*-*/status; do
+  if [ -f "${status_file}" ] && grep -q "^connected" "${status_file}" 2>/dev/null; then
+    CARD_PANTALLA="$(echo "${status_file}" | sed -E 's|.*/(card[0-9]+)-.*|\1|')"
+    break
+  fi
+done
+
 # 4. Asignación de hilos de renderizado por software según núcleos de CPU (óptimo para Intel Celeron)
 NCORES=$(nproc 2>/dev/null || echo 2)
 export LP_NUM_THREADS="${NCORES}"
@@ -125,8 +151,23 @@ if [ "${ES_COMPAT}" -eq 1 ] || [ "${ES_VM}" -eq 1 ] || [ "${SIN_ACCEL_3D}" -eq 1
   echo "Titan Linux: activando capa de compatibilidad universal (renderizado por software/pixman)..."
   aplicar_capa_compatibilidad
 else
-  # En hardware real con GPU física (Intel, AMD, NVIDIA), usar aceleración normal con cursor visible garantizado
+  # En hardware real con GPU física (Intel, AMD, NVIDIA)
   export WLR_NO_HARDWARE_CURSORS=1
+  if [ "${ES_HIBRIDA}" -eq 1 ]; then
+    echo "Titan Linux: Laptop con gráficos híbridos detectada (Intel/AMD + NVIDIA RTX/GTX)."
+    echo "-> Asignando pantalla principal a la GPU integrada (PRIME Offload habilitado para NVIDIA)."
+    if [ -n "${CARD_PANTALLA}" ] && [ -e "/dev/dri/${CARD_PANTALLA}" ]; then
+      export WLR_DRM_DEVICES="/dev/dri/${CARD_PANTALLA}"
+    fi
+    # No forzar GBM_BACKEND=nvidia-drm en híbridas para permitir renderizado nativo en el panel
+  elif [ "${ES_NVIDIA}" -eq 1 ]; then
+    echo "Titan Linux: GPU NVIDIA dedicada detectada (RTX/GTX) - configurando backend Wayland oficial (EGL/GBM)..."
+    export LIBVA_DRIVER_NAME=nvidia
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+    export GBM_BACKEND=nvidia-drm
+  else
+    echo "Titan Linux: GPU Intel/AMD detectada - aceleración OpenGL/Vulkan nativa vía Mesa."
+  fi
 fi
 
 export QT_QPA_PLATFORM="wayland;xcb"

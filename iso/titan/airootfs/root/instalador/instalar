@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Titan / Solaris Linux - Lanzador del Instalador Gráfico
+# Detecta discos disponibles, prepara el entorno gráfico y ejecuta el instalador
+# ==============================================================================
+
+set -euo pipefail
+
+ROJO='\033[0;31m'
+VERDE='\033[0;32m'
+AMARILLO='\033[1;33m'
+AZUL='\033[0;34m'
+SIN_COLOR='\033[0m'
+
+echo -e "${AZUL}=== INSTALADOR SOLARIS / TITAN LINUX ===${SIN_COLOR}"
+
+# 1. Elevación automática de privilegios con sudo si es ejecutado por el usuario live
+if [ "$(id -u)" -ne 0 ]; then
+    echo -e "${AZUL}[ INFO ] Elevando privilegios administrativos...${SIN_COLOR}"
+    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+    if command -v xhost >/dev/null 2>&1; then
+        xhost +si:localuser:root >/dev/null 2>&1 || true
+    fi
+    exec sudo -E "$0" "$@" 2>/dev/null || exec sudo env WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" DISPLAY="${DISPLAY:-}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-Titan:labwc}" QT_QPA_PLATFORM="${QT_QPA_PLATFORM}" "$0" "$@" 2>/dev/null || exec sudo "$0" "$@"
+fi
+
+# 2. Detección y validación de unidades de disco duro / SSD de destino
+echo -e "${AZUL}[ INFO ] Detectando unidades de almacenamiento disponibles...${SIN_COLOR}"
+
+DISCOS_ENCONTRADOS=()
+while IFS= read -r dev_line; do
+    [ -z "${dev_line}" ] && continue
+    DISCOS_ENCONTRADOS+=("${dev_line}")
+done < <(lsblk -dpno NAME,SIZE,TYPE,TRAN,MODEL 2>/dev/null | grep -E '\sdisk\s' | grep -vE '/dev/loop|/dev/zram|/dev/ram|/dev/fd[0-9]|/dev/fd' || true)
+
+TOTAL_DISCOS="${#DISCOS_ENCONTRADOS[@]}"
+
+if [ "${TOTAL_DISCOS}" -eq 0 ]; then
+    echo -e "${ROJO}[ ERROR ] No se ha detectado ningún disco duro o SSD disponible para instalar.${SIN_COLOR}"
+    echo -e "${AMARILLO}Por favor conecte un disco duro, active su unidad en la BIOS o configure un disco virtual en la VM.${SIN_COLOR}"
+    if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send -u critical "Instalador Solaris Linux" "No se detectó ningún disco duro o SSD de destino." || true
+        fi
+    fi
+    exit 1
+fi
+
+echo -e "${VERDE}[ OK ] Discos de almacenamiento detectados (${TOTAL_DISCOS}):${SIN_COLOR}"
+for d in "${DISCOS_ENCONTRADOS[@]}"; do
+    echo -e "   -> ${AMARILLO}${d}${SIN_COLOR}"
+done
+
+# 3. Preparación de variables de entorno para Qt6 / Wayland bajo sudo
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    export QT_QPA_PLATFORM="wayland;xcb"
+    export XDG_SESSION_TYPE="wayland"
+fi
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+
+# 4. Asegurar compatibilidad de librerías Boost y configuración si Calamares existe
+for lib in /usr/lib/libboost_*.so.1.92*; do
+    if [ -f "$lib" ]; then
+        base="${lib%%.1.92*}"
+        [ -e "${base}.1.91.0" ] || ln -sf "$(basename "$lib")" "${base}.1.91.0" 2>/dev/null || true
+    fi
+done
+
+if [ -d /usr/share/calamares-solaris ] && [ ! -f /etc/calamares/settings.conf ]; then
+    mkdir -p /etc/calamares
+    cp -rf /usr/share/calamares-solaris/* /etc/calamares/ 2>/dev/null || true
+fi
+
+# 5. Comprobación y ejecución del instalador gráfico
+# Prioridad 1: Instalador nativo Qt6 Solaris Linux (titan-installer)
+if [ -x /usr/local/bin/titan-installer ] || command -v titan-installer >/dev/null 2>&1; then
+    echo -e "${VERDE}[ OK ] Iniciando instalador gráfico de Solaris Linux (titan-installer)...${SIN_COLOR}"
+    exec titan-installer "$@"
+# Prioridad 2: Calamares si está disponible y sus librerías no presentan incompatibilidad
+elif command -v calamares >/dev/null 2>&1 && calamares --version >/dev/null 2>&1; then
+    echo -e "${VERDE}[ OK ] Iniciando interfaz gráfica de Calamares...${SIN_COLOR}"
+    exec calamares -d "$@"
+elif [ -x /usr/bin/calamares ] && /usr/bin/calamares --version >/dev/null 2>&1; then
+    echo -e "${VERDE}[ OK ] Iniciando interfaz gráfica de Calamares (/usr/bin/calamares)...${SIN_COLOR}"
+    exec /usr/bin/calamares -d "$@"
+# Prioridad 3: Asistente GUI alternativo o instalador base del sistema
+elif [ -x /root/instalador/ventana-gui.py ]; then
+    echo -e "${AMARILLO}[ AVISO ] Iniciando instalador gráfico Solaris (ventana-gui)...${SIN_COLOR}"
+    exec /root/instalador/ventana-gui.py "$@"
+elif [ -x /root/install.sh ]; then
+    echo -e "${AMARILLO}[ AVISO ] Iniciando instalador de consola de Titan...${SIN_COLOR}"
+    exec /root/install.sh "$@"
+else
+    echo -e "${ROJO}[ ERROR ] No se encontró ningún instalador ejecutable.${SIN_COLOR}"
+    exit 1
+fi

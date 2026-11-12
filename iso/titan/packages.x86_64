@@ -147,6 +147,11 @@ cryptsetup
 iw
 wpa_supplicant
 
+# --- Utilidades y soporte del Instalador Gráfico ---
+squashfs-tools
+ckbcomp
+hwinfo
+
 # --- Utilidades de la ISO en vivo ------------------------------------------
 # Entrada de red por DHCP en el live, con systemd-networkd.
 systemd-resolvconf
@@ -190,6 +195,21 @@ vulkan-intel
 vulkan-radeon
 vulkan-nouveau
 vulkan-swrast
+
+# --- Controladores Gráficos Modernos: NVIDIA, Intel y AMD ---
+nvidia-open
+nvidia-utils
+nvidia-settings
+nvidia-prime
+egl-wayland
+libva-nvidia-driver
+opencl-nvidia
+intel-media-driver
+libva-intel-driver
+xf86-video-amdgpu
+xf86-video-ati
+xf86-video-intel
+xf86-video-nouveau
 kitty
 pcmanfm-qt
 ttf-dejavu

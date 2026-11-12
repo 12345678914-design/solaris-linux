@@ -180,6 +180,19 @@ void LauncherBackend::loadApps()
             exec = exec.trimmed();
 
             if (nombre.isEmpty() || exec.isEmpty()) continue;
+
+            // En un sistema ya instalado no mostrar el instalador
+            bool isLive = QDir(QStringLiteral("/run/archiso")).exists();
+            if (!isLive) {
+                if (nombre.contains(QStringLiteral("Instalar"), Qt::CaseInsensitive) ||
+                    exec.contains(QStringLiteral("titan-installer")) ||
+                    exec.contains(QStringLiteral("instalar")) ||
+                    info.fileName().contains(QStringLiteral("instalar"), Qt::CaseInsensitive) ||
+                    info.fileName().contains(QStringLiteral("calamares"), Qt::CaseInsensitive)) {
+                    continue;
+                }
+            }
+
             if (exec.contains(QLatin1String("pcmanfm")) || info.fileName().contains(QLatin1String("pcmanfm"))) continue;
             if (exec.contains(QLatin1String("kitty")) || info.fileName().contains(QLatin1String("kitty"))) continue;
             if (exec.contains(QLatin1String("alacritty")) || info.fileName().contains(QLatin1String("alacritty"))) continue;

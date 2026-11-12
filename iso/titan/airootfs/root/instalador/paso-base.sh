@@ -237,6 +237,21 @@ paquetes_instalar() {
   read -r -a todos2 <<<"$(paquetes_escritorio)"
   read -r -a todos3 <<<"$(paquetes_apps)"
   todos+=("${todos2[@]}" "${todos3[@]}" tmux)
+
+  # Detección e instalación automática de drivers GPU (NVIDIA RTX/GTX, Intel, AMD)
+  local -a drivers_gpu=(mesa vulkan-swrast)
+  if command -v lspci >/dev/null 2>&1; then
+    if lspci 2>/dev/null | grep -qiE "(vga|3d).*nvidia"; then
+      drivers_gpu+=(nvidia-open nvidia-utils egl-wayland libva-nvidia-driver)
+    fi
+    if lspci 2>/dev/null | grep -qiE "(vga|display).*intel"; then
+      drivers_gpu+=(vulkan-intel intel-media-driver libva-intel-driver)
+    fi
+    if lspci 2>/dev/null | grep -qiE "(vga|display).*(amd|radeon)"; then
+      drivers_gpu+=(vulkan-radeon xf86-video-amdgpu)
+    fi
+  fi
+  todos+=("${drivers_gpu[@]}")
   # Sin repetir: el mismo paquete dos veces no rompe pacman, pero ensucia el
   # log y hace mas lento el calculo de dependencias.
   local -a unicos=()

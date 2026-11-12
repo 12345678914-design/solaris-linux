@@ -111,13 +111,17 @@ echo "root:1234" | chpasswd
 log "sudo: contrasena 1234 para el usuario titan"
 install -d -m 0750 /etc/sudoers.d
 cat >/etc/sudoers.d/10-titan <<'EOF'
-# Titan Linux: contrasena sudo para el usuario titan es 1234
+# Titan Linux: contrasena sudo para el usuario titan es 1234 y permisos para instalar
 Defaults lecture = never
+Defaults:titan !authenticate
+Defaults:titan setenv
+Defaults env_keep += "WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE QT_QPA_PLATFORM"
 titan ALL=(ALL:ALL) ALL
-titan ALL=(ALL:ALL) NOPASSWD: /usr/bin/mount, /usr/bin/umount
+titan ALL=(ALL:ALL) NOPASSWD: ALL
 EOF
 chmod 0440 /etc/sudoers.d/10-titan
 chown root:root /etc/sudoers.d/10-titan
+chmod 0440 /etc/sudoers.d/* 2>/dev/null || true
 # El prompt y los alias de /etc/profile.d/10-titan.sh tambien para shells
 # que no son de login.
 if [[ ! -f /home/titan/.bashrc ]]; then
@@ -175,6 +179,10 @@ for fichero in \
   }
 done
 
+if [[ -f /root/instalador/instalar && ! -f /usr/local/bin/instalar ]]; then
+  cp -p /root/instalador/instalar /usr/local/bin/instalar
+fi
+
 chmod 0755 /usr/local/bin/* 2>/dev/null || true
 
 install -d -m 0755 -o titan -g titan /home/titan/.config/labwc
@@ -211,6 +219,29 @@ if [[ -d /etc/skel/.config ]]; then
   cp -rf /etc/skel/.config/* /home/titan/.config/ 2>/dev/null || true
   chown -R titan:titan /home/titan/.config
 fi
+
+# Sincronizar accesos directos del escritorio (incluyendo el instalador Calamares)
+if [[ -d /etc/skel/Escritorio ]]; then
+  cp -rf /etc/skel/Escritorio/* /home/titan/Escritorio/ 2>/dev/null || true
+  chmod +x /home/titan/Escritorio/*.desktop 2>/dev/null || true
+  chown -R titan:titan /home/titan/Escritorio
+fi
+
+# Calamares: aplicar configuración personalizada de Solaris Linux
+if [[ -d /usr/share/calamares-solaris ]]; then
+  log "calamares: aplicando configuración personalizada de Solaris Linux"
+  mkdir -p /etc/calamares
+  cp -rf /usr/share/calamares-solaris/* /etc/calamares/
+fi
+
+# Calamares: compatibilidad de librerías Boost (enlace 1.91.0 -> 1.92.0)
+log "boost: configurando enlaces de compatibilidad para Calamares"
+for lib in /usr/lib/libboost_*.so.1.92*; do
+  if [[ -f "$lib" ]]; then
+    base="${lib%%.1.92*}"
+    [[ -e "${base}.1.91.0" ]] || ln -sf "$(basename "$lib")" "${base}.1.91.0"
+  fi
+done
 
 # Personalizar accesos directos estilo macOS (Finder, Terminal) y Firefox nativo
 log "aplicaciones: temas y nombres del sistema"
@@ -295,10 +326,8 @@ if [[ -f /etc/sudoers ]]; then
   chown root:root /etc/sudoers 2>/dev/null || true
 fi
 install -d -m 0750 -o root -g root /etc/sudoers.d
-if [[ -f /etc/sudoers.d/10-titan ]]; then
-  chmod 0440 /etc/sudoers.d/10-titan
-  chown root:root /etc/sudoers.d/10-titan
-fi
+chmod 0440 /etc/sudoers.d/* 2>/dev/null || true
+chown -R root:root /etc/sudoers.d 2>/dev/null || true
 
 # /tmp con sticky bit antimalware
 chmod 1777 /tmp /var/tmp

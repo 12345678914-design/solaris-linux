@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar Solaris Linux
+Name[es]=Instalar Solaris Linux
+Comment=Instalar Solaris Linux en el disco duro con Calamares
+Comment[es]=Instalar Solaris Linux en el disco duro con Calamares
+Exec=instalar
+Icon=system-software-install
+Terminal=false
+Categories=System;Qt;
+StartupNotify=true

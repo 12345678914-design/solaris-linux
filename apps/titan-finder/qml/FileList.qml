@@ -8,14 +8,83 @@ Rectangle {
 
     color: theme.contentBackground
 
+    focus: true
+
     property string selectedPath: ""
     property string selectedName: ""
     property bool selectedIsDir: false
     property var itemProperties: ({})
 
+    // Selección múltiple (Recuadro azul / Rubberband)
+    property var selectedPaths: []
+    property bool rubberBandActive: false
+    property real rbStartX: 0
+    property real rbStartY: 0
+    property real rbCurrentX: 0
+    property real rbCurrentY: 0
+
     property bool ctxVisible: false
     property real ctxX: 0
     property real ctxY: 0
+
+    // Atajos de teclado para selección múltiple
+    Keys.onPressed: (event) => {
+        if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) {
+            if (selectedPaths.length > 0) {
+                finderBackend.copyItems(selectedPaths)
+            } else if (selectedPath.length > 0) {
+                finderBackend.copyItem(selectedPath)
+            }
+            event.accepted = true
+        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
+            finderBackend.paste()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+            if (selectedPaths.length > 0) {
+                finderBackend.deleteItems(selectedPaths)
+                selectedPaths = []
+                selectedPath = ""
+            } else if (selectedPath.length > 0) {
+                finderBackend.deleteItem(selectedPath)
+                selectedPath = ""
+            }
+            event.accepted = true
+        }
+    }
+
+    function updateRubberBandSelection() {
+        var rx = Math.min(rbStartX, rbCurrentX)
+        var ry = Math.min(rbStartY, rbCurrentY)
+        var rw = Math.abs(rbCurrentX - rbStartX)
+        var rh = Math.abs(rbCurrentY - rbStartY)
+
+        var newSel = []
+        if (finderBackend.viewMode === "grid") {
+            var items = gridView.contentItem.children
+            for (var i = 0; i < items.length; ++i) {
+                var it = items[i]
+                if (!it || it.width === undefined || it.modelData === undefined) continue
+                var pt = it.mapToItem(fileListRoot, 0, 0)
+                if (rx < pt.x + it.width && rx + rw > pt.x && ry < pt.y + it.height && ry + rh > pt.y) {
+                    if (it.modelData.path) newSel.push(it.modelData.path)
+                }
+            }
+        } else {
+            var items = listView.contentItem.children
+            for (var i = 0; i < items.length; ++i) {
+                var it = items[i]
+                if (!it || it.width === undefined || it.modelData === undefined) continue
+                var pt = it.mapToItem(fileListRoot, 0, 0)
+                if (rx < pt.x + it.width && rx + rw > pt.x && ry < pt.y + it.height && ry + rh > pt.y) {
+                    if (it.modelData.path) newSel.push(it.modelData.path)
+                }
+            }
+        }
+        selectedPaths = newSel
+        if (newSel.length > 0) {
+            selectedPath = newSel[0]
+        }
+    }
 
     function showContextMenu(posX, posY) {
         ctxX = Math.max(10, Math.min(fileListRoot.width - 230, posX))
@@ -49,6 +118,74 @@ Rectangle {
                 drop.acceptProposedAction()
             }
         }
+    }
+
+    // Fondo para recuadro azul de selección múltiple y deselección al hacer clic
+    MouseArea {
+        id: bgMouseArea
+        anchors.fill: parent
+        z: 0
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        onPressed: (mouse) => {
+            fileListRoot.forceActiveFocus()
+            fileListRoot.ctxVisible = false
+
+            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
+            fileListRoot.selectedPaths = []
+            fileListRoot.selectedPath = ""
+            fileListRoot.selectedName = ""
+
+            if (mouse.button === Qt.LeftButton) {
+                fileListRoot.rbStartX = mouse.x
+                fileListRoot.rbStartY = mouse.y
+                fileListRoot.rbCurrentX = mouse.x
+                fileListRoot.rbCurrentY = mouse.y
+                fileListRoot.rubberBandActive = false
+            }
+        }
+
+        onPositionChanged: (mouse) => {
+            if (pressed && (mouse.buttons & Qt.LeftButton)) {
+                if (!fileListRoot.rubberBandActive) {
+                    if (Math.abs(mouse.x - fileListRoot.rbStartX) > 4 || Math.abs(mouse.y - fileListRoot.rbStartY) > 4) {
+                        fileListRoot.rubberBandActive = true
+                    }
+                }
+                if (fileListRoot.rubberBandActive) {
+                    fileListRoot.rbCurrentX = mouse.x
+                    fileListRoot.rbCurrentY = mouse.y
+                    fileListRoot.updateRubberBandSelection()
+                }
+            }
+        }
+
+        onReleased: (mouse) => {
+            fileListRoot.rubberBandActive = false
+        }
+
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton) {
+                fileListRoot.selectedPaths = []
+                fileListRoot.selectedPath = ""
+                fileListRoot.showContextMenu(mouse.x, mouse.y)
+            }
+        }
+    }
+
+    // Recuadro azul de selección múltiple (Rubberband selector)
+    Rectangle {
+        id: finderRubberBand
+        visible: fileListRoot.rubberBandActive
+        x: Math.min(fileListRoot.rbStartX, fileListRoot.rbCurrentX)
+        y: Math.min(fileListRoot.rbStartY, fileListRoot.rbCurrentY)
+        width: Math.abs(fileListRoot.rbCurrentX - fileListRoot.rbStartX)
+        height: Math.abs(fileListRoot.rbCurrentY - fileListRoot.rbStartY)
+        color: Qt.rgba(0.0, 0.48, 1.0, 0.22)
+        border.color: Qt.rgba(0.1, 0.55, 1.0, 0.88)
+        border.width: 1.5
+        radius: 3
+        z: 60
     }
 
     // Diálogo para renombrar archivo o carpeta estilo macOS
@@ -536,12 +673,166 @@ Rectangle {
             anchors.margins: 7
             spacing: 2
 
-            // 1. Abrir
+            // 1. COPIAR (Orden estricto solicitado: copiar-mover-eliminar)
             Rectangle {
                 width: parent.width
                 height: 28
                 radius: 6
-                visible: fileListRoot.selectedPath.length > 0
+                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
+                color: copyMouse.containsMouse ? theme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    spacing: 8
+                    Text { text: "📋"; color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
+                    Text {
+                        text: fileListRoot.selectedPaths.length > 1 ? ("Copiar (" + fileListRoot.selectedPaths.length + ")") : "Copiar"
+                        color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    text: "⌘C"
+                    color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
+                    font.pixelSize: 11
+                }
+
+                MouseArea {
+                    id: copyMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        fileListRoot.ctxVisible = false
+                        if (fileListRoot.selectedPaths.length > 0) {
+                            finderBackend.copyItems(fileListRoot.selectedPaths)
+                        } else {
+                            finderBackend.copyItem(fileListRoot.selectedPath)
+                        }
+                    }
+                }
+            }
+
+            // 2. MOVER (Orden estricto solicitado: copiar-mover-eliminar)
+            Rectangle {
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
+                color: moveMouse.containsMouse ? theme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    spacing: 8
+                    Text { text: "📦"; color: moveMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
+                    Text {
+                        text: fileListRoot.selectedPaths.length > 1 ? ("Mover al Escritorio (" + fileListRoot.selectedPaths.length + ")") : "Mover al Escritorio"
+                        color: moveMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                    }
+                }
+
+                MouseArea {
+                    id: moveMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        fileListRoot.ctxVisible = false
+                        var desktopDir = "/home/" + (finderBackend.currentPath.split('/')[2] || "titan") + "/Escritorio"
+                        if (fileListRoot.selectedPaths.length > 0) {
+                            finderBackend.moveItems(fileListRoot.selectedPaths, desktopDir)
+                            fileListRoot.selectedPaths = []
+                        } else {
+                            finderBackend.moveItems([fileListRoot.selectedPath], desktopDir)
+                        }
+                        fileListRoot.selectedPath = ""
+                    }
+                }
+            }
+
+            // 3. ELIMINAR (Orden estricto solicitado: copiar-mover-eliminar)
+            Rectangle {
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
+                color: deleteMouse.containsMouse ? Qt.rgba(0.9, 0.15, 0.15, 0.25) : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    spacing: 8
+                    Image {
+                        source: "qrc:/icons/trash.png"
+                        width: 15
+                        height: 15
+                        anchors.verticalCenter: parent.verticalCenter
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+                    Text {
+                        text: fileListRoot.selectedPaths.length > 1 ? ("Eliminar (" + fileListRoot.selectedPaths.length + ")") : "Eliminar (envía a la papelera)"
+                        color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextPrimary
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    text: "⌫"
+                    color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextSecondary
+                    font.pixelSize: 11
+                }
+
+                MouseArea {
+                    id: deleteMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        fileListRoot.ctxVisible = false
+                        if (fileListRoot.selectedPaths.length > 0) {
+                            finderBackend.deleteItems(fileListRoot.selectedPaths)
+                            fileListRoot.selectedPaths = []
+                        } else {
+                            finderBackend.deleteItem(fileListRoot.selectedPath)
+                        }
+                        fileListRoot.selectedPath = ""
+                    }
+                }
+            }
+
+            // Separador si hay elementos seleccionados
+            Rectangle {
+                width: parent.width - 12
+                height: 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: theme.glassBorder
+                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
+            }
+
+            // Abrir (para elemento individual)
+            Rectangle {
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
                 color: openMouse.containsMouse ? theme.accent : "transparent"
 
                 Row {
@@ -561,149 +852,18 @@ Rectangle {
                     onClicked: {
                         fileListRoot.ctxVisible = false
                         finderBackend.openItem(fileListRoot.selectedPath)
+                        fileListRoot.selectedPaths = []
+                        fileListRoot.selectedPath = ""
                     }
                 }
             }
 
-            // Separador tras Abrir
-            Rectangle {
-                width: parent.width - 12
-                height: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: theme.glassBorder
-                visible: fileListRoot.selectedPath.length > 0
-            }
-
-            // 2. Copiar
+            // Cambiar nombre (para elemento individual)
             Rectangle {
                 width: parent.width
                 height: 28
                 radius: 6
-                visible: fileListRoot.selectedPath.length > 0
-                color: copyMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📋"; color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Copiar"; color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌘C"
-                    color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: copyMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.copyItem(fileListRoot.selectedPath)
-                    }
-                }
-            }
-
-            // 3. Pegar
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                opacity: finderBackend.hasClipboard ? 1.0 : 0.4
-                color: pasteMouse.containsMouse && finderBackend.hasClipboard ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📥"; color: pasteMouse.containsMouse && finderBackend.hasClipboard ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Pegar"; color: pasteMouse.containsMouse && finderBackend.hasClipboard ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌘V"
-                    color: pasteMouse.containsMouse && finderBackend.hasClipboard ? "#ffffff" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: pasteMouse
-                    anchors.fill: parent
-                    enabled: finderBackend.hasClipboard
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.paste()
-                    }
-                }
-            }
-
-            // Separador
-            Rectangle {
-                width: parent.width - 12
-                height: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: theme.glassBorder
-                visible: fileListRoot.selectedPath.length > 0
-            }
-
-            // 4. Enviar al Escritorio (crear acceso directo)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPath.length > 0
-                color: sendDeskMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "🖥️"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Enviar al Escritorio"; color: sendDeskMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                MouseArea {
-                    id: sendDeskMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.sendToDesktop(fileListRoot.selectedPath)
-                    }
-                }
-            }
-
-            // Separador
-            Rectangle {
-                width: parent.width - 12
-                height: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: theme.glassBorder
-                visible: fileListRoot.selectedPath.length > 0
-            }
-
-            // 5. Cambiar nombre
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPath.length > 0
+                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
                 color: renameMouse.containsMouse ? theme.accent : "transparent"
 
                 Row {
@@ -730,11 +890,12 @@ Rectangle {
                 }
             }
 
-            // 5. Ver propiedades
+            // Ver propiedades (para elemento individual)
             Rectangle {
                 width: parent.width
                 height: 28
                 radius: 6
+                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
                 color: propMouse.containsMouse ? theme.accent : "transparent"
 
                 Row {
@@ -767,72 +928,12 @@ Rectangle {
                 }
             }
 
-            // Separador tras propiedades
-            Rectangle {
-                width: parent.width - 12
-                height: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: theme.glassBorder
-                visible: fileListRoot.selectedPath.length > 0
-            }
-
-            // 6. Eliminar (envía a la papelera)
+            // Acciones en fondo vacío
             Rectangle {
                 width: parent.width
                 height: 28
                 radius: 6
-                visible: fileListRoot.selectedPath.length > 0
-                color: deleteMouse.containsMouse ? Qt.rgba(0.9, 0.15, 0.15, 0.25) : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Image {
-                        source: "qrc:/icons/trash.png"
-                        width: 15
-                        height: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                    }
-                    Text {
-                        text: "Eliminar (envía a la papelera)"
-                        color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌫"
-                    color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: deleteMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.deleteItem(fileListRoot.selectedPath)
-                    }
-                }
-            }
-
-            // 7. Nueva carpeta (cuando se hace clic en fondo vacío)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPath.length === 0
+                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0
                 color: newFolderMouse.containsMouse ? theme.accent : "transparent"
 
                 Row {
@@ -855,23 +956,72 @@ Rectangle {
                     }
                 }
             }
-        }
-    }
 
-    // Fondo para clics en área vacía y menú contextual general
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.RightButton | Qt.LeftButton
-        onClicked: (mouse) => {
-            if (mouse.button === Qt.RightButton) {
-                fileListRoot.selectedPath = ""
-                fileListRoot.selectedName = ""
-                var pt = mapToItem(fileListRoot, mouse.x, mouse.y)
-                fileListRoot.showContextMenu(pt.x, pt.y)
-            } else {
-                fileListRoot.selectedPath = ""
-                fileListRoot.selectedName = ""
-                fileListRoot.ctxVisible = false
+            // Pegar (en fondo vacío)
+            Rectangle {
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0 && finderBackend.hasClipboard
+                color: pasteMouse.containsMouse ? theme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    spacing: 8
+                    Text { text: "📥"; color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
+                    Text { text: "Pegar"; color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    text: "⌘V"
+                    color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
+                    font.pixelSize: 11
+                }
+
+                MouseArea {
+                    id: pasteMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        fileListRoot.ctxVisible = false
+                        finderBackend.paste()
+                    }
+                }
+            }
+
+            // Abrir en terminal (en fondo vacío)
+            Rectangle {
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0
+                color: termMouse.containsMouse ? theme.accent : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    spacing: 8
+                    Text { text: "💻"; color: termMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
+                    Text { text: "Abrir en Terminal"; color: termMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
+                }
+
+                MouseArea {
+                    id: termMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        fileListRoot.ctxVisible = false
+                        finderBackend.openTerminal()
+                    }
+                }
             }
         }
     }
@@ -930,7 +1080,7 @@ Rectangle {
                 "text/plain": modelData.path
             }
 
-            property bool isSelected: fileListRoot.selectedPath === modelData.path
+            property bool isSelected: fileListRoot.selectedPaths.indexOf(modelData.path) !== -1 || (fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath === modelData.path)
 
             Rectangle {
                 anchors.fill: parent
@@ -987,6 +1137,9 @@ Rectangle {
                             pressX = mouse.x
                             pressY = mouse.y
                             pressedLeft = true
+                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
+                                fileListRoot.selectedPaths = [modelData.path]
+                            }
                             fileListRoot.selectedPath = modelData.path
                             fileListRoot.selectedName = modelData.name
                             fileListRoot.selectedIsDir = modelData.isDir
@@ -1020,20 +1173,31 @@ Rectangle {
                     }
 
                     onClicked: (mouse) => {
-                        fileListRoot.selectedPath = modelData.path
-                        fileListRoot.selectedName = modelData.name
-                        fileListRoot.selectedIsDir = modelData.isDir
+                        if (mouse.button === Qt.LeftButton) {
+                            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
+                            fileListRoot.selectedPaths = []
+                            fileListRoot.selectedPath = ""
+                            fileListRoot.ctxVisible = false
+                        } else if (mouse.button === Qt.RightButton) {
+                            // "disponible si da click derecho en cualquier miembro del grupo"
+                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
+                                fileListRoot.selectedPaths = [modelData.path]
+                            }
+                            fileListRoot.selectedPath = modelData.path
+                            fileListRoot.selectedName = modelData.name
+                            fileListRoot.selectedIsDir = modelData.isDir
 
-                        if (mouse.button === Qt.RightButton) {
                             var pt = mapToItem(fileListRoot, mouse.x, mouse.y)
                             fileListRoot.showContextMenu(pt.x, pt.y)
-                        } else {
-                            fileListRoot.ctxVisible = false
                         }
                     }
 
-                    onDoubleClicked: {
-                        finderBackend.openItem(modelData.path)
+                    onDoubleClicked: (mouse) => {
+                        if (mouse.button === Qt.LeftButton) {
+                            finderBackend.openItem(modelData.path)
+                            fileListRoot.selectedPaths = []
+                            fileListRoot.selectedPath = ""
+                        }
                     }
                 }
             }
@@ -1201,7 +1365,7 @@ Rectangle {
                     "text/plain": modelData.path
                 }
 
-                property bool isSelected: fileListRoot.selectedPath === modelData.path
+                property bool isSelected: fileListRoot.selectedPaths.indexOf(modelData.path) !== -1 || (fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath === modelData.path)
 
                 color: isSelected ? theme.accent :
                        listHover.containsMouse ? theme.itemHover :
@@ -1285,6 +1449,9 @@ Rectangle {
                             pressX = mouse.x
                             pressY = mouse.y
                             pressedLeft = true
+                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
+                                fileListRoot.selectedPaths = [modelData.path]
+                            }
                             fileListRoot.selectedPath = modelData.path
                             fileListRoot.selectedName = modelData.name
                             fileListRoot.selectedIsDir = modelData.isDir
@@ -1318,20 +1485,31 @@ Rectangle {
                     }
 
                     onClicked: (mouse) => {
-                        fileListRoot.selectedPath = modelData.path
-                        fileListRoot.selectedName = modelData.name
-                        fileListRoot.selectedIsDir = modelData.isDir
+                        if (mouse.button === Qt.LeftButton) {
+                            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
+                            fileListRoot.selectedPaths = []
+                            fileListRoot.selectedPath = ""
+                            fileListRoot.ctxVisible = false
+                        } else if (mouse.button === Qt.RightButton) {
+                            // "disponible si da click derecho en cualquier miembro del grupo"
+                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
+                                fileListRoot.selectedPaths = [modelData.path]
+                            }
+                            fileListRoot.selectedPath = modelData.path
+                            fileListRoot.selectedName = modelData.name
+                            fileListRoot.selectedIsDir = modelData.isDir
 
-                        if (mouse.button === Qt.RightButton) {
                             var pt = mapToItem(fileListRoot, mouse.x, mouse.y)
                             fileListRoot.showContextMenu(pt.x, pt.y)
-                        } else {
-                            fileListRoot.ctxVisible = false
                         }
                     }
 
-                    onDoubleClicked: {
-                        finderBackend.openItem(modelData.path)
+                    onDoubleClicked: (mouse) => {
+                        if (mouse.button === Qt.LeftButton) {
+                            finderBackend.openItem(modelData.path)
+                            fileListRoot.selectedPaths = []
+                            fileListRoot.selectedPath = ""
+                        }
                     }
                 }
             }

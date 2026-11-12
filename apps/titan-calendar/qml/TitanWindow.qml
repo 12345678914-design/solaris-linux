@@ -1,6 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Window 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
+import QtQuick.Effects   // MultiEffect (Qt 6.5+)
 
 Window {
     id: rootWindow
@@ -10,6 +11,7 @@ Window {
     property alias headerContentData: headerSlot.data
     property alias sidebarContentData: sidebarSlot.data
     property alias statusBarContentData: statusBarSlot.data
+    property alias backdropData: backdrop.data   // contenido extra que se desenfoca
 
     property alias theme: titanTheme
     property bool sidebarCollapsed: false
@@ -22,6 +24,26 @@ Window {
 
     property bool showStatusBar: true
     property int statusBarHeight: 26
+
+    // ---------- BLUR ----------
+    property bool blurActive: true          // activa/desactiva el desenfoque
+    property real blurAmount: 1.0           // 0.0 - 1.0
+    property int  blurMax: 64               // radio máximo (más alto = más suave y más costoso)
+    property url  backdropImage: ""         // fondo/wallpaper a desenfocar (vacío = manchas de color)
+
+    // Opacidad del vidrio por zona (menor = se ve más el blur)
+    property real headerGlass: 0.45
+    property real sidebarGlass: 0.50
+    property real contentGlass: 0.62
+    property real statusGlass: 0.50
+
+    function glass(c, a) {
+        if (!c) return Qt.rgba(0.1, 0.1, 0.1, a !== undefined ? a : 0.5)
+        var col = Qt.color(c)
+        return Qt.rgba(col.r, col.g, col.b, a !== undefined ? a : col.a)
+    }
+
+    property real cornerRadius: visibility === Window.Maximized ? 0 : titanTheme.windowRadius
 
     width: 960
     height: 620
@@ -36,38 +58,15 @@ Window {
 
     TitanTheme { id: titanTheme }
 
-    // Transiciones fluidas de contenedor elástico de macOS
     Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     Behavior on x { enabled: !rootWindow.isDragging; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     Behavior on y { enabled: !rootWindow.isDragging; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-    Rectangle {
+    Item {
         id: windowContainer
         anchors.fill: parent
-        radius: rootWindow.visibility === Window.Maximized ? 0 : titanTheme.windowRadius
-        border.color: titanTheme.glassBorder
-        border.width: 1
-        clip: true
 
-        // Fondo de cristal translúcido con degradado acrílico (sin color sólido opaco)
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: titanTheme.windowBgTop }
-            GradientStop { position: 0.5; color: titanTheme.windowBgMid }
-            GradientStop { position: 1.0; color: titanTheme.windowBgBottom }
-        }
-
-        // Brillo especular superior del cristal estilo macOS
-        Rectangle {
-            anchors.top: parent.top
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 32
-            height: 1
-            color: titanTheme.specularGlow
-            z: 25
-        }
-
-        // Animación de contenedor estilo macOS al abrir y minimizar
         opacity: rootWindow.isMinimizing ? 0.0 : 1.0
         scale: rootWindow.isMinimizing ? 0.85 : 1.0
         transformOrigin: Item.Bottom
@@ -77,29 +76,12 @@ Window {
 
         Component.onCompleted: openContainerAnim.start()
 
-        // Animación elástica de apertura de contenedor macOS
         ParallelAnimation {
             id: openContainerAnim
-            NumberAnimation {
-                target: windowContainer
-                property: "opacity"
-                from: 0.0
-                to: 1.0
-                duration: 220
-                easing.type: Easing.OutCubic
-            }
-            NumberAnimation {
-                target: windowContainer
-                property: "scale"
-                from: 0.94
-                to: 1.0
-                duration: 240
-                easing.type: Easing.OutBack
-                easing.overshoot: 1.06
-            }
+            NumberAnimation { target: windowContainer; property: "opacity"; from: 0.0; to: 1.0; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { target: windowContainer; property: "scale"; from: 0.94; to: 1.0; duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.06 }
         }
 
-        // Animación de cierre suave
         SequentialAnimation {
             id: closeContainerAnim
             ParallelAnimation {
@@ -109,7 +91,6 @@ Window {
             ScriptAction { script: rootWindow.close() }
         }
 
-        // Animación de minimizar estilo contenedor
         SequentialAnimation {
             id: minimizeContainerAnim
             ParallelAnimation {
@@ -126,231 +107,288 @@ Window {
             }
         }
 
-        // 1. PANEL SUPERIOR / TOOLBAR CON DEGRADADO BLUR TRASLÚCIDO
+        // Máscara para recortar TODO con esquinas redondeadas (clip no redondea)
         Rectangle {
-            id: headerPanel
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 50
-            z: 10
+            id: clipMask
+            anchors.fill: parent
+            radius: rootWindow.cornerRadius
+            visible: false
+            layer.enabled: true
+        }
 
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: titanTheme.headerTop }
-                GradientStop { position: 1.0; color: titanTheme.headerBottom }
+        Item {
+            id: glassRoot
+            anchors.fill: parent
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: clipMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1.0
             }
 
-            // Borde inferior sutil
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: titanTheme.headerBorder
-            }
-
-            // Arrastre nativo de ventanas para Wayland (startSystemMove) y X11
-            MouseArea {
+            // 0. FONDO A DESENFOCAR (no se muestra directo, solo su versión borrosa)
+            Item {
+                id: backdrop
                 anchors.fill: parent
-                acceptedButtons: Qt.LeftButton
-                property point pressPos
-                property bool systemMoveStarted: false
+                visible: false
 
-                onPressed: {
-                    pressPos = Qt.point(mouse.x, mouse.y)
-                    systemMoveStarted = false
+                Rectangle { anchors.fill: parent; color: "#1b1f2e" }
+
+                Image {
+                    anchors.fill: parent
+                    source: rootWindow.backdropImage
+                    fillMode: Image.PreserveAspectCrop
+                    visible: source != ""
                 }
 
-                onPositionChanged: {
-                    if (!systemMoveStarted) {
-                        var dx = mouse.x - pressPos.x
-                        var dy = mouse.y - pressPos.y
-                        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-                            rootWindow.isDragging = true
-                            if (rootWindow.startSystemMove()) {
-                                systemMoveStarted = true
-                            } else {
-                                rootWindow.x += dx
-                                rootWindow.y += dy
+                // Manchas de color por defecto (se ven suaves tras el blur)
+                Item {
+                    anchors.fill: parent
+                    visible: rootWindow.backdropImage == ""
+                    Rectangle { x: parent.width * 0.04; y: parent.height * 0.10; width: parent.width * 0.45; height: width; radius: width / 2; color: "#6a5cff" }
+                    Rectangle { x: parent.width * 0.55; y: -parent.height * 0.10; width: parent.width * 0.40; height: width; radius: width / 2; color: "#ff5fa2" }
+                    Rectangle { x: parent.width * 0.35; y: parent.height * 0.45; width: parent.width * 0.42; height: width; radius: width / 2; color: "#2ad4c6" }
+                }
+            }
+
+            // 1. CAPA ESCARCHADA: blur de todo el fondo (cabecera, sidebar y contenido lo atraviesan)
+            MultiEffect {
+                id: frosted
+                anchors.fill: parent
+                source: backdrop
+                visible: rootWindow.blurActive
+                blurEnabled: true
+                blurMax: rootWindow.blurMax
+                blur: rootWindow.blurAmount
+                saturation: 0.25
+                brightness: -0.04
+            }
+
+            // Respaldo sin blur
+            Rectangle {
+                anchors.fill: parent
+                visible: !rootWindow.blurActive
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: titanTheme.windowBgTop }
+                    GradientStop { position: 0.5; color: titanTheme.windowBgMid }
+                    GradientStop { position: 1.0; color: titanTheme.windowBgBottom }
+                }
+            }
+
+            // 2. CABECERA: vidrio translúcido sobre el blur
+            Rectangle {
+                id: headerPanel
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 50
+                z: 10
+
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.headerTop, rootWindow.headerGlass) }
+                    GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.headerBottom, rootWindow.headerGlass) }
+                }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: titanTheme.headerBorder
+                }
+
+                // Arrastre nativo (Wayland startSystemMove / X11)
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton
+                    property point pressPos
+                    property bool systemMoveStarted: false
+
+                    onPressed: (mouse) => {
+                        pressPos = Qt.point(mouse.x, mouse.y)
+                        systemMoveStarted = false
+                    }
+                    onPositionChanged: (mouse) => {
+                        if (!systemMoveStarted) {
+                            var dx = mouse.x - pressPos.x
+                            var dy = mouse.y - pressPos.y
+                            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                                rootWindow.isDragging = true
+                                if (rootWindow.startSystemMove()) {
+                                    systemMoveStarted = true
+                                } else {
+                                    rootWindow.x += dx
+                                    rootWindow.y += dy
+                                }
                             }
                         }
                     }
+                    onReleased: { rootWindow.isDragging = false; systemMoveStarted = false }
+                    onCanceled: { rootWindow.isDragging = false; systemMoveStarted = false }
+                    onDoubleClicked: rootWindow.toggleMaximize()
                 }
 
-                onReleased: {
-                    rootWindow.isDragging = false
-                    systemMoveStarted = false
-                }
-                onCanceled: {
-                    rootWindow.isDragging = false
-                    systemMoveStarted = false
-                }
-                onDoubleClicked: toggleMaximize()
-            }
-
-            // Fondo de la zona de sidebar en el header (unificado con el sidebar lateral)
-            Rectangle {
-                visible: rootWindow.effectiveSidebarWidth > 0
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: rootWindow.effectiveSidebarWidth
-                clip: true
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: titanTheme.sidebarTop }
-                    GradientStop { position: 1.0; color: titanTheme.sidebarBottom }
-                }
+                // Zona de sidebar dentro de la cabecera (donde van los botones): también con blur
                 Rectangle {
-                    anchors.right: parent.right
-                    width: 1
-                    height: parent.height
-                    color: titanTheme.sidebarBorder
-                }
-            }
-
-            // Botones Traffic Lights de macOS (Cerrar, Minimizar, Maximizar)
-            Row {
-                id: trafficLightsRow
-                x: 18
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
-                z: 20
-
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: "#ff5f57"; border.color: "#e0443e"; border.width: 0.5
-                    scale: closeMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    MouseArea {
-                        id: closeMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: closeContainerAnim.start()
+                    visible: rootWindow.effectiveSidebarWidth > 0
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: rootWindow.effectiveSidebarWidth
+                    clip: true
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, rootWindow.sidebarGlass) }
+                        GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, rootWindow.sidebarGlass) }
+                    }
+                    Rectangle {
+                        anchors.right: parent.right
+                        width: 1
+                        height: parent.height
+                        color: titanTheme.sidebarBorder
                     }
                 }
 
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: "#febc2e"; border.color: "#dea123"; border.width: 0.5
-                    scale: minMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    MouseArea {
-                        id: minMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: {
-                            rootWindow.isMinimizing = true
-                            minimizeContainerAnim.start()
+                // Semáforos macOS
+                Row {
+                    id: trafficLightsRow
+                    x: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    z: 20
+
+                    Rectangle {
+                        width: 12; height: 12; radius: 6
+                        color: "#ff5f57"; border.color: "#e0443e"; border.width: 0.5
+                        scale: closeMouse.containsMouse ? 1.15 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: closeContainerAnim.start() }
+                    }
+                    Rectangle {
+                        width: 12; height: 12; radius: 6
+                        color: "#febc2e"; border.color: "#dea123"; border.width: 0.5
+                        scale: minMouse.containsMouse ? 1.15 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        MouseArea {
+                            id: minMouse; anchors.fill: parent; hoverEnabled: true
+                            onClicked: { rootWindow.isMinimizing = true; minimizeContainerAnim.start() }
                         }
                     }
-                }
-
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: "#28c840"; border.color: "#1aab29"; border.width: 0.5
-                    scale: maxMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    MouseArea {
-                        id: maxMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: toggleMaximize()
+                    Rectangle {
+                        width: 12; height: 12; radius: 6
+                        color: "#28c840"; border.color: "#1aab29"; border.width: 0.5
+                        scale: maxMouse.containsMouse ? 1.15 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        MouseArea { id: maxMouse; anchors.fill: parent; hoverEnabled: true; onClicked: rootWindow.toggleMaximize() }
                     }
                 }
+
+                Item {
+                    id: headerSlot
+                    anchors.left: parent.left
+                    anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14) : (trafficLightsRow.x + trafficLightsRow.width + 16)
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    height: parent.height
+                    anchors.verticalCenter: parent.verticalCenter
+                    Behavior on anchors.leftMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                }
             }
 
-            // Contenedor para el contenido específico de la cabecera (toolbar alineado)
+            // 3. CUERPO
             Item {
-                id: headerSlot
+                id: bodyContainer
+                anchors.top: headerPanel.bottom
                 anchors.left: parent.left
-                anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14) : (trafficLightsRow.x + trafficLightsRow.width + 16)
                 anchors.right: parent.right
-                anchors.rightMargin: 14
-                height: parent.height
-                anchors.verticalCenter: parent.verticalCenter
-                Behavior on anchors.leftMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-            }
-        }
+                anchors.bottom: rootWindow.showStatusBar ? statusBarPanel.top : parent.bottom
 
-        // 2. CUERPO DE LA APLICACIÓN (SIDEBAR TRANSLÚCIDO + CONTENIDO TRANSLÚCIDO)
-        Item {
-            id: bodyContainer
-            anchors.top: headerPanel.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: showStatusBar ? statusBarPanel.top : parent.bottom
+                Rectangle {
+                    id: sidebarPanel
+                    visible: rootWindow.effectiveSidebarWidth > 0
+                    width: rootWindow.effectiveSidebarWidth
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    clip: true
 
-            // SIDEBAR TRASLÚCIDO CON EFECTO BLUR ACRÍLICO
-            Rectangle {
-                id: sidebarPanel
-                visible: rootWindow.effectiveSidebarWidth > 0
-                width: rootWindow.effectiveSidebarWidth
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                clip: true
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, rootWindow.sidebarGlass) }
+                        GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, rootWindow.sidebarGlass) }
+                    }
 
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: titanTheme.sidebarTop }
-                    GradientStop { position: 1.0; color: titanTheme.sidebarBottom }
+                    Rectangle {
+                        anchors.right: parent.right
+                        width: 1
+                        height: parent.height
+                        color: titanTheme.sidebarBorder
+                    }
+
+                    Item { id: sidebarSlot; anchors.fill: parent }
                 }
 
-                // Borde divisor derecho
                 Rectangle {
+                    id: contentPanel
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.left: rootWindow.showSidebar ? sidebarPanel.right : parent.left
                     anchors.right: parent.right
-                    width: 1
-                    height: parent.height
+                    color: rootWindow.glass(titanTheme.contentBackground, rootWindow.contentGlass)
+
+                    Item { id: contentSlot; anchors.fill: parent }
+                }
+            }
+
+            // 4. BARRA DE ESTADO
+            Rectangle {
+                id: statusBarPanel
+                visible: rootWindow.showStatusBar
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: rootWindow.statusBarHeight
+
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, rootWindow.statusGlass) }
+                    GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, rootWindow.statusGlass) }
+                }
+
+                Rectangle {
+                    anchors.top: parent.top
+                    width: parent.width
+                    height: 1
                     color: titanTheme.sidebarBorder
                 }
 
-                Item {
-                    id: sidebarSlot
-                    anchors.fill: parent
-                }
+                Item { id: statusBarSlot; anchors.fill: parent }
             }
 
-            // CONTENIDO CENTRAL TRANSLÚCIDO (SIN COLOR SÓLIDO OPACO)
+            // Brillo especular superior
             Rectangle {
-                id: contentPanel
                 anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.left: rootWindow.showSidebar ? sidebarPanel.right : parent.left
-                anchors.right: parent.right
-                color: titanTheme.contentBackground
-
-                Item {
-                    id: contentSlot
-                    anchors.fill: parent
-                }
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width - 32
+                height: 1
+                color: titanTheme.specularGlow
+                z: 25
             }
         }
 
-        // 3. BARRA DE ESTADO / FOOTER INFERIOR (Translúcida)
+        // Borde exterior redondeado, por encima de todo
         Rectangle {
-            id: statusBarPanel
-            visible: rootWindow.showStatusBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: rootWindow.statusBarHeight
-
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: titanTheme.sidebarTop }
-                GradientStop { position: 1.0; color: titanTheme.sidebarBottom }
-            }
-
-            Rectangle {
-                anchors.top: parent.top
-                width: parent.width
-                height: 1
-                color: titanTheme.sidebarBorder
-            }
-
-            Item {
-                id: statusBarSlot
-                anchors.fill: parent
-            }
+            anchors.fill: parent
+            radius: rootWindow.cornerRadius
+            color: "transparent"
+            border.color: titanTheme.glassBorder
+            border.width: 1
+            z: 100
         }
     }
 
     function toggleMaximize() {
-        if (rootWindow.visibility === Window.Maximized) {
+        if (rootWindow.visibility === Window.Maximized)
             rootWindow.showNormal()
-        } else {
+        else
             rootWindow.showMaximized()
-        }
     }
 }

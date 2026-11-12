@@ -11,12 +11,14 @@ class LauncherBackend : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QVariantList apps READ apps NOTIFY appsChanged)
+    Q_PROPERTY(QVariantList recentApps READ recentApps NOTIFY recentAppsChanged)
     
 public:
     explicit LauncherBackend(QObject *parent = nullptr);
     ~LauncherBackend() override;
     
     QVariantList apps() const;
+    QVariantList recentApps() const { return QVariantList(); }
     
     Q_INVOKABLE void search(const QString &query);
     Q_INVOKABLE void launch(const QString &exec);
@@ -24,6 +26,7 @@ public:
     
 signals:
     void appsChanged();
+    void recentAppsChanged();
     
 private:
     void loadApps();

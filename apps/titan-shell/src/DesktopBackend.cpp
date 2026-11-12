@@ -11,6 +11,9 @@
 #include <QRegularExpression>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QGuiApplication>
+#include <QClipboard>
+#include <QMimeData>
 
 static QString resolveDesktopBinary(const QString &program)
 {
@@ -49,11 +52,65 @@ DesktopBackend::DesktopBackend(QObject *parent)
 
     QDir().mkpath(m_desktopPath);
     ensureSampleDesktop();
+    syncStoreAppsToDesktop();
     loadPositions();
     loadItems();
 
     m_watcher->addPath(m_desktopPath);
-    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &DesktopBackend::refresh);
+
+    // Observar rutas de exportación de aplicaciones Flatpak (de la tienda de software)
+    const QStringList storeDirs = {
+        QStringLiteral("/var/lib/flatpak/exports/share/applications"),
+        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")
+    };
+    for (const QString &d : storeDirs) {
+        if (!QDir(d).exists()) {
+            QDir().mkpath(d);
+        }
+        if (QDir(d).exists() && !m_watcher->directories().contains(d)) {
+            m_watcher->addPath(d);
+        }
+    }
+
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &path) {
+        if (path.contains(QStringLiteral("flatpak"))) {
+            syncStoreAppsToDesktop();
+        }
+        refresh();
+    });
+}
+
+void DesktopBackend::syncStoreAppsToDesktop()
+{
+    const QStringList storeDirs = {
+        QStringLiteral("/var/lib/flatpak/exports/share/applications"),
+        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")
+    };
+
+    for (const QString &dirRuta : storeDirs) {
+        QDir dir(dirRuta);
+        if (!dir.exists()) continue;
+
+        const auto entradas = dir.entryInfoList(QStringList() << QStringLiteral("*.desktop"), QDir::Files);
+        for (const auto &info : entradas) {
+            QString destDesktop = m_desktopPath + QStringLiteral("/") + info.fileName();
+            if (!QFile::exists(destDesktop)) {
+                // Leer el archivo .desktop para verificar si es una aplicación visible de usuario
+                QSettings ini(info.absoluteFilePath(), QSettings::IniFormat);
+                ini.beginGroup(QStringLiteral("Desktop Entry"));
+                if (ini.value(QStringLiteral("NoDisplay"), false).toBool()) continue;
+                if (ini.value(QStringLiteral("Type"), QStringLiteral("Application")).toString() != QStringLiteral("Application")) continue;
+
+                // Copiar el acceso directo al escritorio
+                if (QFile::copy(info.absoluteFilePath(), destDesktop)) {
+                    QFile::setPermissions(destDesktop,
+                        QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                        QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                        QFileDevice::ReadOther | QFileDevice::ExeOther);
+                }
+            }
+        }
+    }
 }
 
 void DesktopBackend::ensureSampleDesktop()
@@ -158,8 +215,16 @@ void DesktopBackend::loadItems()
         return slot;
     };
 
+    bool isLive = QDir(QStringLiteral("/run/archiso")).exists();
     for (const QFileInfo &fi : list) {
         if (fi.fileName().startsWith(QLatin1Char('.'))) continue;
+
+        // Si ya está instalado en el disco (no es sesión en vivo), el instalador no debe existir en el escritorio
+        if (!isLive && (fi.fileName().contains(QStringLiteral("instalar"), Qt::CaseInsensitive) ||
+                        fi.fileName().contains(QStringLiteral("calamares"), Qt::CaseInsensitive))) {
+            QFile::remove(fi.absoluteFilePath());
+            continue;
+        }
 
         QVariantMap item;
         QString path = fi.absoluteFilePath();
@@ -713,5 +778,76 @@ bool DesktopBackend::importFile(const QString &urlOrPath, qreal x, qreal y, bool
         refresh();
     }
     return ok;
+}
+
+void DesktopBackend::copyItems(const QStringList &paths)
+{
+    if (paths.isEmpty()) return;
+    QMimeData *mime = new QMimeData();
+    QList<QUrl> urls;
+    for (const QString &p : paths) {
+        if (QFile::exists(p) || QDir(p).exists()) {
+            urls.append(QUrl::fromLocalFile(p));
+        }
+    }
+    mime->setUrls(urls);
+    mime->setText(paths.join(QLatin1Char('\n')));
+    QGuiApplication::clipboard()->setMimeData(mime);
+}
+
+void DesktopBackend::deleteItems(const QStringList &paths)
+{
+    for (const QString &p : paths) {
+        QFileInfo fi(p);
+        if (!fi.exists()) continue;
+        if (fi.isDir()) {
+            QDir(p).removeRecursively();
+        } else {
+            QFile::remove(p);
+        }
+        m_positions.remove(p);
+    }
+    savePositions();
+    refresh();
+}
+
+void DesktopBackend::pasteItems(qreal x, qreal y)
+{
+    const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+    if (!mime || !mime->hasUrls()) return;
+
+    const QList<QUrl> urls = mime->urls();
+    qreal curX = (x >= 0) ? x : 100.0;
+    qreal curY = (y >= 0) ? y : 100.0;
+
+    for (int i = 0; i < urls.size(); ++i) {
+        QString local = urls[i].toLocalFile();
+        if (local.isEmpty() || !QFile::exists(local)) continue;
+        importFile(local, curX + (i * 16), curY + (i * 16), false);
+    }
+}
+
+bool DesktopBackend::hasClipboard() const
+{
+    const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+    return mime && mime->hasUrls() && !mime->urls().isEmpty();
+}
+
+void DesktopBackend::moveItems(const QStringList &paths, const QString &targetDir)
+{
+    QString destDir = targetDir.isEmpty() ? (QDir::homePath() + QStringLiteral("/Documentos")) : targetDir;
+    QDir().mkpath(destDir);
+
+    for (const QString &p : paths) {
+        QFileInfo fi(p);
+        if (!fi.exists()) continue;
+        QString destPath = destDir + QStringLiteral("/") + fi.fileName();
+        if (destPath != p) {
+            QFile::rename(p, destPath);
+            m_positions.remove(p);
+        }
+    }
+    savePositions();
+    refresh();
 }
 

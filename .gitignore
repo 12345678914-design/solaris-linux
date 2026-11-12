@@ -72,6 +72,7 @@ apps/*/titan-clock
 apps/*/titan-desktop
 apps/*/titan-finder
 apps/*/titan-fotos
+apps/*/titan-installer
 apps/*/titan-musica
 apps/*/titan-panel
 apps/*/titan-settings
@@ -79,6 +80,7 @@ apps/*/titan-shell
 apps/*/titan-terminal
 apps/*/titan-video
 apps/*/*.o
+apps/*/*.moc
 apps/*/moc_*
 apps/*/qrc_*
 .qmake.stash

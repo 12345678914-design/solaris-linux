@@ -3,10 +3,10 @@
 # run-qemu.sh - arranca la ISO de Titan Linux en QEMU.
 #
 # Uso:
-#   ./scripts/run-qemu.sh                 # UEFI (OVMF), ventana grafica
-#   ./scripts/run-qemu.sh --bios          # BIOS con syslinux
-#   ./scripts/run-qemu.sh --headless      # sin ventana, consola por serie
-#   ./scripts/run-qemu.sh --disk 20G      # anade un disco de 20G para instalar
+#   ./scripts/run-qemu.sh                 # UEFI (OVMF), ventana grafica y disco vacio (30G)
+#   ./scripts/run-qemu.sh --installed     # arranca el sistema instalado en el disco (sin ISO live)
+#   ./scripts/run-qemu.sh --no-disk       # sin disco duro virtual (solo live)
+#   ./scripts/run-qemu.sh --disk 50G      # anade un disco personalizado para instalar
 #   ./scripts/run-qemu.sh --usb           # conecta el USB físico insertado en el equipo
 #   ./scripts/run-qemu.sh --usb /dev/sda  # conecta un dispositivo USB específico
 #   ./scripts/run-qemu.sh --test-usb      # crea y conecta un pendrive virtual de prueba
@@ -41,6 +41,8 @@ resolution=""
 screenshot=""
 software=0
 no_ethernet=0
+no_disk=0
+boot_installed=0
 
 red()  { printf '\033[1;31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[1;32m%s\033[0m\n' "$*"; }
@@ -64,7 +66,17 @@ while [[ $# -gt 0 ]]; do
       ;;
     --memory)     memory="$2"; shift 2 ;;
     --cpus)       cpus="$2"; shift 2 ;;
-    --disk)       disk="$2"; shift 2 ;;
+    --installed|--boot-disk|--no-cdrom|--sin-live) boot_installed=1; shift ;;
+    --no-disk|--sin-disco) no_disk=1; shift ;;
+    --disk)
+      if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
+        disk="$2"
+        shift 2
+      else
+        disk="30G"
+        shift
+      fi
+      ;;
     --usb)
       if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
         usb_host="$2"
@@ -85,12 +97,14 @@ done
 
 command -v qemu-system-x86_64 >/dev/null || { red "Falta qemu-system-x86_64"; exit 1; }
 
-shopt -s nullglob
-isos=("${OUT_DIR}"/solaris-linux-*.iso)
-shopt -u nullglob
-(( ${#isos[@]} )) || { red "No hay ninguna ISO en ${OUT_DIR}. Antes: scripts/build-iso.sh"; exit 1; }
-iso="$(ls -t "${isos[@]}" | head -n1)"
-info "ISO: ${iso}"
+if (( ! boot_installed )); then
+  shopt -s nullglob
+  isos=("${OUT_DIR}"/solaris-linux-*.iso)
+  shopt -u nullglob
+  (( ${#isos[@]} )) || { red "No hay ninguna ISO en ${OUT_DIR}. Antes: scripts/build-iso.sh"; exit 1; }
+  iso="$(ls -t "${isos[@]}" | head -n1)"
+  info "ISO Live: ${iso}"
+fi
 
 if [[ -n "${resolution}" ]]; then
   TITAN_QEMU_RESOLUCION="${resolution}" \
@@ -124,12 +138,29 @@ args=(
   -m "${memory}M"
   -smp "${cpus}"
   -device "virtio-vga,xres=${ancho},yres=${alto}"
-  -cdrom "${iso}"
 )
+
+if (( ! boot_installed )); then
+  args+=(
+    -boot "menu=on,strict=on"
+    -drive "file=${iso},media=cdrom,readonly=on,if=none,id=cdrom0"
+    -device "ide-cd,drive=cdrom0,bootindex=1"
+  )
+else
+  args+=(-boot "menu=off,strict=on")
+  info "modo: Arrancando sistema instalado en disco (--installed, sin ISO live)"
+fi
 
 if (( no_ethernet )); then
   args+=(-nic none)
   info "red: Ethernet deshabilitado (-nic none) para pruebas de Wi-Fi"
+else
+  # VirtIO network adapter con romfile="" para desactivar iPXE/PXE
+  args+=(
+    -netdev "user,id=net0"
+    -device "virtio-net-pci,netdev=net0,romfile="
+  )
+  info "red: VirtIO activa (PXE boot ROM desactivada)"
 fi
 
 # Soporte de audio Intel HDA con detección inteligente de backend en el host
@@ -202,12 +233,14 @@ if [[ "$firmware" == uefi ]]; then
     firmware=bios
   else
     vars="${RUN_DIR}/OVMF_VARS.fd"
-    [[ -f "$vars" ]] || cp -- "$vars_template" "$vars"
+    # Reiniciar siempre las variables NVRAM desde la plantilla para evitar arrastres
+    # de secuencias PXE obsoletas o configuraciones rotas de ejecuciones anteriores
+    cp -f -- "$vars_template" "$vars"
     args+=(
       -drive "if=pflash,format=raw,unit=0,readonly=on,file=${code}"
       -drive "if=pflash,format=raw,unit=1,file=${vars}"
     )
-    info "arranque: UEFI (OVMF)"
+    info "arranque: UEFI (OVMF limpio)"
   fi
 fi
 
@@ -215,11 +248,33 @@ if [[ "$firmware" == bios ]]; then
   info "arranque: BIOS (syslinux)"
 fi
 
-if [[ -n "$disk" ]]; then
-  disk_img="${RUN_DIR}/titan-${disk}.qcow2"
-  [[ -f "$disk_img" ]] || qemu-img create -q -f qcow2 "$disk_img" "$disk"
-  args+=(-drive "if=virtio,format=qcow2,file=${disk_img}")
-  info "disco: ${disk_img} (${disk})"
+if (( ! no_disk )); then
+  if [[ -n "$disk" && "$disk" != "30G" && ! "$disk" =~ \.raw$ && ! "$disk" =~ \.qcow2$ ]]; then
+    disk_img="${RUN_DIR}/titan-${disk}.raw"
+    [[ -f "$disk_img" ]] || qemu-img create -q -f raw "$disk_img" "$disk"
+  elif [[ "$disk" =~ \.qcow2$ ]]; then
+    disk_img="${disk}"
+  else
+    disk_img="${RUN_DIR}/disco-vacio.raw"
+    [[ -f "$disk_img" ]] || qemu-img create -q -f raw "$disk_img" 30G
+  fi
+
+  disk_format="raw"
+  [[ "$disk_img" =~ \.qcow2$ ]] && disk_format="qcow2"
+
+  if (( boot_installed )); then
+    args+=(
+      -drive "file=${disk_img},format=${disk_format},if=none,id=system_disk"
+      -device "virtio-blk-pci,drive=system_disk,bootindex=1"
+    )
+    info "disco instalado conectado: ${disk_img} (arranque primario bootindex=1)"
+  else
+    args+=(
+      -drive "file=${disk_img},format=${disk_format},if=none,id=system_disk"
+      -device "virtio-blk-pci,drive=system_disk,bootindex=2"
+    )
+    info "disco virtual conectado para instalación: ${disk_img} (bootindex=2)"
+  fi
 fi
 
 # Soporte de dispositivos USB (físico del host o pendrive virtual de prueba)

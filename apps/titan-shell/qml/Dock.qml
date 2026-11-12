@@ -1,32 +1,69 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
+import QtQuick.Effects   // MultiEffect (Qt 6.5+), solo para recortar esquinas
 
 Item {
     id: dockContainer
     anchors.fill: parent
 
+    // ---------- Estado ----------
     property int hoveredIndex: -1
     property int draggedIndex: -1
     property int targetDropIndex: -1
     readonly property bool isMaximized: windowTracker.hasMaximizedWindow || windowTracker.hasFullscreenWindow
     property bool dockRevealed: false
+    readonly property bool shouldShowDock: !shellBackend.launcherVisible && (!isMaximized || dockRevealed)
 
+    // ---------- Vidrio ----------
+    // Ruta al wallpaper YA desenfocado y reducido (se genera una sola vez fuera de QML).
+    // Ej.: magick wall.jpg -resize 25% -blur 0x10 -modulate 100,140 wall-blur.jpg
+    readonly property url blurredWallpaper: (typeof shellBackend !== "undefined" && typeof shellBackend.blurredWallpaper !== "undefined" && shellBackend.blurredWallpaper) ? shellBackend.blurredWallpaper : ""
+    readonly property bool hasGlass: blurredWallpaper.toString() !== ""
+    readonly property real dockRadius: 22
+    readonly property int maskPad: 8
+
+    // Tinte del cristal: translúcido si hay wallpaper borroso, más opaco si no lo hay
+    readonly property color dockTint: hasGlass
+        ? (theme.isDark ? Qt.rgba(0.10, 0.11, 0.16, 0.32) : Qt.rgba(1, 1, 1, 0.30))
+        : (theme.isDark ? Qt.rgba(0.12, 0.13, 0.18, 0.82) : Qt.rgba(0.95, 0.95, 0.98, 0.80))
+    readonly property color menuTint: hasGlass
+        ? (theme.isDark ? Qt.rgba(0.10, 0.12, 0.18, 0.55) : Qt.rgba(0.97, 0.97, 1.0, 0.55))
+        : (theme.isDark ? Qt.rgba(0.12, 0.14, 0.20, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95))
+
+    TitanTheme { id: theme }   // una sola instancia para dock y menú
+
+    // ---------- Menú contextual: estado ----------
+    property string ctxAppId: ""
+    property string ctxAppName: ""
+    property string ctxAppIcon: ""
+    property bool ctxIsPinned: false
+    property bool ctxIsRunning: false
+    property real ctxMenuX: 0
+    property bool ctxMenuVisible: false
+    property var ctxWindows: []
+
+    // ---------- Máscara de entrada (limitada a ~60 fps) ----------
     function refreshMask() {
         if (!dockContainer.Window || !dockContainer.Window.window) return
         var win = dockContainer.Window.window
-        var gx = dockBg.x - 8
-        var gy = dockBg.y - 8
-        var gw = dockBg.width + 16
-        var gh = dockBg.height + 16
-        shellBackend.updateDockMask(win, gx, gy, gw, gh, dockContainer.isMaximized, dockContainer.dockRevealed, dockContainer.ctxMenuVisible)
+        var gx = dockBg.x - maskPad
+        var gy = dockBg.y - maskPad
+        var gw = dockBg.width + maskPad * 2
+        var gh = dockBg.height + maskPad * 2
+        shellBackend.updateDockMask(win, gx, gy, gw, gh, isMaximized, dockRevealed, ctxMenuVisible)
     }
 
-    onCtxMenuVisibleChanged: {
-        refreshMask()
+    Timer {
+        id: maskTimer
+        interval: 24
+        repeat: false
+        onTriggered: dockContainer.refreshMask()
     }
 
-    // Si no está maximizado, el dock está siempre visible por defecto.
-    // Si la ventana se maximiza, se oculta automáticamente hasta que el usuario apunte abajo.
+    onCtxMenuVisibleChanged: refreshMask()
+    onDockRevealedChanged: refreshMask()
+
     onIsMaximizedChanged: {
         if (!isMaximized) {
             dockRevealed = true
@@ -37,13 +74,9 @@ Item {
         refreshMask()
     }
 
-    onDockRevealedChanged: {
-        refreshMask()
-    }
-
     Component.onCompleted: {
         dockRevealed = !isMaximized
-        Qt.callLater(dockContainer.refreshMask)
+        Qt.callLater(refreshMask)
     }
 
     onHoveredIndexChanged: {
@@ -55,7 +88,144 @@ Item {
         }
     }
 
-    // 1. Hotspot en el borde inferior absoluto (solo 3 píxeles) para activar el dock en maximizado
+    // ---------- Componentes reutilizables ----------
+
+    // Superficie de vidrio: recorte del wallpaper desenfocado + tinte + borde fino.
+    // No usa blur en vivo: la imagen ya viene borrosa, así que el costo es mínimo.
+    component GlassPanel: Item {
+        id: gp
+        property real radius: 18
+        property color tint: "#40ffffff"
+        property url wallpaper: ""
+        property real originX: 0          // posición del panel dentro de la escena
+        property real originY: 0
+        property real sceneWidth: 0
+        property real sceneHeight: 0
+        property color borderColor: Qt.rgba(1, 1, 1, 0.35)
+        property color highlightColor: Qt.rgba(1, 1, 1, 0.5)
+
+        // Contenido recortado con esquinas redondeadas
+        Item {
+            anchors.fill: parent
+            layer.enabled: gp.wallpaper.toString() !== ""
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: gpMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1.0
+            }
+
+            Image {
+                visible: gp.wallpaper.toString() !== ""
+                source: gp.wallpaper
+                x: -gp.originX
+                y: -gp.originY
+                width: gp.sceneWidth
+                height: gp.sceneHeight
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                smooth: true
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: gp.radius
+                color: gp.tint
+            }
+
+            // Luz suave en la parte superior
+            Rectangle {
+                anchors.fill: parent
+                radius: gp.radius
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.12) }
+                    GradientStop { position: 0.4; color: Qt.rgba(1, 1, 1, 0.0) }
+                    GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.10) }
+                }
+            }
+        }
+
+        Rectangle {
+            id: gpMask
+            anchors.fill: parent
+            radius: gp.radius
+            visible: false
+            layer.enabled: true
+        }
+
+        // Borde fino
+        Rectangle {
+            anchors.fill: parent
+            radius: gp.radius
+            color: "transparent"
+            border.color: gp.borderColor
+            border.width: 1
+        }
+
+        // Reflejo especular superior
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - gp.radius * 1.6
+            height: 1
+            radius: 1
+            color: gp.highlightColor
+        }
+    }
+
+    // Fila del menú contextual
+    component MenuRow: Rectangle {
+        id: row
+        property string label: ""
+        property bool danger: false
+        property bool showDot: false
+        property bool isDark: true
+        property color textColor: "white"
+        signal activated()
+
+        width: parent ? parent.width : 0
+        height: 26
+        radius: 6
+        color: rowMouse.containsMouse
+               ? (danger ? Qt.rgba(1, 0.2, 0.2, 0.22)
+                         : (isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)))
+               : "transparent"
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 6
+
+            Rectangle {
+                visible: row.showDot
+                width: 5; height: 5; radius: 2.5
+                color: "#0a84ff"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: row.label
+                color: row.danger && rowMouse.containsMouse ? "#ff4d4d" : row.textColor
+                font.pixelSize: 11
+                elide: Text.ElideMiddle
+                width: parent.width - (row.showDot ? 11 : 0)
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        MouseArea {
+            id: rowMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: row.activated()
+        }
+    }
+
+    // ---------- Zonas de activación (auto-ocultar) ----------
     MouseArea {
         id: bottomTrigger
         anchors.left: parent.left
@@ -65,14 +235,12 @@ Item {
         hoverEnabled: true
         enabled: dockContainer.isMaximized
         z: 10
-
         onEntered: {
             hideDelayTimer.stop()
             dockContainer.dockRevealed = true
         }
     }
 
-    // 2. Zona ajustada que envuelve estrictamente al dock
     MouseArea {
         id: dockHoverArea
         anchors.horizontalCenter: dockBg.horizontalCenter
@@ -82,16 +250,12 @@ Item {
         hoverEnabled: true
         enabled: dockContainer.shouldShowDock
         z: 5
-
         onEntered: {
             hideDelayTimer.stop()
             dockContainer.dockRevealed = true
         }
-
         onExited: {
-            if (dockContainer.isMaximized) {
-                hideDelayTimer.restart()
-            }
+            if (dockContainer.isMaximized) hideDelayTimer.restart()
         }
     }
 
@@ -100,84 +264,83 @@ Item {
         interval: 300
         repeat: false
         onTriggered: {
-            if (dockContainer.isMaximized) {
-                if (!dockHoverArea.containsMouse && !bottomTrigger.containsMouse && dockContainer.hoveredIndex === -1) {
-                    dockContainer.dockRevealed = false
-                }
+            if (dockContainer.isMaximized
+                && !dockHoverArea.containsMouse
+                && !bottomTrigger.containsMouse
+                && dockContainer.hoveredIndex === -1) {
+                dockContainer.dockRevealed = false
             }
         }
     }
 
-    readonly property bool shouldShowDock: !shellBackend.launcherVisible && (!isMaximized || dockRevealed)
-
-    Rectangle {
+    // ---------- DOCK ----------
+    Item {
         id: dockBg
-        height: 55
-        width: dockRow.width + 20
-        radius: 18
-        clip: false
+        height: 58
+        width: dockRow.width + 24
         z: 20
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        onWidthChanged: dockContainer.refreshMask()
-        onXChanged: dockContainer.refreshMask()
 
-        TitanTheme { id: titanTheme }
+        onWidthChanged: maskTimer.restart()
+        onXChanged: maskTimer.restart()
+        onYChanged: maskTimer.restart()
 
-        // Sombra exterior suave difusa
+        // Se deja de dibujar por completo cuando está oculto (costo cero)
+        opacity: dockContainer.shouldShowDock ? 1.0 : 0.0
+        visible: opacity > 0.01
+
+        Behavior on width {
+            NumberAnimation {
+                duration: 180
+                easing.type: Easing.OutCubic
+                onRunningChanged: if (!running) dockContainer.refreshMask()
+            }
+        }
+        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+        transform: Translate {
+            y: dockContainer.shouldShowDock ? 0 : 85
+            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+        }
+
+        // Sombra barata (dos capas translúcidas, sin efectos de GPU)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            anchors.topMargin: 0
+            anchors.bottomMargin: -4
+            radius: dockContainer.dockRadius + 2
+            color: Qt.rgba(0, 0, 0, theme.isDark ? 0.16 : 0.07)
+            z: -2
+        }
         Rectangle {
             anchors.fill: parent
             anchors.margins: -1
-            radius: 19
-            color: Qt.rgba(0, 0, 0, titanTheme.isDark ? 0.35 : 0.14)
+            anchors.bottomMargin: -2
+            radius: dockContainer.dockRadius + 1
+            color: Qt.rgba(0, 0, 0, theme.isDark ? 0.28 : 0.12)
             z: -1
         }
 
-        // Fondo borroso y translúcido (Frosted Liquid Glass estilo macOS)
-        color: titanTheme.isDark ? Qt.rgba(0.12, 0.13, 0.18, 0.72) : Qt.rgba(0.95, 0.95, 0.98, 0.70)
-        border.color: titanTheme.glassBorder
-        border.width: 1
-
-        // Capa de desenfoque difuso / frosted glass
-        Rectangle {
+        GlassPanel {
             anchors.fill: parent
-            anchors.margins: 1
-            radius: 17
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.14 : 0.35) }
-                GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.04 : 0.10) }
-                GradientStop { position: 0.75; color: Qt.rgba(0, 0, 0, titanTheme.isDark ? 0.08 : 0.02) }
-                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, titanTheme.isDark ? 0.22 : 0.08) }
-            }
-        }
-
-        // Brillo especular superior del cristal acrílico
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 20
-            height: 1
-            color: titanTheme.specularGlow
-            radius: 1
-        }
-
-        // Reflejo interior sutil inferior
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 2
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 24
-            height: 1
-            color: Qt.rgba(1, 1, 1, 0.06)
-            radius: 1
+            radius: dockContainer.dockRadius
+            tint: dockContainer.dockTint
+            wallpaper: dockContainer.blurredWallpaper
+            originX: dockBg.x
+            originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + dockBg.y) : dockBg.y
+            sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
+            sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
+            borderColor: theme.glassBorder
+            highlightColor: theme.specularGlow
         }
 
         Row {
             id: dockRow
             anchors.centerIn: parent
-            spacing: 3
+            spacing: 4
 
             Repeater {
                 id: dockRepeater
@@ -197,35 +360,9 @@ Item {
                 }
             }
         }
-
-        Behavior on width {
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-        }
-
-        opacity: dockContainer.shouldShowDock ? 1.0 : 0.0
-        transform: Translate {
-            y: dockContainer.shouldShowDock ? 0 : 85
-            Behavior on y {
-                NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
-            }
-        }
-
-        Behavior on opacity {
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-        }
     }
 
-    // Context Menu State
-    property string ctxAppId: ""
-    property string ctxAppName: ""
-    property string ctxAppIcon: ""
-    property bool ctxIsPinned: false
-    property bool ctxIsRunning: false
-    property real ctxMenuX: 0
-    property real ctxMenuY: 0
-    property bool ctxMenuVisible: false
-    property var ctxWindows: []
-
+    // ---------- Menú contextual ----------
     function openContextMenu(appId, appName, appIcon, isPinned, isRunning, clickX, clickY) {
         ctxAppId = appId
         ctxAppName = appName
@@ -233,17 +370,18 @@ Item {
         ctxIsPinned = isPinned
         ctxIsRunning = isRunning
         ctxWindows = dockModel.getWindowsForApp(appId)
-        
-        // Calcular posición X centrada en el icono y contenida dentro de la pantalla
-        var targetX = clickX - 100
+
+        var targetX = clickX - contextMenu.width / 2
         if (targetX < 12) targetX = 12
-        if (targetX + 210 > dockContainer.width) targetX = dockContainer.width - 222
+        if (targetX + contextMenu.width > dockContainer.width - 12)
+            targetX = dockContainer.width - contextMenu.width - 12
         ctxMenuX = targetX
-        
+
         ctxMenuVisible = true
+        contextMenu.forceActiveFocus()
     }
 
-    // Capa de cierre al hacer clic fuera del menú contextual
+    // Capa que cierra el menú al hacer clic fuera
     MouseArea {
         anchors.fill: parent
         enabled: dockContainer.ctxMenuVisible
@@ -251,33 +389,37 @@ Item {
         onClicked: dockContainer.ctxMenuVisible = false
     }
 
-    // Menú contextual estilo macOS Liquid Glass
-    Rectangle {
+    Item {
         id: contextMenu
-        visible: dockContainer.ctxMenuVisible
         z: 9999
-        width: 210
+        width: 220
         height: menuCol.height + 16
         x: dockContainer.ctxMenuX
         anchors.bottom: dockBg.top
         anchors.bottomMargin: 10
-        radius: 12
-        clip: true
 
-        TitanTheme { id: menuTheme }
+        // Aparece con fundido + escala suave
+        opacity: dockContainer.ctxMenuVisible ? 1.0 : 0.0
+        scale: dockContainer.ctxMenuVisible ? 1.0 : 0.94
+        visible: opacity > 0.01
+        transformOrigin: Item.Bottom
+        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
-        // Cristal translúcido con blur
-        color: menuTheme.isDark ? Qt.rgba(0.12, 0.14, 0.20, 0.94) : Qt.rgba(0.96, 0.97, 1.0, 0.94)
-        border.color: menuTheme.glassBorder
-        border.width: 1
+        focus: dockContainer.ctxMenuVisible
+        Keys.onEscapePressed: dockContainer.ctxMenuVisible = false
 
-        // Brillo especular
-        Rectangle {
-            anchors.top: parent.top
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 16
-            height: 1
-            color: menuTheme.specularGlow
+        GlassPanel {
+            anchors.fill: parent
+            radius: 12
+            tint: dockContainer.menuTint
+            wallpaper: dockContainer.blurredWallpaper
+            originX: contextMenu.x
+            originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + contextMenu.y) : contextMenu.y
+            sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
+            sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
+            borderColor: theme.glassBorder
+            highlightColor: theme.specularGlow
         }
 
         Column {
@@ -290,7 +432,7 @@ Item {
             anchors.rightMargin: 8
             spacing: 3
 
-            // Encabezado: Icono + Nombre de la App
+            // Encabezado: icono + nombre
             Item {
                 width: parent.width
                 height: 30
@@ -300,7 +442,6 @@ Item {
                     anchors.leftMargin: 6
                     anchors.rightMargin: 6
                     spacing: 8
-                    anchors.verticalCenter: parent.verticalCenter
 
                     Image {
                         width: 18
@@ -310,176 +451,84 @@ Item {
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                         source: {
-                            if (dockContainer.ctxAppIcon && dockContainer.ctxAppIcon.indexOf("/") !== -1) return dockContainer.ctxAppIcon;
-                            if (dockContainer.ctxAppId.indexOf("finder") !== -1) return "qrc:/icons/finder.png";
-                            if (dockContainer.ctxAppId.indexOf("terminal") !== -1) return "qrc:/icons/terminal.png";
-                            if (dockContainer.ctxAppId.indexOf("firefox") !== -1) return "qrc:/icons/firefox.png";
-                            if (dockContainer.ctxAppId.indexOf("settings") !== -1) return "qrc:/icons/system.png";
-                            return "qrc:/icons/apps-folder.png";
+                            var id = dockContainer.ctxAppId
+                            if (dockContainer.ctxAppIcon && dockContainer.ctxAppIcon.indexOf("/") !== -1)
+                                return dockContainer.ctxAppIcon
+                            if (id.indexOf("finder") !== -1) return "qrc:/icons/finder.png"
+                            if (id.indexOf("terminal") !== -1) return "qrc:/icons/terminal.png"
+                            if (id.indexOf("firefox") !== -1) return "qrc:/icons/firefox.png"
+                            if (id.indexOf("settings") !== -1) return "qrc:/icons/system.png"
+                            return "qrc:/icons/apps-folder.png"
                         }
                     }
 
                     Text {
                         text: dockContainer.ctxAppName
-                        color: menuTheme.headerText
+                        color: theme.headerText
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
-                        width: parent.width - 32
+                        width: parent.width - 26
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }
 
-            // Separador
-            Rectangle {
-                width: parent.width
-                height: 1
-                color: menuTheme.headerBorder
-            }
+            Rectangle { width: parent.width; height: 1; color: theme.headerBorder }
 
-            // Lista de Ventanas Abiertas
+            // Ventanas abiertas
             Repeater {
                 model: dockContainer.ctxWindows
-                delegate: Rectangle {
-                    width: parent.width
-                    height: 26
-                    radius: 6
-                    color: winItemMouse.containsMouse ? (menuTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-
-                    Row {
-                        anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
-                        spacing: 6
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Rectangle {
-                            width: 5
-                            height: 5
-                            radius: 2.5
-                            color: "#0a84ff"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Text {
-                            text: modelData.title ? modelData.title : "Ventana"
-                            color: menuTheme.headerText
-                            font.pixelSize: 11
-                            elide: Text.ElideMiddle
-                            width: parent.width - 18
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    MouseArea {
-                        id: winItemMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            dockModel.activateWindowById(modelData.id)
-                            dockContainer.ctxMenuVisible = false
-                        }
+                delegate: MenuRow {
+                    label: modelData.title ? modelData.title : qsTr("Ventana")
+                    showDot: true
+                    isDark: theme.isDark
+                    textColor: theme.headerText
+                    onActivated: {
+                        dockModel.activateWindowById(modelData.id)
+                        dockContainer.ctxMenuVisible = false
                     }
                 }
             }
 
-            // Separador si hay ventanas
             Rectangle {
                 visible: dockContainer.ctxWindows.length > 0
                 width: parent.width
                 height: 1
-                color: menuTheme.headerBorder
+                color: theme.headerBorder
             }
 
-            // Opción Fijar / Desanclar
-            Rectangle {
-                width: parent.width
-                height: 26
-                radius: 6
-                color: pinItemMouse.containsMouse ? (menuTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: dockContainer.ctxIsPinned ? "Desanclar del Dock" : "Fijar en el Dock"
-                    color: menuTheme.headerText
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: pinItemMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (dockContainer.ctxIsPinned) {
-                            dockModel.unpinApp(dockContainer.ctxAppId)
-                        } else {
-                            dockModel.pinApp(dockContainer.ctxAppId)
-                        }
-                        dockContainer.ctxMenuVisible = false
-                    }
+            MenuRow {
+                label: dockContainer.ctxIsPinned ? qsTr("Desanclar del Dock") : qsTr("Fijar en el Dock")
+                isDark: theme.isDark
+                textColor: theme.headerText
+                onActivated: {
+                    if (dockContainer.ctxIsPinned) dockModel.unpinApp(dockContainer.ctxAppId)
+                    else dockModel.pinApp(dockContainer.ctxAppId)
+                    dockContainer.ctxMenuVisible = false
                 }
             }
 
-            // Opción Abrir (si no está corriendo)
-            Rectangle {
+            MenuRow {
                 visible: !dockContainer.ctxIsRunning
-                width: parent.width
-                height: 26
-                radius: 6
-                color: openItemMouse.containsMouse ? (menuTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Abrir"
-                    color: menuTheme.headerText
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: openItemMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        dockModel.activateApp(dockContainer.ctxAppId)
-                        dockContainer.ctxMenuVisible = false
-                    }
+                label: qsTr("Abrir")
+                isDark: theme.isDark
+                textColor: theme.headerText
+                onActivated: {
+                    dockModel.activateApp(dockContainer.ctxAppId)
+                    dockContainer.ctxMenuVisible = false
                 }
             }
 
-            // Opción Cerrar (si está corriendo)
-            Rectangle {
+            MenuRow {
                 visible: dockContainer.ctxIsRunning
-                width: parent.width
-                height: 26
-                radius: 6
-                color: closeItemMouse.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.22) : "transparent"
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Cerrar"
-                    color: closeItemMouse.containsMouse ? "#ff4d4d" : menuTheme.headerText
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: closeItemMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        dockModel.closeApp(dockContainer.ctxAppId)
-                        dockContainer.ctxMenuVisible = false
-                    }
+                label: qsTr("Cerrar")
+                danger: true
+                isDark: theme.isDark
+                textColor: theme.headerText
+                onActivated: {
+                    dockModel.closeApp(dockContainer.ctxAppId)
+                    dockContainer.ctxMenuVisible = false
                 }
             }
         }

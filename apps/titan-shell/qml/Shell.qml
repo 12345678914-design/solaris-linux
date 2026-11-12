@@ -273,7 +273,7 @@ QtObject {
         objectName: "dynamicIslandWindow"
         visible: false
         width: Screen.width
-        height: 100
+        height: 130
         color: "transparent"
         flags: Qt.FramelessWindowHint
 

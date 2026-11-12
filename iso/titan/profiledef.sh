@@ -61,4 +61,9 @@ file_permissions=(
   ["/usr/local/bin/onlyoffice-desktopeditors"]="0:0:755"
   ["/opt/onlyoffice/DesktopEditors.AppImage"]="0:0:755"
   ["/etc/skel/.config/labwc/autostart"]="0:0:755"
+  ["/usr/local/bin/prime-run"]="0:0:755"
+  ["/usr/local/bin/instalar"]="0:0:755"
+  ["/root/instalador/instalar"]="0:0:755"
+  ["/usr/local/bin/titan-installer"]="0:0:755"
+  ["/etc/sudoers.d/20-calamares"]="0:0:0440"
 )

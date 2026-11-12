@@ -76,11 +76,14 @@ public:
     Q_INVOKABLE void openTerminal(const QString &path = QString());
     Q_INVOKABLE bool createFolder(const QString &name = QString());
     Q_INVOKABLE bool deleteItem(const QString &path);
+    Q_INVOKABLE bool deleteItems(const QStringList &paths);
     Q_INVOKABLE bool renameItem(const QString &oldPath, const QString &newName);
     Q_INVOKABLE bool sendToDesktop(const QString &path);
     Q_INVOKABLE void startDrag(const QString &path);
     Q_INVOKABLE bool importFile(const QString &urlOrPath, const QString &targetDir = QString());
     Q_INVOKABLE void copyItem(const QString &path);
+    Q_INVOKABLE void copyItems(const QStringList &paths);
+    Q_INVOKABLE bool moveItems(const QStringList &paths, const QString &targetDir = QString());
     Q_INVOKABLE bool paste(const QString &destinationDir = QString());
     Q_INVOKABLE QVariantMap getFileProperties(const QString &path);
     Q_INVOKABLE void sort(const QString &criteria);

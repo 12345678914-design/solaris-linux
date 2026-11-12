@@ -6,6 +6,7 @@
 #include "ThemeManager.h"
 
 #include <QGuiApplication>
+#include <QDir>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -148,13 +149,20 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND")) {
-        qputenv("QT_QUICK_BACKEND", "software");
-    }
-    if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")) {
-        qputenv("QSG_RHI_BACKEND", "software");
-    }
+    // Respeta QT_QUICK_BACKEND solo si fue solicitado explícitamente por el entorno (modo seguro o VM).
+    // Si no está definido, Qt Quick utilizará aceleración por hardware nativa (OpenGL/Vulkan).
     
+    // Asegurar que las aplicaciones de la tienda Flatpak sean reconocidas por Wayland y el entorno
+    {
+        QString curXdg = QString::fromLocal8Bit(qgetenv("XDG_DATA_DIRS"));
+        QString flatpakDirs = QStringLiteral("/var/lib/flatpak/exports/share:") + QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share");
+        if (curXdg.isEmpty()) {
+            qputenv("XDG_DATA_DIRS", (flatpakDirs + QStringLiteral(":/usr/local/share:/usr/share")).toLocal8Bit());
+        } else if (!curXdg.contains(QStringLiteral("flatpak"))) {
+            qputenv("XDG_DATA_DIRS", (flatpakDirs + QStringLiteral(":") + curXdg).toLocal8Bit());
+        }
+    }
+
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("titan-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("SolarisLinux"));

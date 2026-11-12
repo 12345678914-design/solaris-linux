@@ -20,12 +20,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND")) {
-        qputenv("QT_QUICK_BACKEND", "software");
-    }
-    if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")) {
-        qputenv("QSG_RHI_BACKEND", "software");
-    }
+    // Respeta QT_QUICK_BACKEND solo si fue solicitado por el entorno (modo seguro o VM)
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("titan-settings"));

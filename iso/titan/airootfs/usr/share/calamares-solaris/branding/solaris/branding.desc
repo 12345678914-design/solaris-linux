@@ -1,0 +1,24 @@
+---
+componentName:  solaris
+
+strings:
+    productName:         "Solaris Linux"
+    shortProductName:    "Solaris"
+    version:             "0.2.0"
+    shortVersion:        "0.2.0"
+    versionedName:       "Solaris Linux 0.2.0"
+    shortVersionedName:  "Solaris 0.2.0"
+    bootloaderEntryName: "Solaris Linux"
+    productUrl:          "https://solaris-linux.org"
+    supportUrl:          "https://solaris-linux.org"
+
+images:
+    productLogo:         "/usr/share/pixmaps/archlinux-logo.png"
+    productIcon:         "/usr/share/pixmaps/archlinux-logo.png"
+    productWelcome:      "languages.png"
+
+style:
+   SidebarBackground:        "#1e1e2e"
+   SidebarTextColor:         "#cdd6f4"
+   SidebarTextHighlight:     "#007aff"
+   SidebarBackgroundCurrent: "#252538"

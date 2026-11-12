@@ -27,6 +27,11 @@ public slots:
     Q_INVOKABLE void moveItem(const QString &path, qreal x, qreal y);
     Q_INVOKABLE QVariantMap iconPosition(const QString &path);
     Q_INVOKABLE bool importFile(const QString &urlOrPath, qreal x = -1, qreal y = -1, bool isMove = false);
+    Q_INVOKABLE void copyItems(const QStringList &paths);
+    Q_INVOKABLE void deleteItems(const QStringList &paths);
+    Q_INVOKABLE void pasteItems(qreal x = -1, qreal y = -1);
+    Q_INVOKABLE bool hasClipboard() const;
+    Q_INVOKABLE void moveItems(const QStringList &paths, const QString &targetDir);
 
 signals:
     void itemsChanged();
@@ -35,6 +40,7 @@ signals:
 private:
     void loadItems();
     void ensureSampleDesktop();
+    void syncStoreAppsToDesktop();
     void loadPositions();
     void savePositions();
     QString resolveIcon(const QString &fileName, bool isDir) const;

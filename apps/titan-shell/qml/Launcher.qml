@@ -1,57 +1,405 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
+import QtQuick.Effects   // MultiEffect (Qt 6.5+), solo para recortar esquinas
 
-Rectangle {
+Item {
     id: launcher
     width: 740
     height: 530
-    radius: 24
 
-    TitanTheme { id: titanTheme }
+    // ---------- Estado ----------
+    readonly property real panelRadius: 24
+    readonly property int columns: 5
+    readonly property bool open: shellBackend.launcherVisible
+    property int selectedIndex: -1
+    property string pendingPower: ""          // "", "reboot" o "poweroff"
 
-    // Fondo Liquid Glass translúcido neutro (sin tinte de color)
-    color: titanTheme.isDark ? Qt.rgba(0.12, 0.12, 0.14, 0.75) : Qt.rgba(0.96, 0.96, 0.97, 0.75)
-    border.color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.45)
-    border.width: 1
-    clip: true
+    // Wallpaper ya desenfocado (se genera una sola vez fuera de QML).
+    // Ej.: magick wall.jpg -resize 25% -blur 0x10 -modulate 100,140 wall-blur.jpg
+    readonly property url blurredWallpaper: (typeof shellBackend !== "undefined" && typeof shellBackend.blurredWallpaper !== "undefined" && shellBackend.blurredWallpaper) ? shellBackend.blurredWallpaper : ""
+    readonly property bool hasGlass: blurredWallpaper.toString() !== ""
 
-    // Capa de desenfoque difuso estilo frosted glass
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: 1
-        radius: 23
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.12 : 0.35) }
-            GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.03 : 0.08) }
-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, titanTheme.isDark ? 0.15 : 0.04) }
+    // Opcional: lista de apps recientes. Si no existe, la fila "Recientes" no se muestra.
+    readonly property var recents: (typeof launcherBackend !== "undefined" && typeof launcherBackend.recentApps !== "undefined" && launcherBackend.recentApps) ? launcherBackend.recentApps : []
+    readonly property bool showRecents: searchField.text.length === 0 && recents.length > 0
+
+    TitanTheme { id: titanTheme }   // una sola instancia
+
+    // Posición en pantalla para alinear el wallpaper borroso
+    property real glassOriginX: 0
+    property real glassOriginY: 0
+    function updateOrigin() {
+        if (!launcher) return
+        var p = launcher.mapToGlobal(0, 0)
+        var vx = (typeof Screen !== "undefined" && typeof Screen.virtualX !== "undefined") ? Screen.virtualX : 0
+        var vy = (typeof Screen !== "undefined" && typeof Screen.virtualY !== "undefined") ? Screen.virtualY : 0
+        glassOriginX = p.x - vx
+        glassOriginY = p.y - vy
+    }
+
+    // ---------- Iconos (tabla en vez de cadena de if) ----------
+    readonly property string fallbackIcon: "qrc:/icons/system.png"
+    readonly property var iconMap: ({
+        "folder": "qrc:/icons/finder.png",
+        "titan-finder": "qrc:/icons/finder.png",
+        "utilities-terminal": "qrc:/icons/terminal.png",
+        "terminal": "qrc:/icons/terminal.png",
+        "titan-terminal": "qrc:/icons/terminal.png",
+        "system-file-manager": "qrc:/icons/files.png",
+        "pcmanfm-qt": "qrc:/icons/files.png",
+        "files": "qrc:/icons/files.png",
+        "help-about": "qrc:/icons/about.png",
+        "titan-acerca": "qrc:/icons/about.png",
+        "firefox": "qrc:/icons/firefox.png",
+        "safari": "qrc:/icons/firefox.png",
+        "vscode": "qrc:/icons/vscode.png",
+        "code": "qrc:/icons/vscode.png",
+        "system": "qrc:/icons/system.png",
+        "titan-settings": "qrc:/icons/system.png",
+        "onlyoffice": "qrc:/icons/onlyoffice.png",
+        "onlyoffice-desktopeditors": "qrc:/icons/onlyoffice.png",
+        "developer": "qrc:/icons/developer.png",
+        "vim": "qrc:/icons/developer.png",
+        "calculator": "qrc:/icons/calculator.png",
+        "titan-calc": "qrc:/icons/calculator.png",
+        "calendar": "qrc:/icons/calendar.png",
+        "titan-calendar": "qrc:/icons/calendar.png",
+        "clock": "qrc:/icons/clock.png",
+        "titan-clock": "qrc:/icons/clock.png",
+        "video": "qrc:/icons/video.png",
+        "titan-video": "qrc:/icons/video.png",
+        "music": "qrc:/icons/music-app.png",
+        "titan-musica": "qrc:/icons/music-app.png",
+        "pictures": "qrc:/icons/pictures.png",
+        "titan-fotos": "qrc:/icons/pictures.png"
+    })
+    function iconFor(ic) {
+        if (!ic) return fallbackIcon
+        if (ic.indexOf("/") !== -1) return ic
+        return iconMap[ic] ? iconMap[ic] : fallbackIcon
+    }
+
+    // ---------- Acciones ----------
+    function launchApp(app) {
+        if (!app) return
+        dockModel.setAppLaunching(app.exec, app.exec, app.name, app.icon)
+        launcherBackend.launch(app.exec)
+        shellBackend.closeLauncher()
+    }
+
+    function moveSelection(delta) {
+        var n = appGrid.count
+        if (n <= 0) return
+        if (selectedIndex < 0) { selectedIndex = 0; return }
+        var t = selectedIndex + delta
+        if (t < 0) return
+        if (t > n - 1) {
+            // Bajar desde una fila completa hacia una última fila incompleta
+            if (Math.floor(selectedIndex / columns) < Math.floor((n - 1) / columns)) t = n - 1
+            else return
+        }
+        selectedIndex = t
+    }
+
+    function resetState() {
+        searchField.text = ""
+        pendingPower = ""
+        selectedIndex = appGrid.count > 0 ? 0 : -1
+        searchField.forceActiveFocus()
+    }
+
+    function runPower(kind) {
+        pendingPower = ""
+        shellBackend.closeLauncher()
+        if (kind === "poweroff") shellBackend.powerOff()
+        else if (kind === "reboot") shellBackend.reboot()
+    }
+
+    function cancelPower() { pendingPower = "" }
+
+    onSelectedIndexChanged: {
+        if (selectedIndex >= 0) appGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+    }
+
+    onPendingPowerChanged: {
+        if (pendingPower !== "") Qt.callLater(function() { confirmCard.forceActiveFocus() })
+        else searchField.forceActiveFocus()
+    }
+
+    onOpenChanged: {
+        if (open) {
+            resetState()
+            Qt.callLater(updateOrigin)
         }
     }
 
-    // Brillo especular superior estilo cristal Sonoma
-    Rectangle {
-        anchors.top: parent.top
-        anchors.topMargin: 1
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: parent.width - 40
-        height: 1
-        color: titanTheme.specularGlow
+    Component.onCompleted: {
+        resetState()
+        Qt.callLater(updateOrigin)
     }
 
-    // Animación de entrada suave
-    property bool isVisible: visible
-    scale: isVisible ? 1.0 : 0.92
-    opacity: isVisible ? 1.0 : 0.0
+    // Entrada / salida suave, guiada por el estado real del lanzador
+    opacity: open ? 1.0 : 0.0
+    scale: open ? 1.0 : 0.94
+    visible: open || opacity > 0.01
+    Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+    Behavior on scale   { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
-    Behavior on scale {
-        NumberAnimation { duration: 250; easing.type: Easing.OutBack; easing.overshoot: 1.08 }
+    // ---------- Componentes reutilizables ----------
+
+    // Panel de vidrio: recorte del wallpaper borroso + tinte + borde fino
+    component GlassPanel: Item {
+        id: gp
+        property real radius: 24
+        property color tint: "#40ffffff"
+        property url wallpaper: ""
+        property real originX: 0
+        property real originY: 0
+        property real sceneWidth: 0
+        property real sceneHeight: 0
+        property color borderColor: Qt.rgba(1, 1, 1, 0.35)
+        property color highlightColor: Qt.rgba(1, 1, 1, 0.5)
+        property bool dark: true
+
+        Item {
+            anchors.fill: parent
+            layer.enabled: gp.wallpaper.toString() !== ""
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: gpMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1.0
+            }
+
+            Image {
+                visible: gp.wallpaper.toString() !== ""
+                source: gp.wallpaper
+                x: -gp.originX
+                y: -gp.originY
+                width: gp.sceneWidth
+                height: gp.sceneHeight
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                smooth: true
+            }
+
+            Rectangle { anchors.fill: parent; radius: gp.radius; color: gp.tint }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: gp.radius
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, gp.dark ? 0.10 : 0.30) }
+                    GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, gp.dark ? 0.02 : 0.06) }
+                    GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, gp.dark ? 0.14 : 0.04) }
+                }
+            }
+        }
+
+        Rectangle {
+            id: gpMask
+            anchors.fill: parent
+            radius: gp.radius
+            visible: false
+            layer.enabled: true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: gp.radius
+            color: "transparent"
+            border.color: gp.borderColor
+            border.width: 1
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - gp.radius * 1.6
+            height: 1
+            radius: 1
+            color: gp.highlightColor
+        }
     }
-    Behavior on opacity {
-        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+
+    // Celda de aplicación (rejilla y recientes)
+    component AppCell: Item {
+        id: cell
+        property string appName: ""
+        property string iconSource: ""
+        property bool selected: false
+        property color textColor: "white"
+        property color hoverColor: Qt.rgba(1, 1, 1, 0.12)
+        property color ringColor: Qt.rgba(1, 1, 1, 0.3)
+        signal clicked()
+        signal entered()
+        signal exited()
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 4
+            radius: 14
+            color: cell.selected ? cell.hoverColor : "transparent"
+            border.color: cell.selected ? cell.ringColor : "transparent"
+            border.width: 1
+            Behavior on color { ColorAnimation { duration: 120 } }
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 7
+
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 54
+                height: 54
+                scale: cell.selected ? 1.08 : 1.0
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                Image {
+                    anchors.fill: parent
+                    sourceSize: Qt.size(80, 80)
+                    asynchronous: true
+                    cache: true
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                    source: cell.iconSource
+                }
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: cell.appName
+                color: cell.textColor
+                font.pixelSize: 11
+                font.weight: Font.Medium
+                width: cell.width - 16
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                maximumLineCount: 2
+                wrapMode: Text.Wrap
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onEntered: cell.entered()
+            onExited: cell.exited()
+            onClicked: cell.clicked()
+        }
     }
 
-    property int selectedIndex: -1
+    // Botón de energía con icono dibujado (sin emojis)
+    component PowerButton: Rectangle {
+        id: pb
+        property string kind: "power"          // "sleep" | "reboot" | "power"
+        property color iconColor: "white"
+        property color baseColor: Qt.rgba(1, 1, 1, 0.08)
+        property color hoverColor: Qt.rgba(1, 1, 1, 0.18)
+        signal clicked()
 
-    // 1. Campo de búsqueda Spotlight estilo macOS
+        width: 34
+        height: 28
+        radius: 8
+        color: pbMouse.containsMouse ? hoverColor : baseColor
+        Behavior on color { ColorAnimation { duration: 100 } }
+
+        onIconColorChanged: pbCanvas.requestPaint()
+
+        Canvas {
+            id: pbCanvas
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            onPaint: {
+                var c = getContext("2d")
+                c.reset()
+                c.strokeStyle = pb.iconColor
+                c.fillStyle = pb.iconColor
+                c.lineWidth = 1.6
+                c.lineCap = "round"
+                c.lineJoin = "round"
+                if (pb.kind === "power") {
+                    c.beginPath()
+                    c.arc(8, 9, 5.5, -Math.PI / 2 + 0.65, -Math.PI / 2 - 0.65 + 2 * Math.PI)
+                    c.stroke()
+                    c.beginPath()
+                    c.moveTo(8, 2)
+                    c.lineTo(8, 8)
+                    c.stroke()
+                } else if (pb.kind === "reboot") {
+                    c.beginPath()
+                    c.arc(8, 8, 5.5, -0.4, 4.5)
+                    c.stroke()
+                    c.beginPath()
+                    c.moveTo(4.7, 4.9)
+                    c.lineTo(6.8, 2.6)
+                    c.lineTo(3.9, 1.4)
+                    c.stroke()
+                } else {
+                    c.beginPath()
+                    c.arc(8, 8, 6, 0, 2 * Math.PI)
+                    c.fill()
+                    c.globalCompositeOperation = "destination-out"
+                    c.beginPath()
+                    c.arc(11.5, 5.5, 5, 0, 2 * Math.PI)
+                    c.fill()
+                }
+            }
+        }
+
+        MouseArea {
+            id: pbMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: pb.clicked()
+        }
+    }
+
+    // Chip de atajo de teclado
+    component KeyChip: Rectangle {
+        property string label: ""
+        property color chipColor: "white"
+        height: 18
+        width: chipText.implicitWidth + 12
+        radius: 5
+        color: "transparent"
+        border.color: Qt.rgba(chipColor.r, chipColor.g, chipColor.b, 0.35)
+        border.width: 1
+        Text {
+            id: chipText
+            anchors.centerIn: parent
+            text: parent.label
+            color: parent.chipColor
+            font.pixelSize: 10
+        }
+    }
+
+    // ---------- FONDO DE VIDRIO ----------
+    GlassPanel {
+        anchors.fill: parent
+        radius: launcher.panelRadius
+        dark: titanTheme.isDark
+        tint: launcher.hasGlass
+              ? (titanTheme.isDark ? Qt.rgba(0.09, 0.10, 0.14, 0.50) : Qt.rgba(0.97, 0.97, 0.99, 0.50))
+              : (titanTheme.isDark ? Qt.rgba(0.12, 0.12, 0.14, 0.88) : Qt.rgba(0.96, 0.96, 0.97, 0.88))
+        wallpaper: launcher.blurredWallpaper
+        originX: launcher.glassOriginX
+        originY: launcher.glassOriginY
+        sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
+        sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
+        borderColor: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.45)
+        highlightColor: titanTheme.specularGlow
+    }
+
+    // ---------- 1. BUSCADOR ----------
     Rectangle {
         id: searchContainer
         anchors.top: parent.top
@@ -65,7 +413,6 @@ Rectangle {
         color: titanTheme.contentCardBg
         border.color: searchField.activeFocus ? titanTheme.accent : titanTheme.contentCardBorder
         border.width: searchField.activeFocus ? 1.5 : 1
-
         Behavior on border.color { ColorAnimation { duration: 160 } }
 
         Row {
@@ -83,22 +430,26 @@ Rectangle {
                     id: searchIconCanvas
                     anchors.fill: parent
                     onPaint: {
-                        var ctx = getContext("2d");
-                        ctx.reset();
-                        ctx.strokeStyle = searchField.activeFocus ? titanTheme.accent : titanTheme.contentTextSecondary;
-                        ctx.lineWidth = 2.0;
-                        ctx.lineCap = "round";
-                        ctx.beginPath();
-                        ctx.arc(8, 8, 5.5, 0, Math.PI * 2);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(12.5, 12.5);
-                        ctx.lineTo(17, 17);
-                        ctx.stroke();
+                        var ctx = getContext("2d")
+                        ctx.reset()
+                        ctx.strokeStyle = searchField.activeFocus ? titanTheme.accent : titanTheme.contentTextSecondary
+                        ctx.lineWidth = 2.0
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.arc(8, 8, 5.5, 0, Math.PI * 2)
+                        ctx.stroke()
+                        ctx.beginPath()
+                        ctx.moveTo(12.5, 12.5)
+                        ctx.lineTo(17, 17)
+                        ctx.stroke()
                     }
                     Connections {
                         target: searchField
-                        function onActiveFocusChanged() { searchIconCanvas.requestPaint(); }
+                        function onActiveFocusChanged() { searchIconCanvas.requestPaint() }
+                    }
+                    Connections {
+                        target: titanTheme
+                        function onIsDarkChanged() { searchIconCanvas.requestPaint() }
                     }
                 }
             }
@@ -107,33 +458,40 @@ Rectangle {
                 id: searchField
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 64
-                placeholderText: "Buscar aplicaciones..."
+                placeholderText: qsTr("Buscar aplicaciones…")
                 font.pixelSize: 13
                 focus: true
                 background: null
                 color: titanTheme.contentTextPrimary
                 placeholderTextColor: titanTheme.contentTextSecondary
 
-                onTextChanged: launcherBackend.search(text)
-                Keys.onEscapePressed: shellBackend.closeLauncher()
-                Keys.onUpPressed: {
-                    if (launcher.selectedIndex > 0) launcher.selectedIndex--
+                onTextChanged: {
+                    launcherBackend.search(text)
+                    launcher.selectedIndex = appGrid.count > 0 ? 0 : -1
                 }
-                Keys.onDownPressed: {
-                    if (launcher.selectedIndex < appGrid.count - 1) launcher.selectedIndex++
+
+                Keys.onEscapePressed: {
+                    if (text.length > 0) text = ""
+                    else shellBackend.closeLauncher()
                 }
-                Keys.onReturnPressed: {
-                    if (launcher.selectedIndex >= 0 && launcher.selectedIndex < appGrid.count) {
-                        var item = launcherBackend.apps[launcher.selectedIndex]
-                        if (item) {
-                            dockModel.setAppLaunching(item.exec, item.exec, item.name, item.icon)
-                            launcherBackend.launch(item.exec)
-                            shellBackend.closeLauncher()
-                        }
+
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Down) {
+                        launcher.moveSelection(launcher.columns); event.accepted = true
+                    } else if (event.key === Qt.Key_Up) {
+                        launcher.moveSelection(-launcher.columns); event.accepted = true
+                    } else if (event.key === Qt.Key_Right && cursorPosition === text.length) {
+                        launcher.moveSelection(1); event.accepted = true
+                    } else if (event.key === Qt.Key_Left && cursorPosition === 0) {
+                        launcher.moveSelection(-1); event.accepted = true
                     }
                 }
+
+                Keys.onReturnPressed: launcher.launchApp(launcherBackend.apps[launcher.selectedIndex])
+                Keys.onEnterPressed: launcher.launchApp(launcherBackend.apps[launcher.selectedIndex])
             }
 
+            // Botón limpiar (cruz dibujada)
             Item {
                 width: 20
                 height: 20
@@ -145,15 +503,9 @@ Rectangle {
                     radius: 10
                     color: clearMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.10)
                     Behavior on color { ColorAnimation { duration: 100 } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        color: titanTheme.contentTextPrimary
-                        font.pixelSize: 11
-                        font.bold: true
-                    }
                 }
+                Rectangle { anchors.centerIn: parent; width: 9; height: 1.5; radius: 1; rotation: 45;  color: titanTheme.contentTextPrimary }
+                Rectangle { anchors.centerIn: parent; width: 9; height: 1.5; radius: 1; rotation: -45; color: titanTheme.contentTextPrimary }
 
                 MouseArea {
                     id: clearMouse
@@ -166,312 +518,328 @@ Rectangle {
         }
     }
 
-    // 2. Encabezado de sección y botón de 3 puntos (Opciones de energía)
+    // ---------- 2. RECIENTES (solo sin búsqueda y si el backend las ofrece) ----------
+    Item {
+        id: recentsBlock
+        anchors.top: searchContainer.bottom
+        anchors.topMargin: 10
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: 24
+        anchors.rightMargin: 24
+        height: launcher.showRecents ? 118 : 0
+        visible: launcher.showRecents
+        clip: true
+
+        Text {
+            id: recentsLabel
+            x: 4
+            anchors.top: parent.top
+            anchors.topMargin: 2
+            text: qsTr("Recientes")
+            color: titanTheme.contentTextSecondary
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+        }
+
+        Row {
+            anchors.top: recentsLabel.bottom
+            anchors.topMargin: 4
+            Repeater {
+                model: launcher.recents.length > launcher.columns ? launcher.columns : launcher.recents.length
+                delegate: AppCell {
+                    width: appGrid.cellWidth
+                    height: 92
+                    appName: launcher.recents[index].name
+                    iconSource: launcher.iconFor(launcher.recents[index].icon)
+                    textColor: titanTheme.contentTextPrimary
+                    hoverColor: titanTheme.itemHover
+                    ringColor: titanTheme.glassBorder
+                    selected: recentMouseHover
+                    property bool recentMouseHover: false
+                    onEntered: recentMouseHover = true
+                    onExited: recentMouseHover = false
+                    onClicked: launcher.launchApp(launcher.recents[index])
+                }
+            }
+        }
+    }
+
+    // ---------- 3. ENCABEZADO DE SECCIÓN ----------
     Item {
         id: headerRow
-        anchors.top: searchContainer.bottom
-        anchors.topMargin: 12
+        anchors.top: recentsBlock.bottom
+        anchors.topMargin: 6
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 28
         anchors.rightMargin: 28
-        height: 24
+        height: 22
 
         Text {
-            id: sectionLabel
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
-            text: searchField.text.length > 0 ? "Resultados de búsqueda" : "Todas las aplicaciones"
+            text: searchField.text.length > 0 ? qsTr("Resultados de búsqueda") : qsTr("Todas las aplicaciones")
             color: titanTheme.contentTextSecondary
             font.pixelSize: 11
             font.weight: Font.DemiBold
-            font.letterSpacing: 0.6
-        }
-
-        // Botón de tres puntos estilo macOS / Sonoma
-        Rectangle {
-            id: powerMenuBtn
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right
-            width: 28
-            height: 22
-            radius: 6
-            color: powerMenuMouse.containsMouse || powerMenuPopup.visible ? Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.15 : 0.22) : Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.06 : 0.10)
-            border.color: powerMenuMouse.containsMouse || powerMenuPopup.visible ? titanTheme.accent : titanTheme.glassBorder
-            border.width: 1
-
-            Text {
-                anchors.centerIn: parent
-                text: "•••"
-                color: titanTheme.contentTextPrimary
-                font.pixelSize: 12
-                font.bold: true
-            }
-
-            MouseArea {
-                id: powerMenuMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: powerMenuPopup.visible = !powerMenuPopup.visible
-            }
         }
     }
 
-    // Fondo detector para cerrar menú de energía si se hace clic fuera
-    MouseArea {
-        anchors.fill: parent
-        enabled: powerMenuPopup.visible
-        z: 99
-        onClicked: powerMenuPopup.visible = false
-    }
-
-    // Menú flotante de opciones de energía (Apagar, Reiniciar, Suspender)
-    Rectangle {
-        id: powerMenuPopup
-        visible: false
-        z: 100
-        anchors.top: headerRow.bottom
-        anchors.topMargin: 4
-        anchors.right: headerRow.right
-        width: 165
-        height: powerCol.implicitHeight + 12
-        radius: 12
-        color: titanTheme.isDark ? Qt.rgba(0.18, 0.18, 0.22, 0.94) : Qt.rgba(0.98, 0.98, 1.0, 0.94)
-        border.color: titanTheme.glassBorder
-        border.width: 1
-
-        Column {
-            id: powerCol
-            anchors.centerIn: parent
-            width: parent.width - 12
-            spacing: 2
-
-            // Opción Suspender
-            Rectangle {
-                width: parent.width
-                height: 30
-                radius: 6
-                color: suspMouse.containsMouse ? titanTheme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    spacing: 8
-                    Text { text: "🌙"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                    Text {
-                        text: "Suspender"
-                        color: suspMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                MouseArea {
-                    id: suspMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        powerMenuPopup.visible = false
-                        shellBackend.closeLauncher()
-                        shellBackend.suspend()
-                    }
-                }
-            }
-
-            // Opción Reiniciar
-            Rectangle {
-                width: parent.width
-                height: 30
-                radius: 6
-                color: rebtMouse.containsMouse ? titanTheme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    spacing: 8
-                    Text { text: "🔄"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                    Text {
-                        text: "Reiniciar…"
-                        color: rebtMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                MouseArea {
-                    id: rebtMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        powerMenuPopup.visible = false
-                        shellBackend.closeLauncher()
-                        shellBackend.reboot()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width - 8
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: 1
-                color: titanTheme.glassBorder
-            }
-
-            // Opción Apagar
-            Rectangle {
-                width: parent.width
-                height: 30
-                radius: 6
-                color: pwrMouse.containsMouse ? "#ff453a" : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    spacing: 8
-                    Text { text: "⏻"; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; color: pwrMouse.containsMouse ? "#ffffff" : "#ff453a" }
-                    Text {
-                        text: "Apagar equipo…"
-                        color: pwrMouse.containsMouse ? "#ffffff" : titanTheme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                MouseArea {
-                    id: pwrMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        powerMenuPopup.visible = false
-                        shellBackend.closeLauncher()
-                        shellBackend.powerOff()
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Rejilla simétrica de aplicaciones con scroll vertical si supera las columnas
+    // ---------- 4. REJILLA ----------
     GridView {
         id: appGrid
         anchors.top: headerRow.bottom
-        anchors.topMargin: 10
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 14
+        anchors.topMargin: 6
+        anchors.bottom: footer.top
+        anchors.bottomMargin: 4
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 24
         anchors.rightMargin: 24
         clip: true
 
-        cellWidth: Math.floor(width / 5)
-        cellHeight: 106
+        cellWidth: Math.floor(width / launcher.columns)
+        cellHeight: 100
         model: launcherBackend.apps
         cacheBuffer: 500
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
 
+        onCountChanged: {
+            if (count === 0) launcher.selectedIndex = -1
+            else if (launcher.selectedIndex < 0) launcher.selectedIndex = 0
+            else if (launcher.selectedIndex > count - 1) launcher.selectedIndex = count - 1
+        }
+
         ScrollBar.vertical: ScrollBar {
             id: vScrollBar
             active: appGrid.moving || appGrid.flicking || hovered
             width: 6
-            anchors.right: parent.right
-            anchors.rightMargin: -12
             policy: ScrollBar.AsNeeded
             contentItem: Rectangle {
                 implicitWidth: 6
                 radius: 3
-                color: vScrollBar.pressed ? titanTheme.accent : (vScrollBar.hovered ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(1, 1, 1, 0.28))
+                color: vScrollBar.pressed ? titanTheme.accent
+                       : (vScrollBar.hovered ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(1, 1, 1, 0.28))
                 Behavior on color { ColorAnimation { duration: 140 } }
             }
         }
 
-        delegate: Item {
-            id: gridDelegate
+        delegate: AppCell {
             width: appGrid.cellWidth
             height: appGrid.cellHeight
+            appName: modelData ? modelData.name : ""
+            iconSource: launcher.iconFor(modelData ? modelData.icon : "")
+            selected: launcher.selectedIndex === index
+            textColor: titanTheme.contentTextPrimary
+            hoverColor: titanTheme.itemHover
+            ringColor: titanTheme.glassBorder
+            onEntered: launcher.selectedIndex = index
+            onClicked: launcher.launchApp(modelData)
+        }
+    }
 
-            property int itemIndex: index
-            property bool isSelected: launcher.selectedIndex === index
+    // Estado vacío
+    Column {
+        anchors.centerIn: appGrid
+        spacing: 6
+        visible: appGrid.count === 0 && searchField.text.length > 0
 
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 4
-                radius: 14
-                color: gridItemMouse.containsMouse || isSelected ? titanTheme.itemHover : "transparent"
-                border.color: (gridItemMouse.containsMouse || isSelected) ? titanTheme.glassBorder : "transparent"
-                border.width: 1
-                Behavior on color { ColorAnimation { duration: 120 } }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: qsTr("Sin resultados para «%1»").arg(searchField.text)
+            color: titanTheme.contentTextPrimary
+            font.pixelSize: 14
+            font.weight: Font.Medium
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: qsTr("Revisa la ortografía o prueba con otro nombre.")
+            color: titanTheme.contentTextSecondary
+            font.pixelSize: 12
+        }
+    }
+
+    // ---------- 5. BARRA INFERIOR: atajos + energía ----------
+    Item {
+        id: footer
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 46
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
+            height: 1
+            color: titanTheme.glassBorder
+            opacity: 0.6
+        }
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 26
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 14
+
+            Row {
+                spacing: 6
+                KeyChip { label: "←↑↓→"; chipColor: titanTheme.contentTextSecondary; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: qsTr("navegar"); color: titanTheme.contentTextSecondary; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
             }
+            Row {
+                spacing: 6
+                KeyChip { label: "↵"; chipColor: titanTheme.contentTextSecondary; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: qsTr("abrir"); color: titanTheme.contentTextSecondary; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+            }
+            Row {
+                spacing: 6
+                KeyChip { label: "esc"; chipColor: titanTheme.contentTextSecondary; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: qsTr("cerrar"); color: titanTheme.contentTextSecondary; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+            }
+        }
+
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 24
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            PowerButton {
+                kind: "sleep"
+                iconColor: titanTheme.contentTextPrimary
+                baseColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.08 : 0.14)
+                hoverColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.18 : 0.28)
+                onClicked: { shellBackend.closeLauncher(); shellBackend.suspend() }
+            }
+            PowerButton {
+                kind: "reboot"
+                iconColor: titanTheme.contentTextPrimary
+                baseColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.08 : 0.14)
+                hoverColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.18 : 0.28)
+                onClicked: launcher.pendingPower = "reboot"
+            }
+            PowerButton {
+                kind: "power"
+                iconColor: "#ff6b63"
+                baseColor: Qt.rgba(1, 0.27, 0.23, 0.18)
+                hoverColor: Qt.rgba(1, 0.27, 0.23, 0.34)
+                onClicked: launcher.pendingPower = "poweroff"
+            }
+        }
+    }
+
+    // ---------- 6. CONFIRMACIÓN DE REINICIO / APAGADO ----------
+    Rectangle {
+        id: confirmOverlay
+        anchors.fill: parent
+        radius: launcher.panelRadius
+        color: Qt.rgba(0, 0, 0, 0.42)
+        z: 200
+        opacity: launcher.pendingPower !== "" ? 1.0 : 0.0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+        MouseArea { anchors.fill: parent; onClicked: launcher.cancelPower() }
+
+        Rectangle {
+            id: confirmCard
+            width: 300
+            height: confirmCol.height + 36
+            anchors.centerIn: parent
+            radius: 16
+            color: titanTheme.isDark ? Qt.rgba(0.16, 0.17, 0.22, 0.97) : Qt.rgba(0.98, 0.98, 1.0, 0.97)
+            border.color: titanTheme.glassBorder
+            border.width: 1
+            focus: confirmOverlay.visible
+            scale: launcher.pendingPower !== "" ? 1.0 : 0.94
+            Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+            Keys.onEscapePressed: launcher.cancelPower()
+            Keys.onReturnPressed: launcher.runPower(launcher.pendingPower)
+            Keys.onEnterPressed: launcher.runPower(launcher.pendingPower)
+
+            MouseArea { anchors.fill: parent }
 
             Column {
-                anchors.centerIn: parent
-                spacing: 7
+                id: confirmCol
+                anchors.top: parent.top
+                anchors.topMargin: 18
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                spacing: 6
 
-                Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 54
-                    height: 54
-                    scale: gridItemMouse.containsMouse ? 1.10 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-
-                    Image {
-                        anchors.fill: parent
-                        sourceSize: Qt.size(80, 80)
-                        asynchronous: true
-                        cache: true
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                        mipmap: true
-                        source: {
-                            var ic = (modelData && modelData.icon) ? modelData.icon : "";
-                            if (ic.indexOf("/") !== -1) return ic;
-                            if (ic === "folder" || ic === "titan-finder") return "qrc:/icons/finder.png";
-                            if (ic === "utilities-terminal" || ic === "terminal" || ic === "titan-terminal") return "qrc:/icons/terminal.png";
-                            if (ic === "system-file-manager" || ic === "pcmanfm-qt" || ic === "files") return "qrc:/icons/files.png";
-                            if (ic === "help-about" || ic === "titan-acerca") return "qrc:/icons/about.png";
-                            if (ic === "firefox" || ic === "safari") return "qrc:/icons/firefox.png";
-                            if (ic === "vscode" || ic === "code") return "qrc:/icons/vscode.png";
-                            if (ic === "system" || ic === "titan-settings") return "qrc:/icons/system.png";
-                            if (ic === "onlyoffice" || ic === "onlyoffice-desktopeditors") return "qrc:/icons/onlyoffice.png";
-                            if (ic === "developer" || ic === "vim") return "qrc:/icons/developer.png";
-                            return "qrc:/icons/system.png";
-                        }
-                    }
+                Text {
+                    width: parent.width
+                    text: launcher.pendingPower === "poweroff" ? qsTr("¿Apagar el equipo?") : qsTr("¿Reiniciar el equipo?")
+                    color: titanTheme.contentTextPrimary
+                    font.pixelSize: 15
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
                 }
 
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData ? modelData.name : ""
-                    color: titanTheme.contentTextPrimary
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                    width: appGrid.cellWidth - 16
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    maximumLineCount: 2
+                    width: parent.width
+                    text: qsTr("Se cerrarán todas las aplicaciones abiertas.")
+                    color: titanTheme.contentTextSecondary
+                    font.pixelSize: 12
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
                 }
-            }
 
-            MouseArea {
-                id: gridItemMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onEntered: launcher.selectedIndex = index
-                onExited: if (launcher.selectedIndex === index) launcher.selectedIndex = -1
-                onClicked: {
-                    dockModel.setAppLaunching(modelData.exec, modelData.exec, modelData.name, modelData.icon)
-                    launcherBackend.launch(modelData.exec)
-                    shellBackend.closeLauncher()
+                Item { width: 1; height: 8 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Rectangle {
+                        width: (parent.width - 8) / 2
+                        height: 32
+                        radius: 9
+                        color: cancelMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.10)
+                        Text {
+                            anchors.centerIn: parent
+                            text: qsTr("Cancelar")
+                            color: titanTheme.contentTextPrimary
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                        }
+                        MouseArea {
+                            id: cancelMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: launcher.cancelPower()
+                        }
+                    }
+
+                    Rectangle {
+                        width: (parent.width - 8) / 2
+                        height: 32
+                        radius: 9
+                        color: okMouse.containsMouse ? "#ff6259" : "#ff453a"
+                        Text {
+                            anchors.centerIn: parent
+                            text: launcher.pendingPower === "poweroff" ? qsTr("Apagar") : qsTr("Reiniciar")
+                            color: "#ffffff"
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                        }
+                        MouseArea {
+                            id: okMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: launcher.runPower(launcher.pendingPower)
+                        }
+                    }
                 }
             }
         }
