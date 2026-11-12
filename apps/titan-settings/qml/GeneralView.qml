@@ -57,9 +57,9 @@ ScrollView {
                         Repeater {
                             model: [
                                 { id: "auto", name: "Automático" },
+                                { id: "es", name: "Español" },
                                 { id: "en", name: "English" },
-                                { id: "ru", name: "Русский" },
-                                { id: "es", name: "Español" }
+                                { id: "quz", name: "Quechua" }
                             ]
 
                             delegate: Rectangle {
@@ -242,10 +242,10 @@ ScrollView {
         // 3. ACTUALIZACIÓN DE SOFTWARE
         Column {
             width: parent.width
-            spacing: 8
+            spacing: 12
 
             Text {
-                text: "Actualización de software"
+                text: "Actualización de software (Arch Linux)"
                 color: theme.contentTextSecondary
                 font.pixelSize: 12
                 font.bold: true
@@ -253,7 +253,7 @@ ScrollView {
 
             Rectangle {
                 width: parent.width
-                height: 54
+                height: 56
                 radius: 10
                 color: theme.contentCardBg
                 border.color: theme.contentCardBorder
@@ -262,36 +262,45 @@ ScrollView {
                 Row {
                     anchors.left: parent.left
                     anchors.leftMargin: 16
+                    anchors.right: updateBtnRect.left
+                    anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 12
 
                     Text {
-                        text: "🔄"
+                        text: settingsBackend.updateChecking ? "⏳" : "🔄"
                         font.pixelSize: 16
+                        anchors.verticalCenter: parent.verticalCenter
                     }
 
                     Text {
                         text: settingsBackend.updateStatus
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                        width: parent.width - 32
                     }
                 }
 
                 Rectangle {
+                    id: updateBtnRect
                     anchors.right: parent.right
                     anchors.rightMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
                     width: updateBtnText.implicitWidth + 24
                     height: 28
                     radius: 6
-                    color: updateMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.08) : (theme.isDark ? "#2c303c" : "#f0f0f4")
+                    color: settingsBackend.updateChecking ? (theme.isDark ? "#22242b" : "#e0e0e0") :
+                           updateMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.08) : (theme.isDark ? "#2c303c" : "#f0f0f4")
                     border.color: Qt.rgba(0, 0, 0, 0.15)
                     border.width: 1
+                    opacity: settingsBackend.updateChecking ? 0.6 : 1.0
 
                     Text {
                         id: updateBtnText
                         anchors.centerIn: parent
-                        text: "Buscar actualizaciones"
+                        text: settingsBackend.updateChecking ? "Buscando..." : "Buscar actualizaciones"
                         color: theme.contentTextPrimary
                         font.pixelSize: 11
                         font.bold: true
@@ -300,9 +309,112 @@ ScrollView {
                     MouseArea {
                         id: updateMouse
                         anchors.fill: parent
+                        enabled: !settingsBackend.updateChecking
                         hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: settingsBackend.checkUpdates()
+                    }
+                }
+            }
+
+            // TARJETA DE CONFIRMACIÓN MODAL CUANDO HAY ACTUALIZACIONES ENCONTRADAS
+            Rectangle {
+                visible: settingsBackend.updatePromptVisible
+                width: parent.width
+                height: 120
+                radius: 10
+                color: theme.isDark ? Qt.rgba(0.08, 0.35, 0.70, 0.18) : Qt.rgba(0.04, 0.45, 0.95, 0.08)
+                border.color: "#007aff"
+                border.width: 1.5
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 10
+
+                    Row {
+                        width: parent.width
+                        spacing: 10
+
+                        Text {
+                            text: "📦"
+                            font.pixelSize: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+                            width: parent.width - 36
+
+                            Text {
+                                text: "Actualización disponible: " + settingsBackend.updateCount + " paquetes (" + settingsBackend.updateSize + ")"
+                                color: theme.contentTextPrimary
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+
+                            Text {
+                                text: "¿Deseas instalar esta actualización del sistema ahora en la terminal?"
+                                color: theme.contentTextSecondary
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 12
+
+                        // Botón Rechazar / Cancelar
+                        Rectangle {
+                            width: 90
+                            height: 28
+                            radius: 6
+                            color: cancelMouse.containsMouse ? (theme.isDark ? "#383c48" : "#d8d8de") : (theme.isDark ? "#282b34" : "#e8e8ed")
+                            border.color: theme.contentCardBorder
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Cancelar"
+                                color: theme.contentTextPrimary
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: cancelMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: settingsBackend.cancelUpdates()
+                            }
+                        }
+
+                        // Botón Instalar
+                        Rectangle {
+                            width: 140
+                            height: 28
+                            radius: 6
+                            color: installMouse.containsMouse ? "#0062cc" : "#007aff"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Instalar actualización"
+                                color: "#ffffff"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: installMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: settingsBackend.installUpdates()
+                            }
+                        }
                     }
                 }
             }

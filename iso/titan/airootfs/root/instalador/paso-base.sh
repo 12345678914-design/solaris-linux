@@ -242,7 +242,11 @@ paquetes_instalar() {
   local -a drivers_gpu=(mesa vulkan-swrast)
   if command -v lspci >/dev/null 2>&1; then
     if lspci 2>/dev/null | grep -qiE "(vga|3d).*nvidia"; then
-      drivers_gpu+=(nvidia-open nvidia-utils egl-wayland libva-nvidia-driver)
+      drivers_gpu+=(vulkan-nouveau xf86-video-nouveau)
+      # Si se instala el kernel estándar de Arch (no el propio), añadir soporte privativo
+      if ! paquete_kernel_propio >/dev/null 2>&1; then
+        drivers_gpu+=(nvidia-open nvidia-utils egl-wayland libva-nvidia-driver)
+      fi
     fi
     if lspci 2>/dev/null | grep -qiE "(vga|display).*intel"; then
       drivers_gpu+=(vulkan-intel intel-media-driver libva-intel-driver)
@@ -795,8 +799,19 @@ EOF
     arch-chroot "${raiz}" grub-mkconfig -o /boot/grub/grub.cfg
     # Entrada en el firmware: sin esto el equipo arranca de otras veces.
     arch-chroot "${raiz}" efibootmgr --create --disk "${disco}" --part 1 \
-      --label "Titan Linux" --loader '\EFI\TitanLinux\grubx64.efi' \
+      --label "Inti OS" --loader '\EFI\BOOT\BOOTX64.EFI' \
       || aviso "no se ha podido crear la entrada de arranque en el firmware"
+    # Asegurar prioridad 1 en efibootmgr para el arranque instalado
+    local num orden
+    num="$(arch-chroot "${raiz}" efibootmgr 2>/dev/null | grep -iE "Inti OS|Titan Linux" | head -n1 | sed -E 's/^Boot([0-9A-Fa-f]+).*/\1/')"
+    if [[ -n "${num}" ]]; then
+      orden="$(arch-chroot "${raiz}" efibootmgr 2>/dev/null | grep "^BootOrder:" | awk '{print $2}')"
+      if [[ -n "${orden}" ]]; then
+        orden="${num},$(echo "${orden}" | tr ',' '\n' | grep -v "^${num}$" | paste -sd,)"
+        arch-chroot "${raiz}" efibootmgr -o "${orden}" 2>/dev/null || true
+      fi
+      arch-chroot "${raiz}" efibootmgr -n "${num}" 2>/dev/null || true
+    fi
   else
     local disco="${E[disco]}"
     arch-chroot "${raiz}" grub-install --target=i386-pc --recheck --modules="part_gpt part_msdos fat ext2 btrfs luks" "${disco}" \

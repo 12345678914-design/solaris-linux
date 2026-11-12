@@ -19,6 +19,8 @@
     </font>
   </theme>
 
+  <windowSwitcher show="yes" preview="yes" outline="yes" />
+
   <!-- Reglas de ventana: las apps de Titan con CSD propio no llevan barra de labwc; Acerca sí usa gestor de ventana -->
   <windowRules>
     <windowRule identifier="*" serverDecoration="default" />
@@ -212,7 +214,15 @@
       <action name="ToggleMaximize"/>
     </keybind>
     
-    <!-- Alt + Tab: Cambiar entre ventanas abiertas -->
+    <!-- Super/Cmd + L: Bloquear pantalla (Lock Screen) -->
+    <keybind key="W-l">
+      <action name="Execute" command="titan-shell --lock"/>
+    </keybind>
+    <keybind key="W-L">
+      <action name="Execute" command="titan-shell --lock"/>
+    </keybind>
+    
+    <!-- Alt + Tab: Cambiar entre ventanas abiertas con estilo Liquid Glass -->
     <keybind key="A-Tab">
       <action name="NextWindow"/>
     </keybind>

@@ -15,13 +15,13 @@ Item {
     property int selectedIndex: -1
     property string pendingPower: ""          // "", "reboot" o "poweroff"
 
-    // Wallpaper ya desenfocado (se genera una sola vez fuera de QML).
-    // Ej.: magick wall.jpg -resize 25% -blur 0x10 -modulate 100,140 wall-blur.jpg
-    readonly property url blurredWallpaper: (typeof shellBackend !== "undefined" && typeof shellBackend.blurredWallpaper !== "undefined" && shellBackend.blurredWallpaper) ? shellBackend.blurredWallpaper : ""
-    readonly property bool hasGlass: blurredWallpaper.toString() !== ""
+    // Refleja el fondo de pantalla ACTUAL (ver GlassPanel.qml): se decodifica en minúscula y se
+    // amplía, así que no hace falta pre-desenfocar nada ni usar blur en vivo.
+    readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
+    readonly property bool hasGlass: wallpaperPath !== ""
 
     // Opcional: lista de apps recientes. Si no existe, la fila "Recientes" no se muestra.
-    readonly property var recents: (typeof launcherBackend !== "undefined" && typeof launcherBackend.recentApps !== "undefined" && launcherBackend.recentApps) ? launcherBackend.recentApps : []
+    readonly property var recents: launcherBackend.recentApps ? launcherBackend.recentApps : []
     readonly property bool showRecents: searchField.text.length === 0 && recents.length > 0
 
     TitanTheme { id: titanTheme }   // una sola instancia
@@ -148,83 +148,6 @@ Item {
 
     // ---------- Componentes reutilizables ----------
 
-    // Panel de vidrio: recorte del wallpaper borroso + tinte + borde fino
-    component GlassPanel: Item {
-        id: gp
-        property real radius: 24
-        property color tint: "#40ffffff"
-        property url wallpaper: ""
-        property real originX: 0
-        property real originY: 0
-        property real sceneWidth: 0
-        property real sceneHeight: 0
-        property color borderColor: Qt.rgba(1, 1, 1, 0.35)
-        property color highlightColor: Qt.rgba(1, 1, 1, 0.5)
-        property bool dark: true
-
-        Item {
-            anchors.fill: parent
-            layer.enabled: gp.wallpaper.toString() !== ""
-            layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: gpMask
-                maskThresholdMin: 0.5
-                maskSpreadAtMin: 1.0
-            }
-
-            Image {
-                visible: gp.wallpaper.toString() !== ""
-                source: gp.wallpaper
-                x: -gp.originX
-                y: -gp.originY
-                width: gp.sceneWidth
-                height: gp.sceneHeight
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: true
-                smooth: true
-            }
-
-            Rectangle { anchors.fill: parent; radius: gp.radius; color: gp.tint }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: gp.radius
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, gp.dark ? 0.10 : 0.30) }
-                    GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, gp.dark ? 0.02 : 0.06) }
-                    GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, gp.dark ? 0.14 : 0.04) }
-                }
-            }
-        }
-
-        Rectangle {
-            id: gpMask
-            anchors.fill: parent
-            radius: gp.radius
-            visible: false
-            layer.enabled: true
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: gp.radius
-            color: "transparent"
-            border.color: gp.borderColor
-            border.width: 1
-        }
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - gp.radius * 1.6
-            height: 1
-            radius: 1
-            color: gp.highlightColor
-        }
-    }
-
     // Celda de aplicación (rejilla y recientes)
     component AppCell: Item {
         id: cell
@@ -298,7 +221,7 @@ Item {
     // Botón de energía con icono dibujado (sin emojis)
     component PowerButton: Rectangle {
         id: pb
-        property string kind: "power"          // "sleep" | "reboot" | "power"
+        property string kind: "power"          // "lock" | "sleep" | "reboot" | "power"
         property color iconColor: "white"
         property color baseColor: Qt.rgba(1, 1, 1, 0.08)
         property color hoverColor: Qt.rgba(1, 1, 1, 0.18)
@@ -333,6 +256,18 @@ Item {
                     c.moveTo(8, 2)
                     c.lineTo(8, 8)
                     c.stroke()
+                } else if (pb.kind === "lock") {
+                    // Candado cerrado estilo Apple
+                    c.beginPath()
+                    c.arc(8, 6.2, 3.2, Math.PI, 0, false)
+                    c.stroke()
+                    c.beginPath()
+                    c.rect(3.5, 6.5, 9, 6.8)
+                    c.fill()
+                    c.fillStyle = pbMouse.containsMouse ? pb.hoverColor : pb.baseColor
+                    c.beginPath()
+                    c.arc(8, 9.5, 1.2, 0, 2 * Math.PI)
+                    c.fill()
                 } else if (pb.kind === "reboot") {
                     c.beginPath()
                     c.arc(8, 8, 5.5, -0.4, 4.5)
@@ -390,7 +325,7 @@ Item {
         tint: launcher.hasGlass
               ? (titanTheme.isDark ? Qt.rgba(0.09, 0.10, 0.14, 0.50) : Qt.rgba(0.97, 0.97, 0.99, 0.50))
               : (titanTheme.isDark ? Qt.rgba(0.12, 0.12, 0.14, 0.88) : Qt.rgba(0.96, 0.96, 0.97, 0.88))
-        wallpaper: launcher.blurredWallpaper
+        wallpaper: launcher.wallpaperPath
         originX: launcher.glassOriginX
         originY: launcher.glassOriginY
         sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
@@ -709,6 +644,13 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
 
+            PowerButton {
+                kind: "lock"
+                iconColor: titanTheme.contentTextPrimary
+                baseColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.08 : 0.14)
+                hoverColor: Qt.rgba(1, 1, 1, titanTheme.isDark ? 0.18 : 0.28)
+                onClicked: { shellBackend.closeLauncher(); shellBackend.lockScreen() }
+            }
             PowerButton {
                 kind: "sleep"
                 iconColor: titanTheme.contentTextPrimary

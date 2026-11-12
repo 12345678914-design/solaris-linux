@@ -54,3 +54,20 @@ menu.items.active.bg: flat solid
 menu.items.active.bg.color: #34405a
 menu.items.active.text.color: #ffffff
 
+# Selector de ventanas (Alt + Tab) estilo macOS Liquid Glass
+osd.border.width: 1
+osd.border.color: #0a84ff
+osd.bg.color: #181a24
+osd.label.text.color: #f2f4f8
+
+osd.window-switcher.width: 620
+osd.window-switcher.padding: 12
+osd.window-switcher.item.padding.x: 12
+osd.window-switcher.item.padding.y: 10
+osd.window-switcher.item.active.border.width: 2
+osd.window-switcher.item.active.border.color: #0a84ff
+osd.window-switcher.item.active.bg.color: #262c3d
+osd.window-switcher.preview.border.width: 1
+osd.window-switcher.preview.border.color: #383e52
+
+

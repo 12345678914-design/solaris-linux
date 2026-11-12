@@ -8,9 +8,14 @@
 
 struct DatosEquipo
 {
+    QString os;
+    QString version;
+    QString kernel;
     QString equipo;
-    QString ram;
+    QString usuario;
     QString procesador;
+    QString gpu;
+    QString ram;
     QString disco;
     QString arquitectura;
 };

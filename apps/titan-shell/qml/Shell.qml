@@ -297,4 +297,32 @@ QtObject {
             anchors.fill: parent
         }
     }
+
+    // 12. Animación Cinematográfica de Arranque (BootSplash: Logo centrado -> desliza a izquierda + Nombre Inti OS)
+    property var bootSplashWin: Window {
+        objectName: "bootSplashWindow"
+        visible: shellBackend.bootSplashActive
+        width: Screen.width
+        height: Screen.height
+        color: "#000000"
+        flags: Qt.FramelessWindowHint
+
+        BootSplash {
+            anchors.fill: parent
+        }
+    }
+
+    // 13. Pantalla de Bloqueo (Lock Screen: Mod + L en Live, o pantalla inicial en Instalado)
+    property var lockScreenWin: Window {
+        objectName: "lockScreenWindow"
+        visible: shellBackend.lockScreenActive && shellBackend.bootSplashFinished
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        LockScreen {
+            anchors.fill: parent
+        }
+    }
 }

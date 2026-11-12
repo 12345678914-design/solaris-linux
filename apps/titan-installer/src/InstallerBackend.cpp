@@ -656,6 +656,63 @@ public slots:
             }
         }
 
+        if (isUefi) {
+            emit progress(97, QStringLiteral("Configurando entrada UEFI del sistema como prioridad 1..."));
+            QString partNum = QStringLiteral("1");
+            QRegularExpression reDigits(QStringLiteral("(\\d+)$"));
+            auto match = reDigits.match(efiDev);
+            if (match.hasMatch()) {
+                partNum = match.captured(1);
+            }
+
+            // Crear la entrada de Inti OS en el firmware
+            runCmd(QStringLiteral("efibootmgr"), {
+                QStringLiteral("-c"),
+                QStringLiteral("-d"), diskPath,
+                QStringLiteral("-p"), partNum,
+                QStringLiteral("-L"), QStringLiteral("Inti OS"),
+                QStringLiteral("-l"), QStringLiteral("\\EFI\\BOOT\\BOOTX64.EFI")
+            });
+
+            // Reordenar BootOrder para colocar Inti OS en la primera posición (index = 0 / prioridad 1)
+            QProcess pBoot;
+            pBoot.start(QStringLiteral("efibootmgr"));
+            if (pBoot.waitForFinished(3000)) {
+                QString out = QString::fromUtf8(pBoot.readAllStandardOutput());
+                QString intiBootNum;
+                const auto lines = out.split(QLatin1Char('\n'));
+                for (const QString &line : lines) {
+                    if (line.contains(QStringLiteral("Inti OS"), Qt::CaseInsensitive) ||
+                        line.contains(QStringLiteral("Titan Linux"), Qt::CaseInsensitive)) {
+                        QRegularExpression reBootNum(QStringLiteral("Boot([0-9A-Fa-f]{4})"));
+                        auto m = reBootNum.match(line);
+                        if (m.hasMatch()) {
+                            intiBootNum = m.captured(1);
+                            break;
+                        }
+                    }
+                }
+
+                if (!intiBootNum.isEmpty()) {
+                    runCmd(QStringLiteral("efibootmgr"), {QStringLiteral("-n"), intiBootNum});
+
+                    QString currOrder;
+                    for (const QString &line : lines) {
+                        if (line.startsWith(QStringLiteral("BootOrder:"))) {
+                            currOrder = line.section(QLatin1Char(':'), 1).trimmed();
+                            break;
+                        }
+                    }
+                    if (!currOrder.isEmpty()) {
+                        QStringList orders = currOrder.split(QLatin1Char(','), Qt::SkipEmptyParts);
+                        orders.removeAll(intiBootNum);
+                        orders.prepend(intiBootNum);
+                        runCmd(QStringLiteral("efibootmgr"), {QStringLiteral("-o"), orders.join(QLatin1Char(','))});
+                    }
+                }
+            }
+        }
+
         emit progress(98, QStringLiteral("Limpiando temporales y preparando sistema instalado..."));
 
         // Eliminar completamente el instalador del sistema de destino para que no aparezca tras instalar
@@ -1047,6 +1104,22 @@ void InstallerBackend::onWorkerFinished(bool success, const QString &error)
 
 void InstallerBackend::rebootSystem()
 {
+    // Expulsar el medio USB live de arranque para que no vuelva a cargar la ISO
+    QProcess pFind;
+    pFind.start(QStringLiteral("findmnt"), {QStringLiteral("-no"), QStringLiteral("SOURCE"), QStringLiteral("/run/archiso/bootmnt")});
+    if (pFind.waitForFinished(1000)) {
+        QString dev = QString::fromUtf8(pFind.readAllStandardOutput()).trimmed();
+        if (!dev.isEmpty()) {
+            QProcess pDisk;
+            pDisk.start(QStringLiteral("lsblk"), {QStringLiteral("-no"), QStringLiteral("PKNAME"), dev});
+            if (pDisk.waitForFinished(1000)) {
+                QString pk = QString::fromUtf8(pDisk.readAllStandardOutput()).trimmed();
+                QString targetDev = pk.isEmpty() ? dev : (QStringLiteral("/dev/") + pk);
+                QProcess::execute(QStringLiteral("eject"), {targetDev});
+                QProcess::execute(QStringLiteral("udisksctl"), {QStringLiteral("power-off"), QStringLiteral("-b"), targetDev});
+            }
+        }
+    }
     QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("reboot")});
 }
 

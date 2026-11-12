@@ -20,6 +20,8 @@
 #include <QStringList>
 #include <QSysInfo>
 #include <QVBoxLayout>
+#include <QProcess>
+#include <QDir>
 
 namespace {
 
@@ -113,25 +115,40 @@ QString leerDisco()
              formatearBytes(raiz.bytesTotal()));
 }
 
+QString leerGpu()
+{
+    QProcess proc;
+    proc.start(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral("lspci 2>/dev/null | grep -iE 'vga|3d|display' | head -n1 | cut -d':' -f3-")});
+    if (proc.waitForFinished(1000)) {
+        QString out = QString::fromLocal8Bit(proc.readAllStandardOutput()).trimmed();
+        if (!out.isEmpty()) return out;
+    }
+    return QStringLiteral("Gráficos integrados / Genérico");
+}
+
 } // namespace
 
 DatosEquipo leerDatosEquipo()
 {
-    const Config &cfg = Config::instancia();
     DatosEquipo datos;
-    datos.equipo = cfg.hostname();
+    datos.os = QStringLiteral("Inti OS");
+    datos.version = QStringLiteral("1.0 (Edición Escritorio)");
+    datos.kernel = QSysInfo::kernelType() + QStringLiteral(" ") + QSysInfo::kernelVersion();
+    datos.equipo = QSysInfo::machineHostName();
     if (datos.equipo.isEmpty()) {
-        datos.equipo = QSysInfo::machineHostName();
+        datos.equipo = QStringLiteral("inti-pc");
     }
-    if (datos.equipo.isEmpty()) {
-        datos.equipo = QStringLiteral("Titan");
+    datos.usuario = QString::fromLocal8Bit(qgetenv("USER"));
+    if (datos.usuario.isEmpty()) {
+        datos.usuario = QStringLiteral("solaris");
     }
-    datos.ram = leerRam();
     datos.procesador = leerProcesador();
+    datos.gpu = leerGpu();
+    datos.ram = leerRam();
     datos.disco = leerDisco();
     datos.arquitectura = QSysInfo::currentCpuArchitecture();
     if (datos.arquitectura.isEmpty()) {
-        datos.arquitectura = QStringLiteral("No disponible");
+        datos.arquitectura = QStringLiteral("x86_64");
     }
     return datos;
 }
@@ -194,15 +211,12 @@ QPixmap obtenerLogoSolaris(int lado)
 AcercaVentana::AcercaVentana(QWidget *padre)
     : QWidget(padre)
 {
-    const Config &cfg = Config::instancia();
-    const QString nombreSo = cfg.soNombre().isEmpty() ? QStringLiteral("Solaris Linux") : cfg.soNombre();
-    setWindowTitle(QStringLiteral("Acerca de %1").arg(nombreSo));
+    setWindowTitle(QStringLiteral("Acerca de Inti OS"));
     setObjectName(QStringLiteral("acerca"));
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
-    resize(560, 520);
-    setMinimumSize(420, 360);
+    setFixedSize(560, 520);
     setWindowIcon(QIcon(obtenerLogoSolaris(64)));
     construir(leerDatosEquipo());
 
@@ -217,8 +231,6 @@ AcercaVentana::AcercaVentana(QWidget *padre)
 
 void AcercaVentana::construir(const DatosEquipo &datos)
 {
-    const Config &cfg = Config::instancia();
-
     setStyleSheet(QStringLiteral(
         "QWidget#acerca {"
         "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
@@ -228,8 +240,8 @@ void AcercaVentana::construir(const DatosEquipo &datos)
         "  border: 1px solid rgba(255, 255, 255, 0.14);"
         "}"
         "QLabel { color: #f2f5ff; }"
-        "QLabel#equipo { font-size: 18pt; font-weight: 700; color: #ffffff; }"
-        "QLabel#subtitulo { color: #a2b0d0; font-size: 9.5pt; }"
+        "QLabel#equipo { font-size: 20pt; font-weight: 700; color: #ffffff; }"
+        "QLabel#subtitulo { color: #a2b0d0; font-size: 10pt; }"
         "QLabel#clave { color: #9bb0d4; font-size: 10pt; font-weight: 600; }"
         "QLabel#valor { color: #f2f5ff; font-size: 10pt; }"
         "QPushButton {"
@@ -253,29 +265,28 @@ void AcercaVentana::construir(const DatosEquipo &datos)
         "}"));
 
     auto *raiz = new QVBoxLayout(this);
-    raiz->setContentsMargins(42, 28, 42, 26);
-    raiz->setSpacing(10);
+    raiz->setContentsMargins(36, 16, 36, 16);
+    raiz->setSpacing(4);
 
     auto *icono = new QLabel(this);
     icono->setAlignment(Qt::AlignCenter);
-    icono->setPixmap(obtenerLogoSolaris(100));
+    icono->setPixmap(obtenerLogoSolaris(80));
     raiz->addWidget(icono);
 
-    auto *equipo = new QLabel(datos.equipo, this);
+    auto *equipo = new QLabel(QStringLiteral("Inti OS"), this);
     equipo->setObjectName(QStringLiteral("equipo"));
     equipo->setAlignment(Qt::AlignCenter);
     raiz->addWidget(equipo);
 
-    auto *subtitulo = new QLabel(
-        QStringLiteral("%1 %2").arg(cfg.soNombre(), cfg.soVersion()), this);
+    auto *subtitulo = new QLabel(datos.version, this);
     subtitulo->setObjectName(QStringLiteral("subtitulo"));
     subtitulo->setAlignment(Qt::AlignCenter);
     raiz->addWidget(subtitulo);
 
     auto *formulario = new QFormLayout();
-    formulario->setContentsMargins(0, 14, 0, 8);
-    formulario->setHorizontalSpacing(18);
-    formulario->setVerticalSpacing(10);
+    formulario->setContentsMargins(0, 8, 0, 4);
+    formulario->setHorizontalSpacing(16);
+    formulario->setVerticalSpacing(4);
     formulario->setLabelAlignment(Qt::AlignRight | Qt::AlignTop);
     formulario->setFormAlignment(Qt::AlignHCenter);
 
@@ -290,17 +301,21 @@ void AcercaVentana::construir(const DatosEquipo &datos)
         formulario->addRow(etiqueta, dato);
     };
 
-    agregar(QStringLiteral("RAM:"), datos.ram);
-    agregar(QStringLiteral("Procesador:"), datos.procesador);
-    agregar(QStringLiteral("Disco:"), datos.disco);
-    agregar(QStringLiteral("Arquitectura:"), datos.arquitectura);
+    agregar(QStringLiteral("Sistema operativo:"), datos.os);
+    agregar(QStringLiteral("Versión del kernel:"), datos.kernel);
+    agregar(QStringLiteral("Procesador (CPU):"), datos.procesador);
+    agregar(QStringLiteral("Gráficos (GPU):"), datos.gpu);
+    agregar(QStringLiteral("Memoria (RAM):"), datos.ram);
+    agregar(QStringLiteral("Almacenamiento:"), datos.disco);
+    agregar(QStringLiteral("Usuario:"), datos.usuario);
+    agregar(QStringLiteral("Nombre del equipo:"), datos.equipo);
 
     raiz->addLayout(formulario);
     raiz->addStretch(1);
 
     auto *aceptar = new QPushButton(QStringLiteral("Aceptar"), this);
     aceptar->setCursor(Qt::PointingHandCursor);
-    aceptar->setMinimumSize(150, 40);
+    aceptar->setMinimumSize(140, 32);
     aceptar->setDefault(true);
     connect(aceptar, &QPushButton::clicked, this, &QWidget::close);
 

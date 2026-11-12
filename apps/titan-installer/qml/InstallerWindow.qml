@@ -806,7 +806,7 @@ TitanWindow {
                             }
 
                             Text {
-                                text: "Solaris Linux se ha instalado con éxito en tu ordenador. Ya puedes reiniciar el equipo para comenzar a utilizar tu nuevo sistema operativo."
+                                text: "Inti OS se ha instalado con éxito en tu ordenador. Se ha configurado el arranque UEFI de tu disco como prioridad 1. Puedes retirar el medio USB y reiniciar el equipo para comenzar a utilizar tu nuevo sistema operativo."
                                 color: "#a1a1aa"
                                 font.pixelSize: 13
                                 wrapMode: Text.WordWrap

@@ -11,4 +11,5 @@ QML_IMPORT_MAJOR_VERSION = 1
 
 DISTFILES += \
     qml/TitanTheme.qml \
-    qml/TitanWindow.qml
+    qml/TitanWindow.qml \
+    qml/GlassPanel.qml

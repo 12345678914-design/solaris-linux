@@ -3,6 +3,7 @@
     <qresource prefix="/">
         <file>qml/Shell.qml</file>
         <file>qml/TopBar.qml</file>
+        <file>qml/GlassPanel.qml</file>
         <file>qml/Dock.qml</file>
         <file>qml/DockItem.qml</file>
         <file>qml/DesktopIcons.qml</file>
@@ -12,10 +13,13 @@
         <file>qml/NotificationCenter.qml</file>
         <file>qml/DynamicIsland.qml</file>
         <file>qml/WorkspacesView.qml</file>
+        <file>qml/BootSplash.qml</file>
+        <file>qml/LockScreen.qml</file>
         <file>qml/WindowDecorations.qml</file>
         <file>qml/TrafficLights.qml</file>
         <file>qml/ContextMenu.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
+        <file>icons/solaris-logo.png</file>
         <file>icons/finder.png</file>
         <file>icons/launchpad.png</file>
         <file>icons/terminal.png</file>

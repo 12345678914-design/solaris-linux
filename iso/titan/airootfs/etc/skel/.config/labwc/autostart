@@ -29,7 +29,7 @@ lanzar_titan_desktop() {
         local ret=$?
         if [ $ret -ne 0 ]; then
             echo "Aviso: titan-desktop salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-desktop.log
-            QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>/tmp/titan-desktop.log 2>&1
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>/tmp/titan-desktop.log 2>&1
         fi
     fi
 }
@@ -42,7 +42,7 @@ lanzar_titan_shell() {
         local ret=$?
         if [ $ret -ne 0 ]; then
             echo "Aviso: titan-shell salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-shell.log
-            QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>/tmp/titan-shell.log 2>&1
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>/tmp/titan-shell.log 2>&1
         fi
     fi
 }

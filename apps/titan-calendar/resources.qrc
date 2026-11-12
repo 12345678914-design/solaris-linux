@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file>qml/Calendar.qml</file>
         <file>qml/TitanWindow.qml</file>
+        <file>qml/GlassPanel.qml</file>
         <file>qml/TitanTheme.qml</file>
         <file>icons/calendar.png</file>
     </qresource>

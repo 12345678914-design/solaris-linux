@@ -70,14 +70,14 @@ TitanWindow {
     }
 
     // 2. BARRA LATERAL TRANSLÚCIDA ESTILO macOS VENTURA / SONOMA
-    sidebarContentData: Column {
+    sidebarContentData: Item {
         anchors.fill: parent
-        spacing: 12
-        topPadding: 42
-        bottomPadding: 12
 
         // A. BUSCADOR ESTILO macOS
         Rectangle {
+            id: searchBox
+            anchors.top: parent.top
+            anchors.topMargin: 10
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 24
             height: 28
@@ -129,6 +129,9 @@ TitanWindow {
 
         // B. TARJETA DE PERFIL DE USUARIO
         Item {
+            id: userCard
+            anchors.top: searchBox.bottom
+            anchors.topMargin: 10
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 20
             height: 48
@@ -150,7 +153,7 @@ TitanWindow {
                     width: 36
                     height: 36
                     radius: 18
-                    color: "#8e8e93"
+                    color: "#0a84ff"
 
                     Text {
                         anchors.centerIn: parent
@@ -167,7 +170,7 @@ TitanWindow {
                     spacing: 2
 
                     Text {
-                        text: settingsBackend.systemInfo.user || "ISAI"
+                        text: settingsBackend.systemInfo.user || "isai"
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
                         font.bold: true
@@ -192,80 +195,82 @@ TitanWindow {
 
         // Separador sutil
         Rectangle {
+            id: sidebarSep
+            anchors.top: userCard.bottom
+            anchors.topMargin: 8
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 24
             height: 1
             color: theme.sidebarBorder
         }
 
-        // C. LISTA DE CATEGORÍAS
-        ScrollView {
-            id: sidebarScroll
-            width: parent.width
-            height: parent.height - 150
+        // C. LISTA DE CATEGORÍAS DETERMINISTA
+        ListView {
+            id: sidebarListView
+            anchors.top: sidebarSep.bottom
+            anchors.topMargin: 6
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 8
+            anchors.left: parent.left
+            anchors.right: parent.right
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            spacing: 2
 
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            model: settingsBackend.sections
 
-            Column {
-                width: parent.width
-                spacing: 2
+            delegate: Item {
+                width: sidebarListView.width - 16
+                height: 32
+                anchors.horizontalCenter: parent.horizontalCenter
 
-                Repeater {
-                    model: settingsBackend.sections
+                property bool isSelected: settingsBackend.currentSection === modelData.name ||
+                                          settingsBackend.currentSection === modelData.id
+                property bool isHovered: rowMouse.containsMouse
 
-                    delegate: Item {
-                        width: parent.width - 16
-                        height: 32
-                        anchors.horizontalCenter: parent.horizontalCenter
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 6
+                    color: isSelected ? "#0071e3" :
+                           isHovered ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
 
-                        property bool isSelected: settingsBackend.currentSection === modelData.name ||
-                                                  settingsBackend.currentSection === modelData.id
-                        property bool isHovered: rowMouse.containsMouse
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        spacing: 10
 
+                        // Icono redondeado estilo macOS
                         Rectangle {
-                            anchors.fill: parent
-                            radius: 6
-                            color: isSelected ? "#0071e3" :
-                                   isHovered ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
+                            width: 20
+                            height: 20
+                            radius: 5
+                            color: modelData.badgeColor || "#007aff"
+                            anchors.verticalCenter: parent.verticalCenter
 
-                            Row {
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.left: parent.left
-                                anchors.leftMargin: 8
-                                spacing: 10
-
-                                // Icono redondeado de color característico estilo Apple
-                                Rectangle {
-                                    width: 20
-                                    height: 20
-                                    radius: 5
-                                    color: modelData.badgeColor || "#007aff"
-                                    anchors.verticalCenter: parent.verticalCenter
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.icon
-                                        font.pixelSize: 11
-                                    }
-                                }
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.name
-                                    color: isSelected ? "#ffffff" : theme.contentTextPrimary
-                                    font.pixelSize: 11
-                                    font.weight: isSelected ? Font.Medium : Font.Normal
-                                }
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.icon
+                                font.pixelSize: 11
                             }
+                        }
 
-                            MouseArea {
-                                id: rowMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: settingsBackend.currentSection = modelData.name
-                            }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.name
+                            color: isSelected ? "#ffffff" : theme.contentTextPrimary
+                            font.pixelSize: 11
+                            font.weight: isSelected ? Font.Medium : Font.Normal
+                        }
+                    }
+
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            settingsBackend.currentSection = modelData.name
                         }
                     }
                 }
@@ -279,14 +284,19 @@ TitanWindow {
         anchors.fill: parent
 
         sourceComponent: {
-            if (settingsBackend.currentSection === "Apariencia") {
+            var sec = settingsBackend.currentSection;
+            if (sec === "Apariencia") {
                 return appearanceComponent
-            } else if (settingsBackend.currentSection === "Fondo de pantalla") {
+            } else if (sec === "Fondo de pantalla") {
                 return wallpaperComponent
-            } else if (settingsBackend.currentSection === "General") {
+            } else if (sec === "General" || sec === "Acerca de") {
                 return generalComponent
+            } else if (sec === "Wi-Fi" || sec === "wifi" || sec === "Red" || sec === "red") {
+                return wifiComponent
+            } else if (sec === "Bluetooth" || sec === "bluetooth") {
+                return bluetoothComponent
             } else {
-                return genericComponent
+                return dynamicSectionComponent
             }
         }
     }
@@ -294,9 +304,13 @@ TitanWindow {
     Component { id: appearanceComponent; AppearanceView {} }
     Component { id: wallpaperComponent; WallpaperView {} }
     Component { id: generalComponent; GeneralView {} }
+    Component { id: wifiComponent; WifiView {} }
+    Component { id: bluetoothComponent; BluetoothView {} }
 
+    // Componente dinámico y completo para todas las demás secciones
     Component {
-        id: genericComponent
+        id: dynamicSectionComponent
+
         ScrollView {
             contentWidth: width
             clip: true
@@ -304,42 +318,163 @@ TitanWindow {
             Column {
                 width: parent.width - 48
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 18
-                topPadding: 24
+                spacing: 20
+                topPadding: 20
+                bottomPadding: 32
 
+                // Encabezado de la sección activa
+                Row {
+                    width: parent.width
+                    spacing: 12
+
+                    Text {
+                        text: settingsBackend.currentSection
+                        color: theme.contentTextPrimary
+                        font.pixelSize: 18
+                        font.bold: true
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // TARJETA 1: ESTADO PRINCIPAL E INTERRUPTOR
                 Rectangle {
                     width: parent.width
-                    height: 110
+                    height: 64
+                    radius: 10
+                    color: theme.contentCardBg
+                    border.color: theme.contentCardBorder
+                    border.width: 1
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 12
+
+                        Column {
+                            spacing: 3
+                            Text {
+                                text: settingsBackend.currentSection === "Wi-Fi" ? "Conexión Wi-Fi" :
+                                      settingsBackend.currentSection === "Bluetooth" ? "Bluetooth" :
+                                      settingsBackend.currentSection === "Sonido" ? "Sonido del Sistema" :
+                                      settingsBackend.currentSection === "Pantallas" ? "Pantalla Principal (1920×1080)" :
+                                      settingsBackend.currentSection === "Batería" ? "Alimentación y Batería" :
+                                      settingsBackend.currentSection === "Teclado" ? "Distribución del Teclado" :
+                                      "Opciones de " + settingsBackend.currentSection
+                                color: theme.contentTextPrimary
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            Text {
+                                text: settingsBackend.currentSection === "Wi-Fi" ? "Conectado a red local de alta velocidad" :
+                                      settingsBackend.currentSection === "Bluetooth" ? "Visible para otros dispositivos cercanos" :
+                                      settingsBackend.currentSection === "Sonido" ? "Salida: Altavoces integrados / Entrada: Micrófono" :
+                                      settingsBackend.currentSection === "Pantallas" ? "Tasa de refresco: 60.00 Hz • Perfil de color estándar" :
+                                      settingsBackend.currentSection === "Batería" ? "Nivel: 95% • Modo de consumo equilibrado" :
+                                      settingsBackend.currentSection === "Teclado" ? "Español (Latinoamérica) / Arch Linux keymap" :
+                                      "Configuración activa administrada por Inti OS"
+                                color: theme.contentTextSecondary
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+
+                    // Toggle verde estilo iOS
+                    Rectangle {
+                        id: mainSectionToggle
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 44
+                        height: 24
+                        radius: 12
+                        property bool active: true
+                        color: active ? "#34c759" : (theme.isDark ? "#39393d" : "#e5e5ea")
+                        Behavior on color { ColorAnimation { duration: 160 } }
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: mainSectionToggle.active ? 22 : 2
+                            width: 20
+                            height: 20
+                            radius: 10
+                            color: "#ffffff"
+                            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: mainSectionToggle.active = !mainSectionToggle.active
+                        }
+                    }
+                }
+
+                // TARJETA 2: AJUSTES DETALLADOS SEGÚN LA SECCIÓN
+                Rectangle {
+                    width: parent.width
+                    height: settingsBackend.currentSection === "Sonido" || settingsBackend.currentSection === "Pantallas" ? 140 : 110
                     radius: 10
                     color: theme.contentCardBg
                     border.color: theme.contentCardBorder
                     border.width: 1
 
                     Column {
-                        anchors.centerIn: parent
-                        spacing: 8
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
 
                         Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: settingsBackend.currentSection
+                            text: settingsBackend.currentSection === "Sonido" ? "Volumen de salida" :
+                                  settingsBackend.currentSection === "Pantallas" ? "Nivel de brillo" :
+                                  settingsBackend.currentSection === "Batería" ? "Condición de la batería" :
+                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Detalles de la cuenta" :
+                                  "Preferencias avanzadas"
                             color: theme.contentTextPrimary
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             font.bold: true
                         }
 
+                        // Slider interactivo para sonido o pantalla
+                        Row {
+                            visible: settingsBackend.currentSection === "Sonido" || settingsBackend.currentSection === "Pantallas"
+                            width: parent.width
+                            spacing: 14
+
+                            Text {
+                                text: settingsBackend.currentSection === "Sonido" ? "🔈" : "🔅"
+                                font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Slider {
+                                id: levelSlider
+                                width: parent.width - 80
+                                anchors.verticalCenter: parent.verticalCenter
+                                from: 0.0
+                                to: 1.0
+                                value: 0.8
+                            }
+
+                            Text {
+                                text: Math.round(levelSlider.value * 100) + "%"
+                                color: theme.contentTextSecondary
+                                font.pixelSize: 11
+                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        // Información secundaria
                         Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Configuración del sistema administrada por Titan Linux"
+                            text: settingsBackend.currentSection === "Batería" ? "Salud de batería: 98% (Normal) • Temperatura óptima: 31°C" :
+                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Usuario: " + (settingsBackend.systemInfo.user || "isai") + " • Grupo: wheel (Administrador)" :
+                                  settingsBackend.currentSection === "Teclado" ? "Velocidad de repetición: Rápida • Retardo: Corto" :
+                                  settingsBackend.currentSection === "Wi-Fi" ? "Dirección IPv4: 192.168.1.105 • Puerta de enlace: 192.168.1.1" :
+                                  settingsBackend.currentSection === "Bluetooth" ? "Controlador Intel AX200 • Perfiles soportados: A2DP, AVRCP, HFP" :
+                                  "Compatibilidad nativa con Wayland y compositor labwc en Inti OS"
                             color: theme.contentTextSecondary
                             font.pixelSize: 11
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Estado: Activo • Compatible con Wayland y labwc"
-                            color: "#34c759"
-                            font.pixelSize: 11
-                            font.bold: true
                         }
                     }
                 }
@@ -347,4 +482,3 @@ TitanWindow {
         }
     }
 }
-

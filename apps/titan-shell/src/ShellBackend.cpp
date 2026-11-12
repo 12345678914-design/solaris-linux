@@ -118,12 +118,21 @@ ShellBackend::ShellBackend(QObject *parent)
     }
 
     // Notificación inicial de bienvenida al arrancar
-    QTimer::singleShot(2000, this, [this]() {
-        notify(QStringLiteral("Bienvenido a Titan Linux"),
+    QTimer::singleShot(2500, this, [this]() {
+        notify(QStringLiteral("Bienvenido a Inti OS"),
                QStringLiteral("Sistema preparado y listo. Disfruta de la experiencia macOS en Linux."),
-               QStringLiteral("qrc:/icons/system.png"),
-               QStringLiteral("Titan OS"));
+               QStringLiteral("qrc:/icons/solaris-logo.png"),
+               QStringLiteral("Inti OS"));
     });
+
+    m_userName = QString::fromLocal8Bit(qgetenv("USER"));
+    if (m_userName.isEmpty()) m_userName = QStringLiteral("isai");
+    m_userDisplayName = m_userName;
+    if (!m_userDisplayName.isEmpty()) m_userDisplayName[0] = m_userDisplayName[0].toUpper();
+
+    m_bootSplashActive = true;
+    m_bootSplashFinished = false;
+    m_lockScreenActive = !isLiveSystem();
 
     ThemeManager *tm = ThemeManager::instance();
     connect(tm, &ThemeManager::wallpapersChanged, this, &ShellBackend::wallpapersChanged);
@@ -1381,3 +1390,90 @@ void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h
     }
     win->setMask(region);
 }
+
+bool ShellBackend::isLiveSystem() const
+{
+    return QFile::exists(QStringLiteral("/run/archiso")) ||
+           QFile::exists(QStringLiteral("/run/archiso/bootmnt")) ||
+           QFile::exists(QStringLiteral("/etc/titan-build.env"));
+}
+
+void ShellBackend::finishBootSplash()
+{
+    if (m_bootSplashActive) {
+        m_bootSplashActive = false;
+        m_bootSplashFinished = true;
+        emit bootSplashActiveChanged();
+        emit bootSplashFinishedChanged();
+    }
+}
+
+void ShellBackend::lockScreen()
+{
+    if (!m_lockScreenActive) {
+        m_lockScreenActive = true;
+        emit lockScreenActiveChanged();
+    }
+}
+
+void ShellBackend::unlockScreen()
+{
+    if (m_lockScreenActive) {
+        m_lockScreenActive = false;
+        emit lockScreenActiveChanged();
+    }
+}
+
+bool ShellBackend::authenticateLock(const QString &password)
+{
+    // 1. En entorno Live ISO se puede ingresar con Enter o cualquier contraseña
+    if (isLiveSystem()) {
+        unlockScreen();
+        return true;
+    }
+
+    // 2. Si no hay contraseña ingresada y el usuario actual no requiere contraseña
+    if (password.trimmed().isEmpty()) {
+        QProcess pChk;
+        pChk.start(QStringLiteral("su"), QStringList() << QStringLiteral("-c") << QStringLiteral("true") << m_userName);
+        if (pChk.waitForStarted(800)) {
+            pChk.write("\n");
+            pChk.closeWriteChannel();
+            if (pChk.waitForFinished(1500) && pChk.exitCode() == 0) {
+                unlockScreen();
+                return true;
+            }
+        }
+    }
+
+    // 3. Verificación con proceso su
+    {
+        QProcess pSu;
+        pSu.start(QStringLiteral("su"), QStringList() << QStringLiteral("-c") << QStringLiteral("true") << m_userName);
+        if (pSu.waitForStarted(1000)) {
+            pSu.write((password + QStringLiteral("\n")).toUtf8());
+            pSu.closeWriteChannel();
+            if (pSu.waitForFinished(3000) && pSu.exitCode() == 0) {
+                unlockScreen();
+                return true;
+            }
+        }
+    }
+
+    // 4. Verificación con proceso sudo -k -S true (usando stdin)
+    {
+        QProcess pSudo;
+        pSudo.start(QStringLiteral("sudo"), QStringList() << QStringLiteral("-k") << QStringLiteral("-S") << QStringLiteral("true"));
+        if (pSudo.waitForStarted(1000)) {
+            pSudo.write((password + QStringLiteral("\n")).toUtf8());
+            pSudo.closeWriteChannel();
+            if (pSudo.waitForFinished(3000) && pSudo.exitCode() == 0) {
+                unlockScreen();
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+

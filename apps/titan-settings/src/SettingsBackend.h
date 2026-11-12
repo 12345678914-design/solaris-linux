@@ -21,6 +21,24 @@ class SettingsBackend : public QObject
     Q_PROPERTY(bool topBarEnabled READ topBarEnabled WRITE setTopBarEnabled NOTIFY shellSettingsChanged)
     Q_PROPERTY(QVariantMap systemInfo READ systemInfo CONSTANT)
     Q_PROPERTY(QString updateStatus READ updateStatus NOTIFY updateStatusChanged)
+    Q_PROPERTY(bool updateChecking READ updateChecking NOTIFY updateCheckingChanged)
+    Q_PROPERTY(bool updatePromptVisible READ updatePromptVisible NOTIFY updatePromptVisibleChanged)
+    Q_PROPERTY(int updateCount READ updateCount NOTIFY updateCountChanged)
+    Q_PROPERTY(QString updateSize READ updateSize NOTIFY updateSizeChanged)
+
+    // Wi-Fi
+    Q_PROPERTY(bool wifiEnabled READ wifiEnabled WRITE setWifiEnabled NOTIFY wifiStatusChanged)
+    Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiStatusChanged)
+    Q_PROPERTY(QString wifiSsid READ wifiSsid NOTIFY wifiStatusChanged)
+    Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiScanningChanged)
+    Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiNetworksChanged)
+
+    // Bluetooth
+    Q_PROPERTY(bool bluetoothEnabled READ bluetoothEnabled WRITE setBluetoothEnabled NOTIFY bluetoothStatusChanged)
+    Q_PROPERTY(bool bluetoothConnected READ bluetoothConnected NOTIFY bluetoothStatusChanged)
+    Q_PROPERTY(QString connectedBluetoothDevice READ connectedBluetoothDevice NOTIFY bluetoothStatusChanged)
+    Q_PROPERTY(bool bluetoothScanning READ bluetoothScanning NOTIFY bluetoothScanningChanged)
+    Q_PROPERTY(QVariantList bluetoothDevices READ bluetoothDevices NOTIFY bluetoothDevicesChanged)
 
 public:
     explicit SettingsBackend(QObject *parent = nullptr);
@@ -54,10 +72,40 @@ public:
 
     QVariantMap systemInfo() const { return m_systemInfo; }
     QString updateStatus() const { return m_updateStatus; }
+    bool updateChecking() const { return m_updateChecking; }
+    bool updatePromptVisible() const { return m_updatePromptVisible; }
+    int updateCount() const { return m_updateCount; }
+    QString updateSize() const { return m_updateSize; }
+
+    // Wi-Fi
+    bool wifiEnabled() const { return m_wifiEnabled; }
+    void setWifiEnabled(bool enabled);
+    bool wifiConnected() const { return m_wifiConnected; }
+    QString wifiSsid() const { return m_wifiSsid; }
+    bool wifiScanning() const { return m_wifiScanning; }
+    QVariantList wifiNetworks() const { return m_wifiNetworks; }
+
+    // Bluetooth
+    bool bluetoothEnabled() const { return m_bluetoothEnabled; }
+    void setBluetoothEnabled(bool enabled);
+    bool bluetoothConnected() const { return m_bluetoothConnected; }
+    QString connectedBluetoothDevice() const { return m_connectedBluetoothDevice; }
+    bool bluetoothScanning() const { return m_bluetoothScanning; }
+    QVariantList bluetoothDevices() const { return m_bluetoothDevices; }
 
     Q_INVOKABLE void setThemeMode(const QString &mode); // "light", "dark", "auto"
     Q_INVOKABLE void setWallpaper(const QString &path);
     Q_INVOKABLE void checkUpdates();
+    Q_INVOKABLE void installUpdates();
+    Q_INVOKABLE void cancelUpdates();
+
+    Q_INVOKABLE void scanWifi();
+    Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password = QString());
+    Q_INVOKABLE void disconnectWifi();
+
+    Q_INVOKABLE void scanBluetooth();
+    Q_INVOKABLE void connectBluetooth(const QString &mac);
+    Q_INVOKABLE void disconnectBluetooth(const QString &mac);
 
 signals:
     void currentSectionChanged();
@@ -69,12 +117,25 @@ signals:
     void languageChanged();
     void shellSettingsChanged();
     void updateStatusChanged();
+    void updateCheckingChanged();
+    void updatePromptVisibleChanged();
+    void updateCountChanged();
+    void updateSizeChanged();
+
+    void wifiStatusChanged();
+    void wifiScanningChanged();
+    void wifiNetworksChanged();
+
+    void bluetoothStatusChanged();
+    void bluetoothScanningChanged();
+    void bluetoothDevicesChanged();
 
 private:
     void initSections();
     void loadShellSettings();
     void saveShellSettings();
     void loadSystemInfo();
+    void updateNetworkStatus();
 
     QString m_currentSection = QStringLiteral("General");
     QString m_searchQuery;
@@ -84,6 +145,24 @@ private:
     bool m_topBarEnabled = true;
     QVariantMap m_systemInfo;
     QString m_updateStatus = QStringLiteral("El sistema está actualizado");
+    bool m_updateChecking = false;
+    bool m_updatePromptVisible = false;
+    int m_updateCount = 0;
+    QString m_updateSize = QStringLiteral("0 MB");
+
+    // Wi-Fi
+    bool m_wifiEnabled = true;
+    bool m_wifiConnected = false;
+    QString m_wifiSsid;
+    bool m_wifiScanning = false;
+    QVariantList m_wifiNetworks;
+
+    // Bluetooth
+    bool m_bluetoothEnabled = true;
+    bool m_bluetoothConnected = false;
+    QString m_connectedBluetoothDevice;
+    bool m_bluetoothScanning = false;
+    QVariantList m_bluetoothDevices;
 };
 
 #endif // SETTINGSBACKEND_H

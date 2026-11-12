@@ -13,8 +13,8 @@ Item {
     // ---------- Datos del backend ----------
     readonly property bool active: shellBackend.islandActive
     readonly property var notif: shellBackend.currentIslandNotification
-    readonly property var actions: notif && notif.actions ? notif.actions : []
-    readonly property int queued: (typeof shellBackend !== "undefined" && typeof shellBackend.islandQueueCount !== "undefined" && shellBackend.islandQueueCount) ? shellBackend.islandQueueCount : 0
+    readonly property var actions: notif && notif.actions ? notif.actions : []          // opcional
+    readonly property int queued: shellBackend.islandQueueCount ? shellBackend.islandQueueCount : 0  // opcional
 
     // ---------- Opciones ----------
     property bool showIdlePill: false        // true = pastilla visible incluso sin notificación
@@ -22,10 +22,18 @@ Item {
     property int  compactWidth: 140
     property int  compactHeight: 26
 
-    // Wallpaper ya desenfocado y reducido (se genera una sola vez fuera de QML).
-    // Ej.: magick wall.jpg -resize 25% -blur 0x10 -modulate 100,140 wall-blur.jpg
-    readonly property url blurredWallpaper: (typeof shellBackend !== "undefined" && typeof shellBackend.blurredWallpaper !== "undefined" && shellBackend.blurredWallpaper) ? shellBackend.blurredWallpaper : ""
-    readonly property bool hasGlass: blurredWallpaper.toString() !== ""
+    // Refleja el fondo de pantalla ACTUAL (ver GlassPanel.qml): se decodifica en minúscula y se
+    // amplía, así que no hace falta pre-desenfocar nada ni usar blur en vivo.
+    readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
+    readonly property bool hasGlass: wallpaperPath !== ""
+
+    function toUrl(p) {
+        if (!p) return ""
+        var s = p.toString()
+        if (s.indexOf("://") !== -1 || s.indexOf("qrc:") === 0) return s
+        if (s.charAt(0) === "/") return "file://" + s
+        return s
+    }
 
     // Dibujar la isla (visible solo si hay algo que mostrar)
     readonly property bool shown: active || showIdlePill
@@ -44,9 +52,6 @@ Item {
         glassOriginY = p.y - vy
     }
     Component.onCompleted: Qt.callLater(updateOrigin)
-
-    onNotifChanged: if (active && ringAnim) ringAnim.restart()
-    onActiveChanged: if (active && ringAnim) ringAnim.restart()
 
     Item {
         id: islandCard
@@ -105,7 +110,8 @@ Item {
 
             Image {
                 visible: dynamicIslandRoot.hasGlass
-                source: dynamicIslandRoot.blurredWallpaper
+                source: dynamicIslandRoot.toUrl(dynamicIslandRoot.wallpaperPath)
+                sourceSize: Qt.size(48, 27)      // decodificación minúscula = desenfoque barato
                 x: -dynamicIslandRoot.glassOriginX
                 y: -dynamicIslandRoot.glassOriginY
                 width: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
@@ -165,6 +171,11 @@ Item {
                 NumberAnimation { target: arrivalRing; property: "opacity"; to: 0.45; duration: 160 }
                 NumberAnimation { target: arrivalRing; property: "opacity"; to: 0.0; duration: 500; easing.type: Easing.OutCubic }
             }
+        }
+        Connections {
+            target: dynamicIslandRoot
+            function onNotifChanged() { if (dynamicIslandRoot.active) ringAnim.restart() }
+            function onActiveChanged() { if (dynamicIslandRoot.active) ringAnim.restart() }
         }
 
         // Clic en la tarjeta: abre el centro de notificaciones

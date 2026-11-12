@@ -59,24 +59,15 @@ Rectangle {
         var rh = Math.abs(rbCurrentY - rbStartY)
 
         var newSel = []
-        if (finderBackend.viewMode === "grid") {
-            var items = gridView.contentItem.children
+        var view = (finderBackend.viewMode === "grid") ? gridView : listView
+        if (view && view.contentItem) {
+            var items = view.contentItem.children
             for (var i = 0; i < items.length; ++i) {
                 var it = items[i]
-                if (!it || it.width === undefined || it.modelData === undefined) continue
+                if (!it || !it.itemPath || it.itemPath.length === 0) continue
                 var pt = it.mapToItem(fileListRoot, 0, 0)
                 if (rx < pt.x + it.width && rx + rw > pt.x && ry < pt.y + it.height && ry + rh > pt.y) {
-                    if (it.modelData.path) newSel.push(it.modelData.path)
-                }
-            }
-        } else {
-            var items = listView.contentItem.children
-            for (var i = 0; i < items.length; ++i) {
-                var it = items[i]
-                if (!it || it.width === undefined || it.modelData === undefined) continue
-                var pt = it.mapToItem(fileListRoot, 0, 0)
-                if (rx < pt.x + it.width && rx + rw > pt.x && ry < pt.y + it.height && ry + rh > pt.y) {
-                    if (it.modelData.path) newSel.push(it.modelData.path)
+                    newSel.push(it.itemPath)
                 }
             }
         }
@@ -120,6 +111,51 @@ Rectangle {
         }
     }
 
+    function handleBgPress(mouse, srcItem) {
+        fileListRoot.forceActiveFocus()
+        fileListRoot.ctxVisible = false
+        fileListRoot.selectedPaths = []
+        fileListRoot.selectedPath = ""
+        fileListRoot.selectedName = ""
+        if (mouse.button === Qt.LeftButton) {
+            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
+            fileListRoot.rbStartX = pt.x
+            fileListRoot.rbStartY = pt.y
+            fileListRoot.rbCurrentX = pt.x
+            fileListRoot.rbCurrentY = pt.y
+            fileListRoot.rubberBandActive = false
+        }
+    }
+
+    function handleBgMove(mouse, srcItem) {
+        if (mouse.buttons & Qt.LeftButton) {
+            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
+            if (!fileListRoot.rubberBandActive) {
+                if (Math.abs(pt.x - fileListRoot.rbStartX) > 4 || Math.abs(pt.y - fileListRoot.rbStartY) > 4) {
+                    fileListRoot.rubberBandActive = true
+                }
+            }
+            if (fileListRoot.rubberBandActive) {
+                fileListRoot.rbCurrentX = pt.x
+                fileListRoot.rbCurrentY = pt.y
+                fileListRoot.updateRubberBandSelection()
+            }
+        }
+    }
+
+    function handleBgRelease(mouse) {
+        fileListRoot.rubberBandActive = false
+    }
+
+    function handleBgClick(mouse, srcItem) {
+        if (mouse.button === Qt.RightButton) {
+            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
+            fileListRoot.selectedPaths = []
+            fileListRoot.selectedPath = ""
+            fileListRoot.showContextMenu(pt.x, pt.y)
+        }
+    }
+
     // Fondo para recuadro azul de selección múltiple y deselección al hacer clic
     MouseArea {
         id: bgMouseArea
@@ -127,50 +163,10 @@ Rectangle {
         z: 0
         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-        onPressed: (mouse) => {
-            fileListRoot.forceActiveFocus()
-            fileListRoot.ctxVisible = false
-
-            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
-            fileListRoot.selectedPaths = []
-            fileListRoot.selectedPath = ""
-            fileListRoot.selectedName = ""
-
-            if (mouse.button === Qt.LeftButton) {
-                fileListRoot.rbStartX = mouse.x
-                fileListRoot.rbStartY = mouse.y
-                fileListRoot.rbCurrentX = mouse.x
-                fileListRoot.rbCurrentY = mouse.y
-                fileListRoot.rubberBandActive = false
-            }
-        }
-
-        onPositionChanged: (mouse) => {
-            if (pressed && (mouse.buttons & Qt.LeftButton)) {
-                if (!fileListRoot.rubberBandActive) {
-                    if (Math.abs(mouse.x - fileListRoot.rbStartX) > 4 || Math.abs(mouse.y - fileListRoot.rbStartY) > 4) {
-                        fileListRoot.rubberBandActive = true
-                    }
-                }
-                if (fileListRoot.rubberBandActive) {
-                    fileListRoot.rbCurrentX = mouse.x
-                    fileListRoot.rbCurrentY = mouse.y
-                    fileListRoot.updateRubberBandSelection()
-                }
-            }
-        }
-
-        onReleased: (mouse) => {
-            fileListRoot.rubberBandActive = false
-        }
-
-        onClicked: (mouse) => {
-            if (mouse.button === Qt.RightButton) {
-                fileListRoot.selectedPaths = []
-                fileListRoot.selectedPath = ""
-                fileListRoot.showContextMenu(mouse.x, mouse.y)
-            }
-        }
+        onPressed: (mouse) => fileListRoot.handleBgPress(mouse, null)
+        onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, null)
+        onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
+        onClicked: (mouse) => fileListRoot.handleBgClick(mouse, null)
     }
 
     // Recuadro azul de selección múltiple (Rubberband selector)
@@ -1057,7 +1053,29 @@ Rectangle {
         cellWidth: 104
         cellHeight: 116
         clip: true
+        interactive: false
+        boundsBehavior: Flickable.StopAtBounds
         visible: finderBackend.viewMode === "grid"
+
+        WheelHandler {
+            target: gridView
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: (event) => {
+                var maxContentY = Math.max(0, gridView.contentHeight - gridView.height)
+                gridView.contentY = Math.max(0, Math.min(maxContentY, gridView.contentY - event.angleDelta.y))
+            }
+        }
+
+        MouseArea {
+            id: gridBgMouse
+            anchors.fill: parent
+            z: -1
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: (mouse) => fileListRoot.handleBgPress(mouse, gridView)
+            onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, gridView)
+            onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
+            onClicked: (mouse) => fileListRoot.handleBgClick(mouse, gridView)
+        }
 
         model: finderBackend.entries
 
@@ -1065,6 +1083,10 @@ Rectangle {
             id: gridItem
             width: gridView.cellWidth
             height: gridView.cellHeight
+
+            readonly property string itemPath: (modelData && modelData.path) ? modelData.path : ""
+            readonly property string itemName: (modelData && modelData.name) ? modelData.name : ""
+            readonly property bool isDir: (modelData && modelData.isDir) ? modelData.isDir : false
 
             Item {
                 id: gridDragProxy
@@ -1343,6 +1365,28 @@ Rectangle {
             width: parent.width
             height: parent.height - 28
             clip: true
+            interactive: false
+            boundsBehavior: Flickable.StopAtBounds
+
+            WheelHandler {
+                target: listView
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: (event) => {
+                    var maxContentY = Math.max(0, listView.contentHeight - listView.height)
+                    listView.contentY = Math.max(0, Math.min(maxContentY, listView.contentY - event.angleDelta.y))
+                }
+            }
+
+            MouseArea {
+                id: listBgMouse
+                anchors.fill: parent
+                z: -1
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onPressed: (mouse) => fileListRoot.handleBgPress(mouse, listView)
+                onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, listView)
+                onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
+                onClicked: (mouse) => fileListRoot.handleBgClick(mouse, listView)
+            }
 
             model: finderBackend.entries
 
@@ -1350,6 +1394,10 @@ Rectangle {
                 id: listItem
                 width: listView.width
                 height: 30
+
+                readonly property string itemPath: (modelData && modelData.path) ? modelData.path : ""
+                readonly property string itemName: (modelData && modelData.name) ? modelData.name : ""
+                readonly property bool isDir: (modelData && modelData.isDir) ? modelData.isDir : false
 
                 Item {
                     id: listDragProxy

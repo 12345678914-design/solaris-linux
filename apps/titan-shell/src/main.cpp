@@ -134,6 +134,17 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--lock")) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("lock\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--notify") && i + 1 < argc) {
             QString title = QString::fromLocal8Bit(argv[i + 1]);
             QString msg = (i + 2 < argc) ? QString::fromLocal8Bit(argv[i + 2]) : QStringLiteral("");
@@ -202,6 +213,8 @@ int main(int argc, char *argv[])
                         shellBackend.toggleTheme();
                     } else if (cmd == "toggle-notifications") {
                         shellBackend.toggleNotificationCenter();
+                    } else if (cmd == "lock") {
+                        shellBackend.lockScreen();
                     } else if (cmd.startsWith("notify ")) {
                         QString payload = QString::fromUtf8(cmd.mid(7));
                         QStringList parts = payload.split(QLatin1Char('|'));
@@ -277,15 +290,27 @@ int main(int argc, char *argv[])
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerTop, a, 28, QStringLiteral("titan-topbar"));
+            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive();
+            configurarCapa(win, LayerShellQt::Window::LayerTop, a, 28, QStringLiteral("titan-topbar"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
+            auto updateTopBarVis = [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateTopBarVis);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateTopBarVis);
         } else if (name == QStringLiteral("dockWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dock"));
-            QObject::connect(&shellBackend, &ShellBackend::launcherVisibleChanged, win, [win, &shellBackend]() {
-                win->setVisible(!shellBackend.launcherVisible());
-            });
+            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible();
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dock"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
+            auto updateDockVis = [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateDockVis);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateDockVis);
+            QObject::connect(&shellBackend, &ShellBackend::launcherVisibleChanged, win, updateDockVis);
         } else if (name == QStringLiteral("controlCenterWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;
@@ -321,7 +346,14 @@ int main(int argc, char *argv[])
             a |= LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerBottom, a, 0, QStringLiteral("titan-desktop-icons"));
+            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive();
+            configurarCapa(win, LayerShellQt::Window::LayerBottom, a, 0, QStringLiteral("titan-desktop-icons"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
+            auto updateDeskVis = [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateDeskVis);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateDeskVis);
         } else if (name == QStringLiteral("lowBatteryWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;
@@ -361,6 +393,30 @@ int main(int argc, char *argv[])
             QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.workspacesVisible());
             });
+        } else if (name == QStringLiteral("bootSplashWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-boot-splash"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, true);
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashActiveChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashActive());
+            });
+        } else if (name == QStringLiteral("lockScreenWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            bool shouldBeVisible = shellBackend.lockScreenActive() && shellBackend.bootSplashFinished();
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-lock-screen"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, shouldBeVisible);
+            auto updateLockVisibility = [win, &shellBackend]() {
+                bool vis = shellBackend.lockScreenActive() && shellBackend.bootSplashFinished();
+                win->setVisible(vis);
+            };
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateLockVisibility);
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateLockVisibility);
         }
     }
     

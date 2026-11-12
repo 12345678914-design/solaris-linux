@@ -79,6 +79,12 @@ class ShellBackend : public QObject
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
+    Q_PROPERTY(bool bootSplashActive READ bootSplashActive NOTIFY bootSplashActiveChanged)
+    Q_PROPERTY(bool bootSplashFinished READ bootSplashFinished NOTIFY bootSplashFinishedChanged)
+    Q_PROPERTY(bool lockScreenActive READ lockScreenActive NOTIFY lockScreenActiveChanged)
+    Q_PROPERTY(QString userName READ userName CONSTANT)
+    Q_PROPERTY(QString userDisplayName READ userDisplayName CONSTANT)
+    Q_PROPERTY(bool isLiveSystem READ isLiveSystem CONSTANT)
     
 public:
     explicit ShellBackend(QObject *parent = nullptr);
@@ -187,6 +193,18 @@ public:
     Q_INVOKABLE void switchToWorkspace(int index);
     Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false);
     
+    bool bootSplashActive() const { return m_bootSplashActive; }
+    bool bootSplashFinished() const { return m_bootSplashFinished; }
+    bool lockScreenActive() const { return m_lockScreenActive; }
+    QString userName() const { return m_userName; }
+    QString userDisplayName() const { return m_userDisplayName; }
+    bool isLiveSystem() const;
+
+    Q_INVOKABLE void finishBootSplash();
+    Q_INVOKABLE void lockScreen();
+    Q_INVOKABLE void unlockScreen();
+    Q_INVOKABLE bool authenticateLock(const QString &password);
+
     int batteryPercent() const;
     bool isCharging() const;
     bool hasBattery() const;
@@ -237,10 +255,19 @@ signals:
     void workspacesVisibleChanged();
     void workspacesChanged();
     void currentWorkspaceChanged();
+    void bootSplashActiveChanged();
+    void bootSplashFinishedChanged();
+    void lockScreenActiveChanged();
     
 private:
     void updateBatteryStatus();
     void syncHardwareStatus();
+
+    bool m_bootSplashActive = true;
+    bool m_bootSplashFinished = false;
+    bool m_lockScreenActive = false;
+    QString m_userName;
+    QString m_userDisplayName;
 
     bool m_launcherVisible = false;
     bool m_wallpaperPickerVisible = false;

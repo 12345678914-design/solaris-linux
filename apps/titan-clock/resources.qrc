@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file>qml/Clock.qml</file>
         <file>qml/TitanWindow.qml</file>
+        <file>qml/GlassPanel.qml</file>
         <file>qml/TitanTheme.qml</file>
         <file>icons/clock.png</file>
     </qresource>

@@ -216,6 +216,24 @@ void DesktopBackend::loadItems()
     };
 
     bool isLive = QDir(QStringLiteral("/run/archiso")).exists();
+    bool positionsModified = false;
+
+    // Limpiar de m_positions archivos que ya no existan
+    QSet<QString> currentPaths;
+    for (const QFileInfo &fi : list) {
+        currentPaths.insert(fi.absoluteFilePath());
+    }
+    QStringList toRemove;
+    for (auto it = m_positions.begin(); it != m_positions.end(); ++it) {
+        if (!currentPaths.contains(it.key())) {
+            toRemove.append(it.key());
+        }
+    }
+    for (const QString &rem : toRemove) {
+        m_positions.remove(rem);
+        positionsModified = true;
+    }
+
     for (const QFileInfo &fi : list) {
         if (fi.fileName().startsWith(QLatin1Char('.'))) continue;
 
@@ -223,6 +241,8 @@ void DesktopBackend::loadItems()
         if (!isLive && (fi.fileName().contains(QStringLiteral("instalar"), Qt::CaseInsensitive) ||
                         fi.fileName().contains(QStringLiteral("calamares"), Qt::CaseInsensitive))) {
             QFile::remove(fi.absoluteFilePath());
+            m_positions.remove(fi.absoluteFilePath());
+            positionsModified = true;
             continue;
         }
 
@@ -278,10 +298,22 @@ void DesktopBackend::loadItems()
         }
 
         if (posX < 0 || posY < 0) {
+            // Asignar el siguiente slot libre abajo en la columna
             auto slot = findNextSlot();
+            posX = 1920.0 - gridRight - 90.0 - (slot.first * cellWidth);
+            posY = gridTop + (slot.second * cellHeight);
+
+            QVariantMap newPos;
+            newPos[QStringLiteral("x")] = posX;
+            newPos[QStringLiteral("y")] = posY;
+            m_positions[path] = newPos;
+            positionsModified = true;
+
             item[QStringLiteral("gridCol")] = slot.first;
             item[QStringLiteral("gridRow")] = slot.second;
-            item[QStringLiteral("hasSavedPos")] = false;
+            item[QStringLiteral("savedX")] = posX;
+            item[QStringLiteral("savedY")] = posY;
+            item[QStringLiteral("hasSavedPos")] = true;
         } else {
             item[QStringLiteral("savedX")] = posX;
             item[QStringLiteral("savedY")] = posY;
@@ -289,6 +321,10 @@ void DesktopBackend::loadItems()
         }
 
         m_items.append(item);
+    }
+
+    if (positionsModified) {
+        savePositions();
     }
 
     emit itemsChanged();

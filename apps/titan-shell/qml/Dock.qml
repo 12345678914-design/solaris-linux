@@ -16,10 +16,10 @@ Item {
     readonly property bool shouldShowDock: !shellBackend.launcherVisible && (!isMaximized || dockRevealed)
 
     // ---------- Vidrio ----------
-    // Ruta al wallpaper YA desenfocado y reducido (se genera una sola vez fuera de QML).
-    // Ej.: magick wall.jpg -resize 25% -blur 0x10 -modulate 100,140 wall-blur.jpg
-    readonly property url blurredWallpaper: (typeof shellBackend !== "undefined" && typeof shellBackend.blurredWallpaper !== "undefined" && shellBackend.blurredWallpaper) ? shellBackend.blurredWallpaper : ""
-    readonly property bool hasGlass: blurredWallpaper.toString() !== ""
+    // Refleja el fondo de pantalla ACTUAL (ver GlassPanel.qml): se decodifica en minúscula y se
+    // amplía, así que no hace falta pre-desenfocar nada ni usar blur en vivo.
+    readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
+    readonly property bool hasGlass: wallpaperPath !== ""
     readonly property real dockRadius: 22
     readonly property int maskPad: 8
 
@@ -91,90 +91,6 @@ Item {
     // ---------- Componentes reutilizables ----------
 
     // Superficie de vidrio: recorte del wallpaper desenfocado + tinte + borde fino.
-    // No usa blur en vivo: la imagen ya viene borrosa, así que el costo es mínimo.
-    component GlassPanel: Item {
-        id: gp
-        property real radius: 18
-        property color tint: "#40ffffff"
-        property url wallpaper: ""
-        property real originX: 0          // posición del panel dentro de la escena
-        property real originY: 0
-        property real sceneWidth: 0
-        property real sceneHeight: 0
-        property color borderColor: Qt.rgba(1, 1, 1, 0.35)
-        property color highlightColor: Qt.rgba(1, 1, 1, 0.5)
-
-        // Contenido recortado con esquinas redondeadas
-        Item {
-            anchors.fill: parent
-            layer.enabled: gp.wallpaper.toString() !== ""
-            layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: gpMask
-                maskThresholdMin: 0.5
-                maskSpreadAtMin: 1.0
-            }
-
-            Image {
-                visible: gp.wallpaper.toString() !== ""
-                source: gp.wallpaper
-                x: -gp.originX
-                y: -gp.originY
-                width: gp.sceneWidth
-                height: gp.sceneHeight
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: true
-                smooth: true
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: gp.radius
-                color: gp.tint
-            }
-
-            // Luz suave en la parte superior
-            Rectangle {
-                anchors.fill: parent
-                radius: gp.radius
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.12) }
-                    GradientStop { position: 0.4; color: Qt.rgba(1, 1, 1, 0.0) }
-                    GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.10) }
-                }
-            }
-        }
-
-        Rectangle {
-            id: gpMask
-            anchors.fill: parent
-            radius: gp.radius
-            visible: false
-            layer.enabled: true
-        }
-
-        // Borde fino
-        Rectangle {
-            anchors.fill: parent
-            radius: gp.radius
-            color: "transparent"
-            border.color: gp.borderColor
-            border.width: 1
-        }
-
-        // Reflejo especular superior
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - gp.radius * 1.6
-            height: 1
-            radius: 1
-            color: gp.highlightColor
-        }
-    }
-
     // Fila del menú contextual
     component MenuRow: Rectangle {
         id: row
@@ -328,7 +244,7 @@ Item {
             anchors.fill: parent
             radius: dockContainer.dockRadius
             tint: dockContainer.dockTint
-            wallpaper: dockContainer.blurredWallpaper
+            wallpaper: dockContainer.wallpaperPath
             originX: dockBg.x
             originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + dockBg.y) : dockBg.y
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
@@ -413,7 +329,7 @@ Item {
             anchors.fill: parent
             radius: 12
             tint: dockContainer.menuTint
-            wallpaper: dockContainer.blurredWallpaper
+            wallpaper: dockContainer.wallpaperPath
             originX: contextMenu.x
             originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + contextMenu.y) : contextMenu.y
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width

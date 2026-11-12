@@ -182,40 +182,21 @@ verificar_tmux || exit 1
 # 'rm -rf' del arbol falla con "Permission denied" aunque el directorio este
 # vacio, y el build entero se queda sin herramienta.
 info "limpiando ${WORK_DIR}"
-for stale in "${WORK_DIR}"/*/airootfs "${WORK_DIR}/archiso"/*/airootfs; do
-  [[ -d "${stale}" ]] || continue
-  umount -R "${stale}" 2>/dev/null || true
-done
-
-# Y antes de borrar NADA, se comprueba que no queda ningun montaje dentro. Por
-# dos motivos, y el segundo es el que duele:
-#
-#   1. Un 'umount -R' puede fallar a medias (un submontaje de /sys que es del
-#      host, por ejemplo) y dejar montajes colgando. Entonces 'rm -rf' falla con
-#      "Permission denied" y el build se para: molesto pero inofensivo.
-#
-#   2. Si lo que queda montado dentro del airootfs es un ENLACE de /dev (y lo
-#      es: mkarchiso monta /dev ahi con '--rbind'), 'rm -rf' del arbol no borra
-#      el arbol: borra el CONTENIDO de /dev a traves del enlace. O sea, borra el
-#      /dev de la maquina que esta construyendo. Sin mas, sin aviso y sin
-#      codigo de error.
-#
-#      Esto no es una hipotesis de manual: al pasar, la maquina se quedo con
-#      un /dev con dos ficheros, y sin /dev/null no arrancaba ni un build ni un
-#      QEMU ni un 'sudo'. Recuperarlo son 249 mknod.
-#
-# Por eso: si queda ALGO montado dentro del work dir, no se borra nada y se
-# dice cual es, para que lo desmonte quien puede (root).
-quedan=""
-# Primero los montajes MAS PROFUNDOS: si se supiera que queda algo dentro, hay
-# que soltarlo de dentro hacia fuera, porque 'umount' de un padre con un hijo
-# montado encima falla y deja al hijo colgado.
 montajes_dentro() {
   findmnt -rn -o TARGET 2>/dev/null | grep "^${WORK_DIR}/" || true
 }
 ordenados() {
   awk '{ print length, $0 }' | sort -rn | awk '{ print $2 }'
 }
+while read -r m; do
+  [[ -n "${m}" ]] || continue
+  umount -R "${m}" 2>/dev/null || umount -l "${m}" 2>/dev/null || true
+done < <(montajes_dentro | ordenados)
+for stale in "${WORK_DIR}"/*/airootfs "${WORK_DIR}/archiso"/*/airootfs; do
+  [[ -d "${stale}" ]] || continue
+  umount -R "${stale}" 2>/dev/null || true
+done
+quedan=""
 while read -r m; do
   [[ -n "${m}" ]] || continue
   quedan+="  ${m}"$'\n'

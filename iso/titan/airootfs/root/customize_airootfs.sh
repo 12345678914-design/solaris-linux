@@ -80,15 +80,21 @@ KEYMAP=us
 FONT=Lat2-Terminus16
 EOF
 
-# Locale: espanol si se puede generar, C.UTF-8 si no.
-if localedef -i es_ES -f UTF-8 es_ES.UTF-8 2>/dev/null; then
-  printf 'LANG=es_ES.UTF-8\nLANGUAGE=es_ES:es\nLC_ALL=es_ES.UTF-8\n' >/etc/locale.conf
-else
-  printf 'LANG=C.UTF-8\n' >/etc/locale.conf
-fi
+# Locales de Arch Linux: Espanol, Ingles y Quechua (Runasimi)
+cat >/etc/locale.gen <<EOF
+es_ES.UTF-8 UTF-8
+en_US.UTF-8 UTF-8
+quz_PE.UTF-8 UTF-8
+EOF
+
+localedef -i es_ES -f UTF-8 es_ES.UTF-8 2>/dev/null || true
+localedef -i en_US -f UTF-8 en_US.UTF-8 2>/dev/null || true
+localedef -i quz_PE -f UTF-8 quz_PE.UTF-8 2>/dev/null || true
+command -v locale-gen >/dev/null 2>&1 && locale-gen 2>/dev/null || true
+
+printf 'LANG=es_ES.UTF-8\nLANGUAGE=es_ES:es\nLC_ALL=es_ES.UTF-8\n' >/etc/locale.conf
 printf 'LANG=es_ES.UTF-8\nLANGUAGE=es_ES:es\n' >/etc/environment
 command -v dconf >/dev/null 2>&1 && dconf update 2>/dev/null || true
-rm -f /etc/locale.gen
 
 # ------------------------------------------------------------------ 2. usuario
 

@@ -106,21 +106,46 @@ if [ ! -e /dev/dri/renderD* ]; then
   SIN_ACCEL_3D=1
 fi
 
-# 3.1 Detección detallada de GPUs físicas (Intel, AMD, NVIDIA) y topología de gráficos híbridos
+# 3.1 Detección detallada de GPUs físicas (Intel, AMD, NVIDIA) y estado de drivers
 ES_INTEL=0
 ES_AMD=0
 ES_NVIDIA=0
+NVIDIA_PROPIETARIO=0
+NVIDIA_NOUVEAU=0
+
 if command -v lspci >/dev/null 2>&1; then
   lspci | grep -qiE "(vga|display).*intel" && ES_INTEL=1
   lspci | grep -qiE "(vga|display).*(amd|ati|radeon)" && ES_AMD=1
   lspci | grep -qiE "(vga|3d).*nvidia" && ES_NVIDIA=1
-elif [ -e /dev/nvidia0 ] || (command -v lsmod >/dev/null 2>&1 && lsmod | grep -q "^nvidia"); then
+fi
+
+# Verificar si el driver privativo de NVIDIA (nvidia/nvidia-drm) está realmente cargado en el kernel y activo
+if [ -d /sys/module/nvidia_drm ] && { [ -e /dev/nvidia0 ] || [ -e /dev/nvidiactl ]; }; then
+  NVIDIA_PROPIETARIO=1
   ES_NVIDIA=1
+elif [ -d /sys/module/nouveau ]; then
+  NVIDIA_NOUVEAU=1
 fi
 
 ES_HIBRIDA=0
 if [ "${ES_NVIDIA}" -eq 1 ] && { [ "${ES_INTEL}" -eq 1 ] || [ "${ES_AMD}" -eq 1 ]; }; then
   ES_HIBRIDA=1
+fi
+
+# En híbridas (Intel/AMD + NVIDIA), buscar la tarjeta DRM de la integrada (Intel: 0x8086, AMD: 0x1002)
+IGPU_CARD=""
+if [ "${ES_HIBRIDA}" -eq 1 ]; then
+  for card_dir in /sys/class/drm/card[0-9]; do
+    [ -d "${card_dir}" ] || continue
+    vendor_file="${card_dir}/device/vendor"
+    if [ -f "${vendor_file}" ]; then
+      vendor=$(cat "${vendor_file}" 2>/dev/null)
+      if [ "${vendor}" = "0x8086" ] || [ "${vendor}" = "0x1002" ]; then
+        IGPU_CARD="$(basename "${card_dir}")"
+        break
+      fi
+    fi
+  done
 fi
 
 # Detectar qué tarjeta DRM tiene conectada físicamente la pantalla (eDP-1 en laptop, HDMI/DP en sobremesa)
@@ -154,17 +179,27 @@ else
   # En hardware real con GPU física (Intel, AMD, NVIDIA)
   export WLR_NO_HARDWARE_CURSORS=1
   if [ "${ES_HIBRIDA}" -eq 1 ]; then
-    echo "Titan Linux: Laptop con gráficos híbridos detectada (Intel/AMD + NVIDIA RTX/GTX)."
-    echo "-> Asignando pantalla principal a la GPU integrada (PRIME Offload habilitado para NVIDIA)."
-    if [ -n "${CARD_PANTALLA}" ] && [ -e "/dev/dri/${CARD_PANTALLA}" ]; then
-      export WLR_DRM_DEVICES="/dev/dri/${CARD_PANTALLA}"
+    echo "Titan Linux: Laptop con gráficos híbridos detectada (Intel/AMD + NVIDIA)."
+    echo "-> Asignando pantalla principal a la GPU integrada (PRIME Offload disponible para NVIDIA)."
+    target_card="${IGPU_CARD:-${CARD_PANTALLA}}"
+    if [ -n "${target_card}" ] && [ -e "/dev/dri/${target_card}" ]; then
+      export WLR_DRM_DEVICES="/dev/dri/${target_card}"
     fi
-    # No forzar GBM_BACKEND=nvidia-drm en híbridas para permitir renderizado nativo en el panel
+    # No forzar variables de NVIDIA a nivel global para que el escritorio corra sobre la iGPU (Mesa)
   elif [ "${ES_NVIDIA}" -eq 1 ]; then
-    echo "Titan Linux: GPU NVIDIA dedicada detectada (RTX/GTX) - configurando backend Wayland oficial (EGL/GBM)..."
-    export LIBVA_DRIVER_NAME=nvidia
-    export __GLX_VENDOR_LIBRARY_NAME=nvidia
-    export GBM_BACKEND=nvidia-drm
+    if [ "${NVIDIA_PROPIETARIO}" -eq 1 ]; then
+      echo "Titan Linux: GPU NVIDIA detectada con driver privativo activo (nvidia-drm)..."
+      export LIBVA_DRIVER_NAME=nvidia
+      export __GLX_VENDOR_LIBRARY_NAME=nvidia
+      # IMPORTANTE: No fijar GBM_BACKEND=nvidia-drm (Mesa 21.2+ lo maneja internamente; fijarlo rompe labwc, Qt y Firefox)
+      unset GBM_BACKEND 2>/dev/null || true
+    else
+      echo "Titan Linux: GPU NVIDIA detectada operando con driver abierto y estable (Nouveau/Mesa)..."
+      # Driver abierto Nouveau: renderizado 100% nativo vía Mesa. No forzar variables privativas.
+      unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
+      unset GBM_BACKEND 2>/dev/null || true
+      unset LIBVA_DRIVER_NAME 2>/dev/null || true
+    fi
   else
     echo "Titan Linux: GPU Intel/AMD detectada - aceleración OpenGL/Vulkan nativa vía Mesa."
   fi
@@ -186,6 +221,10 @@ codigo_salida=${PIPESTATUS[0]}
 # Fallback automático: si labwc falló con el motor acelerado, reintentar automáticamente con compatibilidad software
 if [ $codigo_salida -ne 0 ] && [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] && [ "${SIN_ACCEL_3D}" -eq 0 ]; then
   echo "Aviso: fallo de inicialización acelerada (código ${codigo_salida}). Reintentando con capa de compatibilidad..."
+  unset GBM_BACKEND 2>/dev/null || true
+  unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
+  unset LIBVA_DRIVER_NAME 2>/dev/null || true
+  unset WLR_DRM_DEVICES 2>/dev/null || true
   aplicar_capa_compatibilidad
   dbus-run-session -- labwc 2>&1 | tee -a /tmp/labwc.log
   codigo_salida=${PIPESTATUS[0]}
