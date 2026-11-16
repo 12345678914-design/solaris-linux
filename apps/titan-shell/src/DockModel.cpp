@@ -184,7 +184,7 @@ void DockModel::initDefaultPinnedApps()
     addPinned(QStringLiteral("titan-terminal"), QStringLiteral("Terminal"), QStringLiteral("qrc:/icons/terminal.png"), QStringLiteral("titan-terminal"));
     addPinned(QStringLiteral("titan-settings"), QStringLiteral("Ajustes"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("titan-settings"));
     addPinned(QStringLiteral("org.gnome.Software"), QStringLiteral("App Store"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"), QStringLiteral("gnome-software"));
-    addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Solaris"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
+    addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
     addPinned(QStringLiteral("titan-trash"), QStringLiteral("Papelera"), QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("titan-finder ") + QDir::homePath() + QStringLiteral("/.local/share/Trash/files"));
 }
 
@@ -250,7 +250,7 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
     QString cleanId = cleanAppId(appId);
     QString cleanTitle = title.trimmed().toLower();
 
-    // 1. Iconos estándar del sistema Solaris / Titan
+    // 1. Iconos estándar del sistema Inti OS
     if (cleanId.contains(QStringLiteral("onlyoffice")) || cleanTitle.contains(QStringLiteral("onlyoffice"))) return QStringLiteral("qrc:/icons/onlyoffice.png");
     if (cleanId.contains(QStringLiteral("firefox")) || cleanTitle.contains(QStringLiteral("firefox")) || cleanId.contains(QStringLiteral("safari"))) return QStringLiteral("qrc:/icons/firefox.png");
     if (cleanId.contains(QStringLiteral("terminal")) || cleanId.contains(QStringLiteral("kitty")) || cleanId.contains(QStringLiteral("foot")) || cleanId.contains(QStringLiteral("alacritty"))) return QStringLiteral("qrc:/icons/terminal.png");

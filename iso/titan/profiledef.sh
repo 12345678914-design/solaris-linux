@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 #
-# Solaris Linux 1.8 - archiso profile (FASE 5 del proyecto).
+# Inti OS 1.8 - archiso profile (FASE 5 del proyecto).
 #
-# Live ISO de Solaris Linux. El sistema arranca con systemd dentro de la
+# Live ISO de Inti OS. El sistema arranca con systemd dentro de la
 # imagen, entra con autologin en tty1 (y en ttyS0, para QEMU headless) y
 # ofrece el comando basico de Linux mas `titan` / `fastfetch`.
 #
@@ -12,10 +12,10 @@
 #   TITAN_CODENAME  apodo de la release
 #   TITAN_REPO      ruta del repositorio local con linux-titanlinux
 
-iso_name="solaris-linux"
-iso_label="SOLARIS_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Solaris Linux Project <https://github.com/solaris-linux>"
-iso_application="Solaris Linux"
+iso_name="inti-os"
+iso_label="INTI_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_publisher="Inti OS Project <https://github.com/solaris-linux>"
+iso_application="Inti OS"
 iso_version="${TITAN_VERSION:-1.8}"
 install_dir="titan"
 buildmodes=('iso')

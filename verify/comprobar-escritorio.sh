@@ -114,7 +114,7 @@ else
     reportar_fallo "titan-video" "Fallo al inicializar: ${out}"
 fi
 
-# 13. Comprobación de titan-installer (Instalador Nativo Solaris Linux)
+# 13. Comprobación de titan-installer (Instalador Nativo Inti OS)
 if out=$(apps/titan-installer/titan-installer --comprobar 2>&1); then
     reportar_ok "titan-installer" "Instalador nativo gráfico QML validado offscreen"
 else

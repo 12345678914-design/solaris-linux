@@ -140,7 +140,7 @@ DatosEquipo leerDatosEquipo()
     }
     datos.usuario = QString::fromLocal8Bit(qgetenv("USER"));
     if (datos.usuario.isEmpty()) {
-        datos.usuario = QStringLiteral("solaris");
+        datos.usuario = QStringLiteral("inti");
     }
     datos.procesador = leerProcesador();
     datos.gpu = leerGpu();

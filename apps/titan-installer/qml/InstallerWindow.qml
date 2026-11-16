@@ -9,7 +9,7 @@ TitanWindow {
     height: 600
     minimumWidth: 800
     minimumHeight: 520
-    title: "Instalador de Solaris Linux"
+    title: "Instalador de Inti OS"
     showSidebar: false
     showStatusBar: false
 
@@ -63,7 +63,7 @@ TitanWindow {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
-                            text: "Solaris Linux"
+                            text: "Inti OS"
                             color: "#ffffff"
                             font.pixelSize: 15
                             font.bold: true
@@ -153,7 +153,7 @@ TitanWindow {
                             }
 
                             Text {
-                                text: "Bienvenido a Solaris Linux"
+                                text: "Bienvenido a Inti OS"
                                 color: "#ffffff"
                                 font.pixelSize: 22
                                 font.bold: true
@@ -161,7 +161,7 @@ TitanWindow {
                             }
 
                             Text {
-                                text: "Este instalador configurará Solaris Linux en tu equipo con la interfaz inspirada en macOS, compatibilidad universal de hardware y alto rendimiento."
+                                text: "Este instalador configurará Inti OS en tu equipo con la interfaz inspirada en macOS, compatibilidad universal de hardware y alto rendimiento."
                                 color: "#a1a1aa"
                                 font.pixelSize: 13
                                 wrapMode: Text.WordWrap
@@ -284,7 +284,7 @@ TitanWindow {
                                 }
 
                                 Text {
-                                    text: "Elige la unidad donde se instalará Solaris Linux y el esquema de particionado."
+                                    text: "Elige la unidad donde se instalará Inti OS y el esquema de particionado."
                                     color: "#a1a1aa"
                                     font.pixelSize: 12
                                 }
@@ -586,7 +586,7 @@ TitanWindow {
                             TextField {
                                 id: fullNameField
                                 width: parent.width
-                                text: "Usuario Solaris"
+                                text: "Usuario Inti"
                                 color: "#ffffff"
                             }
 
@@ -594,7 +594,7 @@ TitanWindow {
                             TextField {
                                 id: userField
                                 width: parent.width
-                                text: "solaris"
+                                text: "inti"
                                 color: "#ffffff"
                             }
 
@@ -602,7 +602,7 @@ TitanWindow {
                             TextField {
                                 id: hostnameField
                                 width: parent.width
-                                text: "solaris-pc"
+                                text: "inti-pc"
                                 color: "#ffffff"
                             }
 
@@ -718,7 +718,7 @@ TitanWindow {
                             }
 
                             Text {
-                                text: "Instalando Solaris Linux..."
+                                text: "Instalando Inti OS..."
                                 color: "#ffffff"
                                 font.pixelSize: 20
                                 font.bold: true

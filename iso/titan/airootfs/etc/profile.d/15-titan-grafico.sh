@@ -62,7 +62,7 @@ if [ "${SESION_DESKTOP}" = "plasma" ]; then
     ""|C|POSIX) export LANG=es_ES.UTF-8 ;;
   esac
 
-  echo "Iniciando Solaris (KDE Plasma 6 Wayland)..."
+  echo "Iniciando Inti OS (KDE Plasma 6 Wayland)..."
   dbus-run-session -- startplasma-wayland 2>&1 | tee /tmp/plasma.log
   codigo_salida=${PIPESTATUS[0]}
   if [ $codigo_salida -ne 0 ] && [ -s /tmp/plasma.log ]; then

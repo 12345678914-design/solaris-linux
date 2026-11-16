@@ -1,35 +1,35 @@
-SOLARIS LINUX 1.8 — x86_64
+INTI OS 1.8 — x86_64
 ==========================
 
 La ISO completa pesa 3,2 GB y GitHub solo permite archivos de hasta 2 GB por
 asset. Por eso se publica dividida en dos partes:
 
-  solaris-linux-1.8-x86_64.iso.part-aa   (~1,9 GB)
-  solaris-linux-1.8-x86_64.iso.part-ab   (~1,2 GB)
+  inti-os-1.8-x86_64.iso.part-aa   (~1,9 GB)
+  inti-os-1.8-x86_64.iso.part-ab   (~1,2 GB)
 
 Unir las partes
 ---------------
 
 Descarga las dos partes y el archivo .sha256 en la misma carpeta y ejecuta:
 
-  cat solaris-linux-1.8-x86_64.iso.part-aa \
-      solaris-linux-1.8-x86_64.iso.part-ab \
-      > solaris-linux-1.8-x86_64.iso
+  cat inti-os-1.8-x86_64.iso.part-aa \
+      inti-os-1.8-x86_64.iso.part-ab \
+      > inti-os-1.8-x86_64.iso
 
 En Windows PowerShell:
 
-  Get-Content -AsByteStream solaris-linux-1.8-x86_64.iso.part-aa,
-      solaris-linux-1.8-x86_64.iso.part-ab |
-    Set-Content -AsByteStream solaris-linux-1.8-x86_64.iso
+  Get-Content -AsByteStream inti-os-1.8-x86_64.iso.part-aa,
+      inti-os-1.8-x86_64.iso.part-ab |
+    Set-Content -AsByteStream inti-os-1.8-x86_64.iso
 
 Verificar la ISO
 ----------------
 
-  sha256sum -c solaris-linux-1.8-x86_64.iso.sha256
+  sha256sum -c inti-os-1.8-x86_64.iso.sha256
 
 Debe mostrar:
 
-  solaris-linux-1.8-x86_64.iso: La suma coincide
+  inti-os-1.8-x86_64.iso: La suma coincide
 
 El SHA-256 esperado es:
 
@@ -42,7 +42,7 @@ Arrancar en QEMU
 
   qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4096 \
     -machine q35 -device virtio-vga \
-    -cdrom "solaris-linux-1.8-x86_64.iso"
+    -cdrom "inti-os-1.8-x86_64.iso"
 
 `-enable-kvm` necesita /dev/kvm y permisos sobre él. Si no está disponible,
 elimina esa opción. `-machine q35` arranca en modo BIOS; para UEFI añade la BIOS

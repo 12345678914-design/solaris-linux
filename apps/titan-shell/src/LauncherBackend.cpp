@@ -136,7 +136,7 @@ void LauncherBackend::loadApps()
     addApp(QStringLiteral("App Store"), QStringLiteral("gnome-software"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
     addApp(QStringLiteral("Ajustes del Sistema"), QStringLiteral("titan-settings"), QStringLiteral("qrc:/icons/system.png"));
     addApp(QStringLiteral("ONLYOFFICE"), QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("qrc:/icons/onlyoffice.png"));
-    addApp(QStringLiteral("Acerca de Solaris"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));
+    addApp(QStringLiteral("Acerca de Inti OS"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));
 
     // Directorios de aplicaciones: Pacman (sistema), Local y Flatpak
     const QStringList directorios = {

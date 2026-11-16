@@ -290,7 +290,7 @@ private:
     bool m_wifiScanning = false;
     bool m_bluetoothEnabled = true;
     bool m_bluetoothConnected = false;
-    QString m_connectedBluetoothDevice = QStringLiteral("Solaris Sound Air");
+    QString m_connectedBluetoothDevice = QStringLiteral("Inti Sound Air");
     QVariantList m_bluetoothDevices;
     bool m_bluetoothScanning = false;
     qreal m_brightness = 0.85;

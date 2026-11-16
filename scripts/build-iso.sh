@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-iso.sh - construye la ISO en vivo de Solaris Linux 1.8 con archiso.
+# build-iso.sh - construye la ISO en vivo de Inti OS 1.8 con archiso.
 #
 # Que hace, en orden:
 #   1. comprueba que el host tiene lo necesario (Arch, archiso, xorriso, disco)
@@ -619,8 +619,8 @@ args=(-C "${generated_conf}"
       -o "${OUT_DIR}"
       -w "${WORK_DIR}"
       -L "TITAN_$(date +%Y%m)"
-      -P "Solaris Linux Project"
-      -A "Solaris Linux ${TITAN_VERSION} (${TITAN_CODENAME})")
+      -P "Inti OS Project"
+      -A "Inti OS ${TITAN_VERSION} (${TITAN_CODENAME})")
 (( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[@]}")
 args+=("${PROFILE}")
 [[ -n "$verbose" ]] && args+=(-v)

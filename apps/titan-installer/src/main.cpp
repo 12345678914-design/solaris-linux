@@ -22,8 +22,8 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("titan-installer"));
-    app.setApplicationDisplayName(QStringLiteral("Instalador de Solaris Linux"));
-    app.setOrganizationName(QStringLiteral("SolarisLinux"));
+    app.setApplicationDisplayName(QStringLiteral("Instalador de Inti OS"));
+    app.setOrganizationName(QStringLiteral("IntiOS"));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/system.png")));
 
     QQuickStyle::setStyle(QStringLiteral("Basic"));

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Solaris Linux 1.8 - personalizacion de la ISO en vivo.
+# Inti OS 1.8 - personalizacion de la ISO en vivo.
 #
 # Lo ejecuta archiso DENTRO del chroot de airootfs, despues de pacstrap.
 # Por eso se puede escribir /usr/lib/os-release y /etc/passwd: aqui ya no hay
@@ -233,9 +233,9 @@ if [[ -d /etc/skel/Escritorio ]]; then
   chown -R titan:titan /home/titan/Escritorio
 fi
 
-# Calamares: aplicar configuración personalizada de Solaris Linux
+# Calamares: aplicar configuración personalizada de Inti OS
 if [[ -d /usr/share/calamares-solaris ]]; then
-  log "calamares: aplicando configuración personalizada de Solaris Linux"
+  log "calamares: aplicando configuración personalizada de Inti OS"
   mkdir -p /etc/calamares
   cp -rf /usr/share/calamares-solaris/* /etc/calamares/
 fi

@@ -99,7 +99,7 @@ command -v qemu-system-x86_64 >/dev/null || { red "Falta qemu-system-x86_64"; ex
 
 if (( ! boot_installed )); then
   shopt -s nullglob
-  isos=("${OUT_DIR}"/solaris-linux-*.iso)
+  isos=("${OUT_DIR}"/inti-os-*.iso)
   shopt -u nullglob
   (( ${#isos[@]} )) || { red "No hay ninguna ISO en ${OUT_DIR}. Antes: scripts/build-iso.sh"; exit 1; }
   iso="$(ls -t "${isos[@]}" | head -n1)"

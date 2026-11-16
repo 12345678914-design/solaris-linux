@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("titan-shell"));
-    QGuiApplication::setOrganizationName(QStringLiteral("SolarisLinux"));
+    QGuiApplication::setOrganizationName(QStringLiteral("IntiOS"));
     
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     

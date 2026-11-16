@@ -118,7 +118,7 @@ public slots:
                 runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("EFI"), QStringLiteral("fat32"), QStringLiteral("1MiB"), QStringLiteral("513MiB")});
                 runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("esp"), QStringLiteral("on")});
                 // Partición 2: Raíz restante
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("SolarisRoot"), QStringLiteral("ext4"), QStringLiteral("513MiB"), QStringLiteral("100%")});
+                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("IntiRoot"), QStringLiteral("ext4"), QStringLiteral("513MiB"), QStringLiteral("100%")});
 
                 efiDev = diskPath + sep + QStringLiteral("1");
                 rootDev = diskPath + sep + QStringLiteral("2");
@@ -161,11 +161,11 @@ public slots:
                 if (pFs == QStringLiteral("fat32")) {
                     runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), pDev});
                 } else if (pFs == QStringLiteral("btrfs")) {
-                    runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("SOLARIS"), pDev});
+                    runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), pDev});
                 } else if (pFs == QStringLiteral("swap")) {
                     runCmd(QStringLiteral("mkswap"), {QStringLiteral("-L"), QStringLiteral("SWAP"), pDev});
                 } else {
-                    runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), (mPoint == QStringLiteral("/")) ? QStringLiteral("SOLARIS") : QStringLiteral("DATA"), pDev});
+                    runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), (mPoint == QStringLiteral("/")) ? QStringLiteral("INTI") : QStringLiteral("DATA"), pDev});
                 }
             }
         } else {
@@ -173,9 +173,9 @@ public slots:
                 runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), efiDev});
             }
             if (fsType == QStringLiteral("btrfs")) {
-                runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("SOLARIS"), rootDev});
+                runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
             } else {
-                runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("SOLARIS"), rootDev});
+                runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
             }
         }
 
@@ -288,7 +288,7 @@ public slots:
         {
             QFile hFile(QStringLiteral("/mnt/etc/hostname"));
             if (hFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                hFile.write((hostname.isEmpty() ? QStringLiteral("solaris") : hostname).toUtf8() + "\n");
+                hFile.write((hostname.isEmpty() ? QStringLiteral("inti") : hostname).toUtf8() + "\n");
                 hFile.close();
             }
         }
@@ -315,7 +315,7 @@ public slots:
         }
 
         // Creación del usuario
-        QString user = userName.isEmpty() ? QStringLiteral("solaris") : userName.toLower().trimmed();
+        QString user = userName.isEmpty() ? QStringLiteral("inti") : userName.toLower().trimmed();
         runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("useradd"), QStringLiteral("-m"), QStringLiteral("-G"), QStringLiteral("wheel,audio,video,storage,power,network,input"), QStringLiteral("-s"), QStringLiteral("/bin/bash"), user});
 
         // Contraseñas
@@ -346,7 +346,7 @@ public slots:
             if (gDef.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
                 gDef.write("GRUB_DEFAULT=0\n"
                            "GRUB_TIMEOUT=5\n"
-                           "GRUB_DISTRIBUTOR=\"Solaris Linux\"\n"
+                           "GRUB_DISTRIBUTOR=\"Inti OS\"\n"
                            "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet\"\n"
                            "GRUB_CMDLINE_LINUX=\"console=tty0 console=ttyS0,115200n8\"\n"
                            "GRUB_DISABLE_SUBMENU=y\n"
@@ -455,7 +455,7 @@ public slots:
             QString iName = QFile::exists(QStringLiteral("/mnt/boot/initramfs-linux-titanlinux.img"))
                 ? QStringLiteral("initramfs-linux-titanlinux.img")
                 : QStringLiteral("initramfs-linux-titanlinux-fallback.img");
-            entries.append({QStringLiteral("Solaris Linux"), QStringLiteral("vmlinuz-linux-titanlinux"), iName});
+            entries.append({QStringLiteral("Inti OS"), QStringLiteral("vmlinuz-linux-titanlinux"), iName});
         }
         if (QFile::exists(QStringLiteral("/mnt/boot/vmlinuz-linux")) &&
             (QFile::exists(QStringLiteral("/mnt/boot/initramfs-linux.img")) ||
@@ -463,7 +463,7 @@ public slots:
             QString iName = QFile::exists(QStringLiteral("/mnt/boot/initramfs-linux.img"))
                 ? QStringLiteral("initramfs-linux.img")
                 : QStringLiteral("initramfs-linux-fallback.img");
-            QString t = entries.isEmpty() ? QStringLiteral("Solaris Linux") : QStringLiteral("Solaris Linux (Kernel de Rescate)");
+            QString t = entries.isEmpty() ? QStringLiteral("Inti OS") : QStringLiteral("Inti OS (Kernel de Rescate)");
             entries.append({t, QStringLiteral("vmlinuz-linux"), iName});
         }
         if (entries.isEmpty()) {
@@ -474,11 +474,11 @@ public slots:
                 flavor.remove(QStringLiteral("vmlinuz-"));
                 QString matchingInit = QStringLiteral("initramfs-") + flavor + QStringLiteral(".img");
                 if (bDir.exists(matchingInit)) {
-                    entries.append({QStringLiteral("Solaris Linux (") + flavor + QStringLiteral(")"), k, matchingInit});
+                    entries.append({QStringLiteral("Inti OS (") + flavor + QStringLiteral(")"), k, matchingInit});
                 }
             }
             if (entries.isEmpty()) {
-                entries.append({QStringLiteral("Solaris Linux"), QStringLiteral("vmlinuz-linux"), QStringLiteral("initramfs-linux.img")});
+                entries.append({QStringLiteral("Inti OS"), QStringLiteral("vmlinuz-linux"), QStringLiteral("initramfs-linux.img")});
             }
         }
 
@@ -510,14 +510,14 @@ public slots:
                 QStringLiteral("grub-install"),
                 QStringLiteral("--target=x86_64-efi"),
                 QStringLiteral("--efi-directory=/boot/efi"),
-                QStringLiteral("--bootloader-id=SolarisLinux"),
+                QStringLiteral("--bootloader-id=IntiOS"),
                 QStringLiteral("--removable"),
                 QStringLiteral("--no-nvram"),
                 QStringLiteral("--recheck")
             });
 
             QDir().mkpath(QStringLiteral("/mnt/boot/efi/EFI/BOOT"));
-            QDir().mkpath(QStringLiteral("/mnt/boot/efi/EFI/SolarisLinux"));
+            QDir().mkpath(QStringLiteral("/mnt/boot/efi/EFI/IntiOS"));
 
             // Respaldar kernel e initramfs en la partición EFI para garantizar arranque directo bajo cualquier firmware
             for (const auto &e : entries) {
@@ -607,7 +607,7 @@ public slots:
             }
 
             runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/bootx64.efi")});
-            runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/SolarisLinux/grubx64.efi")});
+            runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/IntiOS/grubx64.efi")});
             QFile::remove(QStringLiteral("/mnt/boot/efi/early-grub.cfg"));
         } else {
             runCmd(QStringLiteral("arch-chroot"), {
@@ -1039,7 +1039,7 @@ void InstallerBackend::startInstallation(const QString &fsType,
     m_installing = true;
     m_installSuccess = false;
     m_progressPercent = 0;
-    m_progressMessage = QStringLiteral("Iniciando instalador de Solaris Linux...");
+    m_progressMessage = QStringLiteral("Iniciando instalador de Inti OS...");
     m_errorMessage.clear();
 
     emit installingChanged();

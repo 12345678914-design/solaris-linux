@@ -23,12 +23,12 @@ QVariantList WindowTracker::windows() const
 
 QString WindowTracker::activeTitle() const
 {
-    return m_activeTitle.isEmpty() ? QStringLiteral("Solaris Linux") : m_activeTitle;
+    return m_activeTitle.isEmpty() ? QStringLiteral("Inti OS") : m_activeTitle;
 }
 
 QString WindowTracker::activeAppId() const
 {
-    return m_activeAppId.isEmpty() ? QStringLiteral("Solaris") : m_activeAppId;
+    return m_activeAppId.isEmpty() ? QStringLiteral("Inti OS") : m_activeAppId;
 }
 
 static QString cleanWinId(const QString &raw)

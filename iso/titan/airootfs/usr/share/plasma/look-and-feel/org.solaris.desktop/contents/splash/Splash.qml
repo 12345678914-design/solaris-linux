@@ -40,7 +40,7 @@ Item {
             spacing: 28
             horizontalAlignment: Text.AlignHCenter
 
-            // Logo de Solaris
+            // Logo de Inti OS
             Image {
                 id: logo
                 source: "images/logo.png"
@@ -95,7 +95,7 @@ Item {
                     if (root.stage <= 1) return "Iniciando sistema..."
                     if (root.stage === 2) return "Cargando entorno gráfico..."
                     if (root.stage === 3) return "Preparando escritorio..."
-                    return "Bienvenido a Solaris"
+                    return "Bienvenido a Inti OS"
                 }
                 color: Qt.rgba(1, 1, 1, 0.55)
                 font.pixelSize: 11

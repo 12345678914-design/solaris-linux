@@ -1,11 +1,12 @@
-# Solaris Linux 1.8 — Guía de compilación y puesta en marcha
+# Inti OS 1.8 — Guía de compilación y puesta en marcha
 
-Este repositorio contiene el código fuente de **Solaris Linux**, una distribución
+Este repositorio contiene el código fuente de **Inti OS**, una distribución
 derivada de Arch Linux con escritorio **Labwc** y aplicaciones gráficas propias
 en **Qt 6 / QML** con aspecto macOS.
 
-> Los nombres internos `titan-*` y `linux-titanlinux` se conservan por
-> compatibilidad con el árbol de código y los paquetes existentes.
+> **Nombres:** *Inti OS* es el nombre del sistema operativo. *titan* es el
+> nombre del kernel y de la base derivada de Arch (`linux-titanlinux`); por eso
+> las aplicaciones y rutas internas usan el prefijo `titan-*`.
 
 > Este README recoge las instrucciones de `INSTRUCCIONES.md`. La documentación
 > técnica ampliada (kernel, ISO, verificaciones y arquitectura) está en
@@ -82,7 +83,7 @@ Para evitar que `pacman` se quede colgado en mirrors lentos como
 sudo sed -i 's|^Server = https://geo.mirror.pkgbuild.com|# Server = https://geo.mirror.pkgbuild.com|' /etc/pacman.d/mirrorlist
 ```
 
-## Paso 3: compilar la ISO de Solaris Linux
+## Paso 3: compilar la ISO de Inti OS
 
 ```bash
 sudo ./scripts/build-iso.sh
@@ -106,7 +107,7 @@ El script realiza automáticamente estas tareas:
 5. Genera la ISO final en:
 
    ```text
-   out/solaris-linux-1.8-x86_64.iso
+   out/inti-os-1.8-x86_64.iso
    ```
 
 ### Si no existe el paquete del kernel
@@ -138,7 +139,7 @@ release), puedes arrancarla directamente con:
 ```bash
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4096 \
   -machine q35 -device virtio-vga \
-  -cdrom "solaris-linux-1.8-x86_64.iso"
+  -cdrom "inti-os-1.8-x86_64.iso"
 ```
 
 > `-enable-kvm` requiere `/dev/kvm` y permisos sobre él. Si no está disponible,
@@ -222,6 +223,6 @@ Estos directorios son artefactos de build y no forman parte del código fuente.
 
 ## Créditos y aviso
 
-Solaris Linux es un proyecto derivado de Arch Linux. Los nombres internos
+Inti OS es un proyecto derivado de Arch Linux. Los nombres internos
 `titan-*` y `linux-titanlinux` se mantienen para no romper paquetes, rutas y
 aplicaciones existentes.

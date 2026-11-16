@@ -648,14 +648,14 @@ void ShellBackend::scanWifi()
         // Solo si NO existe ningún hardware Wi-Fi físico, proveer redes de demostración para pruebas visuales en QEMU
         if (found.isEmpty() && !hasWifiAdapter()) {
             QVariantMap n1;
-            n1[QStringLiteral("ssid")] = m_wifiSsid.isEmpty() ? QStringLiteral("Solaris-Fiber-5G") : m_wifiSsid;
+            n1[QStringLiteral("ssid")] = m_wifiSsid.isEmpty() ? QStringLiteral("Inti-Fiber-5G") : m_wifiSsid;
             n1[QStringLiteral("signal")] = 95;
             n1[QStringLiteral("connected")] = m_wifiConnected;
             n1[QStringLiteral("security")] = QStringLiteral("WPA2/WPA3");
             found.append(n1);
 
             QVariantMap n2;
-            n2[QStringLiteral("ssid")] = QStringLiteral("Solaris-Guest");
+            n2[QStringLiteral("ssid")] = QStringLiteral("Inti-Guest");
             n2[QStringLiteral("signal")] = 80;
             n2[QStringLiteral("connected")] = false;
             n2[QStringLiteral("security")] = QStringLiteral("Abierta");
@@ -887,7 +887,7 @@ void ShellBackend::launchApp(const QString &appId, const QString &exec)
 void ShellBackend::openAcerca()
 {
     if (m_dockModel) {
-        m_dockModel->launchApp(QStringLiteral("titan-acerca"), QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Solaris"), QStringLiteral("qrc:/icons/about.png"));
+        m_dockModel->launchApp(QStringLiteral("titan-acerca"), QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"));
     } else {
         QProcess::startDetached(resolveShellBinary(QStringLiteral("titan-acerca")));
     }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Solaris Linux - Autostart de sesion grafica con Labwc
+# Inti OS - Autostart de sesion grafica con Labwc
 export PATH="/usr/local/bin:$PATH"
 
 # 0. Servidor de audio PipeWire y WirePlumber (Hardware real y emulado)
@@ -35,7 +35,7 @@ lanzar_titan_desktop() {
 }
 (lanzar_titan_desktop) &
 
-# 2. Solaris Shell (TopBar, Dock flotante, Iconos y Launchpad) con autorecuperacion
+# 2. Inti OS Shell (TopBar, Dock flotante, Iconos y Launchpad) con autorecuperacion
 lanzar_titan_shell() {
     if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
         /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1
