@@ -1,5 +1,6 @@
 #include "SettingsBackend.h"
 #include "ThemeManager.h"
+#include "TitanUsuario.h"
 
 #include <QDir>
 #include <QFile>
@@ -239,10 +240,7 @@ void SettingsBackend::loadSystemInfo()
     m_systemInfo[QStringLiteral("kernel")] = QSysInfo::kernelType() + QStringLiteral(" ") + QSysInfo::kernelVersion();
     m_systemInfo[QStringLiteral("arch")] = QSysInfo::currentCpuArchitecture();
     m_systemInfo[QStringLiteral("hostname")] = QSysInfo::machineHostName();
-    m_systemInfo[QStringLiteral("user")] = QString::fromLocal8Bit(qgetenv("USER"));
-    if (m_systemInfo[QStringLiteral("user")].toString().isEmpty()) {
-        m_systemInfo[QStringLiteral("user")] = QStringLiteral("isai");
-    }
+    m_systemInfo[QStringLiteral("user")] = titan::usuarioActual();
 
     QStorageInfo rootStorage(QDir::rootPath());
     if (rootStorage.isValid()) {

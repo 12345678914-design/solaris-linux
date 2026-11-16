@@ -1,3 +1,5 @@
+#include "TitanBinary.h"
+#include "TitanUsuario.h"
 #include "ShellBackend.h"
 #include "DockModel.h"
 #include "ThemeManager.h"
@@ -56,28 +58,7 @@ void NotificationsAdaptor::GetServerInformation(QString &name, QString &vendor, 
 
 static QString resolveShellBinary(const QString &program)
 {
-    if (QFile::exists(program)) return program;
-    QString inPath = QStandardPaths::findExecutable(program);
-    if (!inPath.isEmpty()) return inPath;
-
-    const QStringList candidates = {
-        QStringLiteral("/usr/local/bin/") + program,
-        QStringLiteral("/usr/bin/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/iso/titan/airootfs/usr/local/bin/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/apps/") + program + QStringLiteral("/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/iso/titan/airootfs/usr/local/bin/") + program
-    };
-
-    for (const QString &c : candidates) {
-        if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
-            return c;
-        }
-    }
-    return program;
+    return titan::resolverBinario(program);
 }
 
 ShellBackend::ShellBackend(QObject *parent)
@@ -125,8 +106,7 @@ ShellBackend::ShellBackend(QObject *parent)
                QStringLiteral("Inti OS"));
     });
 
-    m_userName = QString::fromLocal8Bit(qgetenv("USER"));
-    if (m_userName.isEmpty()) m_userName = QStringLiteral("isai");
+    m_userName = titan::usuarioActual();
     m_userDisplayName = m_userName;
     if (!m_userDisplayName.isEmpty()) m_userDisplayName[0] = m_userDisplayName[0].toUpper();
 

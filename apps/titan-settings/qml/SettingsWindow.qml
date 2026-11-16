@@ -170,7 +170,7 @@ TitanWindow {
                     spacing: 2
 
                     Text {
-                        text: settingsBackend.systemInfo.user || "isai"
+                        text: settingsBackend.systemInfo.user || ""
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
                         font.bold: true
@@ -468,7 +468,7 @@ TitanWindow {
                         // Información secundaria
                         Text {
                             text: settingsBackend.currentSection === "Batería" ? "Salud de batería: 98% (Normal) • Temperatura óptima: 31°C" :
-                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Usuario: " + (settingsBackend.systemInfo.user || "isai") + " • Grupo: wheel (Administrador)" :
+                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Usuario: " + (settingsBackend.systemInfo.user || "") + " • Grupo: wheel (Administrador)" :
                                   settingsBackend.currentSection === "Teclado" ? "Velocidad de repetición: Rápida • Retardo: Corto" :
                                   settingsBackend.currentSection === "Wi-Fi" ? "Dirección IPv4: 192.168.1.105 • Puerta de enlace: 192.168.1.1" :
                                   settingsBackend.currentSection === "Bluetooth" ? "Controlador Intel AX200 • Perfiles soportados: A2DP, AVRCP, HFP" :

@@ -8,7 +8,8 @@
 
 set -euo pipefail
 
-DESTINO_LIVE="/home/isai/Proyectos/titan-linux/iso/titan/airootfs"
+RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DESTINO_LIVE="${RAIZ}/iso/titan/airootfs"
 MARKER_FILE="${DESTINO_LIVE}/etc/titan/escritorio-titan-shell"
 
 uso() {

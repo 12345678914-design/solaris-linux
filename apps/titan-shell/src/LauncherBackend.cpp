@@ -1,3 +1,4 @@
+#include "TitanBinary.h"
 #include "LauncherBackend.h"
 #include <QDir>
 #include <QFileInfo>
@@ -251,28 +252,7 @@ void LauncherBackend::search(const QString &query)
 
 static QString resolveLauncherBinary(const QString &program)
 {
-    if (QFile::exists(program)) return program;
-    QString inPath = QStandardPaths::findExecutable(program);
-    if (!inPath.isEmpty()) return inPath;
-
-    const QStringList candidates = {
-        QStringLiteral("/usr/local/bin/") + program,
-        QStringLiteral("/usr/bin/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/iso/titan/airootfs/usr/local/bin/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/apps/") + program + QStringLiteral("/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/iso/titan/airootfs/usr/local/bin/") + program
-    };
-
-    for (const QString &c : candidates) {
-        if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
-            return c;
-        }
-    }
-    return program;
+    return titan::resolverBinario(program);
 }
 
 void LauncherBackend::launch(const QString &exec)

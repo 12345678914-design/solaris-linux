@@ -32,6 +32,7 @@ HEADERS += \
     src/LauncherBackend.h \
     src/DesktopBackend.h \
     ../titan-common/ThemeManager.h \
+    ../titan-common/TitanBinary.h \
     ../titan-panel/src/tareas.h
 
 RESOURCES += resources.qrc
