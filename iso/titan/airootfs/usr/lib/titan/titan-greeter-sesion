@@ -23,7 +23,11 @@ for nodo in /dev/dri/renderD*; do
 done
 if [ "${sin_3d}" -eq 1 ] || grep -qE '(titan\.compat|nomodeset|safe_graphics)' /proc/cmdline 2>/dev/null; then
   export WLR_RENDERER=pixman
-  export WLR_NO_HARDWARE_CURSORS=1
+  # En VM, cursor por hardware: si no, se ven dos flechas (la del visor y la
+  # dibujada). Ver aplicar_capa_compatibilidad en 15-titan-grafico.sh.
+  if ! systemd-detect-virt -q 2>/dev/null; then
+    export WLR_NO_HARDWARE_CURSORS=1
+  fi
   export LIBGL_ALWAYS_SOFTWARE=1
   export QT_QUICK_BACKEND=software
 fi

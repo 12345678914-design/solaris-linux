@@ -287,7 +287,11 @@ if (( ! no_disk )); then
 fi
 
 # Soporte de dispositivos USB (físico del host o pendrive virtual de prueba)
-has_xhci=0
+# El controlador va siempre: la tableta USB da un puntero absoluto, asi el
+# raton del invitado va exactamente donde el del anfitrion (sin capturarlo) y,
+# con el cursor por hardware del invitado, QEMU muestra una sola flecha.
+args+=(-device qemu-xhci,id=xhci -device usb-tablet,bus=xhci.0)
+has_xhci=1
 
 if [[ -n "$usb_host" ]]; then
   if [[ "$usb_host" == "auto" ]]; then

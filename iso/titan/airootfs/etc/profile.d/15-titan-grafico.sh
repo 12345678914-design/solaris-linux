@@ -177,7 +177,16 @@ export LP_NUM_THREADS="${NCORES}"
 
 aplicar_capa_compatibilidad() {
   export WLR_RENDERER=pixman
-  export WLR_NO_HARDWARE_CURSORS=1
+  # En una VM el cursor va por hardware: la GPU virtual (virtio, vmwgfx, qxl)
+  # tiene plano de cursor y el visor (QEMU, VirtualBox, VMware) lo muestra
+  # como el puntero del anfitrion. Con cursor por software se veian DOS
+  # flechas: la que dibuja el compositor y la del visor. Si no hay plano de
+  # cursor, wlroots ya dibuja el cursor por software sin ayuda.
+  if [ "${ES_VM:-0}" -eq 1 ]; then
+    unset WLR_NO_HARDWARE_CURSORS
+  else
+    export WLR_NO_HARDWARE_CURSORS=1
+  fi
   export LIBGL_ALWAYS_SOFTWARE=1
   export QT_QUICK_BACKEND=software
   export QSG_RHI_BACKEND=software
