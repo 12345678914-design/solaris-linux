@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-installer
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."
@@ -93,6 +93,7 @@ apps/titan-cli:
 apps/titan-desktop:
 	@echo "Compilando titan-desktop..."
 	mkdir -p $(APPS)/titan-desktop/build && cd $(APPS)/titan-desktop/build && qmake6 .. && make -j$(shell nproc)
+	cp -f $(APPS)/titan-desktop/build/titan-desktop $(APPS)/titan-desktop/titan-desktop
 	install -m 0755 $(APPS)/titan-desktop/build/titan-desktop iso/titan/airootfs/usr/local/bin/
 
 apps/titan-panel:
@@ -103,6 +104,7 @@ apps/titan-panel:
 apps/titan-acerca:
 	@echo "Compilando titan-acerca..."
 	mkdir -p $(APPS)/titan-acerca/build && cd $(APPS)/titan-acerca/build && qmake6 .. && make -j$(shell nproc)
+	cp -f $(APPS)/titan-acerca/build/titan-acerca $(APPS)/titan-acerca/titan-acerca
 	install -m 0755 $(APPS)/titan-acerca/build/titan-acerca iso/titan/airootfs/usr/local/bin/
 
 apps/titan-settings:
@@ -129,6 +131,11 @@ apps/titan-video:
 	@echo "Compilando titan-video..."
 	cd $(APPS)/titan-video && qmake6 titan-video.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-video/titan-video iso/titan/airootfs/usr/local/bin/
+
+apps/titan-installer:
+	@echo "Compilando titan-installer..."
+	cd $(APPS)/titan-installer && qmake6 titan-installer.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-installer/titan-installer iso/titan/airootfs/usr/local/bin/
 
 build: apps
 
@@ -171,6 +178,13 @@ clean:
 	@find $(APPS)/titan-musica -name 'titan-musica' -type f -executable -delete
 	@find $(APPS)/titan-terminal -name 'titan-terminal' -type f -executable -delete
 	@find $(APPS)/titan-settings -name 'titan-settings' -type f -executable -delete
+	@find $(APPS)/titan-calc -name 'titan-calc' -type f -executable -delete
+	@find $(APPS)/titan-calendar -name 'titan-calendar' -type f -executable -delete
+	@find $(APPS)/titan-clock -name 'titan-clock' -type f -executable -delete
+	@find $(APPS)/titan-video -name 'titan-video' -type f -executable -delete
+	@find $(APPS)/titan-installer -name 'titan-installer' -type f -executable -delete
+	@find $(APPS)/titan-desktop -maxdepth 1 -name 'titan-desktop' -type f -executable -delete
+	@find $(APPS)/titan-acerca -maxdepth 1 -name 'titan-acerca' -type f -executable -delete
 	@rm -rf $(APPS)/titan-desktop/build $(APPS)/titan-panel/build $(APPS)/titan-acerca/build
 	@cargo clean --manifest-path $(APPS)/titan-cli/Cargo.toml 2>/dev/null || true
 	@echo "Limpio."

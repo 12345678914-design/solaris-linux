@@ -802,3 +802,9 @@ else
 fi
 
 log "OK: ${TITAN_VERSION} lista"
+
+# Liberar montajes virtuales (efivars y sysfs) antes de salir del chroot para
+# evitar bloqueos al desmontar y errores de E/S en los pasos finales de mkarchiso.
+umount -l /sys/firmware/efi/efivars 2>/dev/null || true
+umount -l /sys 2>/dev/null || true
+

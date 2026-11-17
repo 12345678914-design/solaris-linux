@@ -629,30 +629,63 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}" export SOURCE_DATE_EPOCH
 TITAN_VERSION="${TITAN_VERSION}" export TITAN_VERSION
 TITAN_CODENAME="${TITAN_CODENAME}" export TITAN_CODENAME
 
-# mkarchiso no suelta ni una linea hasta el final (en archiso 90 todos sus
-# mensajes de progreso van detras del '-v', que se pide con -v aqui), asi que
-# el build parece colgarse durante cinco minutos. Este latido solo dice "sigo
-# aqui", y se para en cuanto mkarchiso acaba.
-latido=0
-if [[ -z "$verbose" ]]; then
-  (
-    t0=$(date +%s)
-    while sleep 30; do
-      printf '    (sigue, %s s)\n' "$(( $(date +%s) - t0 ))"
-    done
-  ) &
-  latido=$!
-  # Con 'trap', no con un kill aqui: si el build falla a mitad (por ejemplo en
-  # un check de customize_airootfs.sh) el script se va por 'set -e' y sin esto
-  # el latido se queda escribiendo en el log del build siguiente.
-  trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; true' EXIT
+# Configurar wrapper defensivo para find: evita que bugs de drivers virtuales del kernel
+# en el host (como /sys/module/realtek/drivers con EIO) aborten la limpieza de mkarchiso.
+FIND_WRAPPER_DIR="$(mktemp -d -t titan-find-wrap.XXXXXX)"
+cat > "${FIND_WRAPPER_DIR}/find" << 'EOF'
+#!/bin/bash
+salida="$(/usr/bin/find "$@" 2>&1)"
+codigo=$?
+if [[ $codigo -ne 0 ]]; then
+  fallos_reales="$(printf '%s\n' "$salida" | grep -vE 'sys/module/.*/drivers.*(Input/output error|Error de entrada/salida)' || true)"
+  if [[ -z "$fallos_reales" ]]; then
+    exit 0
+  fi
+  printf '%s\n' "$salida" >&2
+  exit $codigo
 fi
-mkarchiso "${args[@]}"
+printf '%s\n' "$salida"
+exit 0
+EOF
+chmod +x "${FIND_WRAPPER_DIR}/find"
+
+# Monitor de latido y seguridad de montajes:
+# 1) Informa del progreso cada 30 segundos.
+# 2) Libera montajes de efivars y sysfs que pacstrap o arch-chroot puedan dejar
+#    bloqueados antes de que mkarchiso pase a las etapas de find y empaquetado.
+latido=0
+(
+  t0=$(date +%s)
+  ultimo_aviso=$t0
+  while true; do
+    sleep 5
+    for m in "${WORK_DIR}"/*/airootfs/sys/firmware/efi/efivars "${WORK_DIR}"/*/airootfs/sys; do
+      if mountpoint -q "$m" 2>/dev/null; then
+        if [[ -f "${WORK_DIR}"/iso._make_packages && ! -f "${WORK_DIR}"/*/airootfs/root/customize_airootfs.sh ]]; then
+          umount -l "$m" 2>/dev/null || true
+        fi
+      fi
+    done
+    now=$(date +%s)
+    if [[ -z "$verbose" ]] && (( (now - ultimo_aviso) >= 30 )); then
+      printf '    (sigue, %s s)\n' "$(( now - t0 ))"
+      ultimo_aviso=$now
+    fi
+  done
+) &
+latido=$!
+trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; rm -rf "${FIND_WRAPPER_DIR:-}" 2>/dev/null; true' EXIT
+
+# Lanzar mkarchiso en espacio de nombres de montaje privado para que los montajes
+# virtuales queden aislados del anfitrión y no puedan ser bloqueados por demonios del host.
+unshare -m --propagation private -- env PATH="${FIND_WRAPPER_DIR}:${PATH}" mkarchiso "${args[@]}"
+
 if (( latido )); then
   kill "${latido}" 2>/dev/null || true
   wait "${latido}" 2>/dev/null || true
   latido=0
 fi
+rm -rf "${FIND_WRAPPER_DIR}" 2>/dev/null || true
 
 # ------------------------------------------------------------------ 6. resultado
 
