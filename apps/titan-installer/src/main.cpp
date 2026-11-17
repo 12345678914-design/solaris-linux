@@ -57,6 +57,9 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("installerBackend"), &backend);
+    // Solo para pruebas de la interfaz: abrir directamente en un paso.
+    if (qEnvironmentVariableIsSet("TITAN_INSTALADOR_PASO"))
+        backend.setCurrentStep(qEnvironmentVariableIntValue("TITAN_INSTALADOR_PASO"));
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), tema);
 
     const QUrl url(QStringLiteral("qrc:/qml/InstallerWindow.qml"));

@@ -494,9 +494,11 @@ log "escritorio completo: impresion, energia, cortafuegos, llavero, mDNS"
 
 # Servicios del sistema. Solo los que existan: un paquete que falte no rompe
 # el build, lo detecta verify/comprobar-escritorio-completo.sh.
+# (grub-btrfsd y los temporizadores de snapper no: el live no tiene btrfs; el
+# instalador los activa si el disco va en btrfs.)
 for unidad in cups.socket cups-browsed.service avahi-daemon.service \
               power-profiles-daemon.service ModemManager.service \
-              ufw.service titan-cortafuegos.service grub-btrfsd.service; do
+              ufw.service titan-cortafuegos.service; do
   if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
     systemctl enable "${unidad}"
   fi

@@ -34,6 +34,12 @@ class InstallerBackend : public QObject
 
     Q_PROPERTY(bool manualPartitioning READ manualPartitioning WRITE setManualPartitioning NOTIFY manualPartitioningChanged)
     Q_PROPERTY(QVariantList manualPartitions READ manualPartitions NOTIFY manualPartitionsChanged)
+    // "borrar" (todo el disco), "junto" (en el hueco libre, al lado de Windows u
+    // otro sistema) o "manual"
+    Q_PROPERTY(QString modoDisco READ modoDisco WRITE setModoDisco NOTIFY modoDiscoChanged)
+    // Cifrado del disco (LUKS2): la contrasena se pide al encender el equipo
+    Q_PROPERTY(bool cifrar READ cifrar WRITE setCifrar NOTIFY cifrarChanged)
+    Q_PROPERTY(QVariantMap discoElegido READ discoElegido NOTIFY selectedDiskChanged)
 
 public:
     explicit InstallerBackend(QObject *parent = nullptr);
@@ -75,6 +81,7 @@ public:
     Q_INVOKABLE QString validatePartitionPlan() const;
 
     Q_INVOKABLE void refreshDisks();
+    Q_INVOKABLE void setClaveCifrado(const QString &clave);
     Q_INVOKABLE void startInstallation(const QString &fsType,
                                        const QString &fullName,
                                        const QString &userName,
@@ -86,7 +93,15 @@ public:
     Q_INVOKABLE void rebootSystem();
     Q_INVOKABLE void closeInstaller();
 
+    QString modoDisco() const { return m_modoDisco; }
+    void setModoDisco(const QString &modo);
+    bool cifrar() const { return m_cifrar; }
+    void setCifrar(bool cifrar);
+    QVariantMap discoElegido() const;
+
 signals:
+    void modoDiscoChanged();
+    void cifrarChanged();
     void currentStepChanged();
     void disksChanged();
     void selectedDiskIndexChanged();
@@ -122,6 +137,11 @@ private:
     QString m_errorMessage;
 
     bool m_manualPartitioning{false};
+    QString m_modoDisco{QStringLiteral("borrar")};
+    bool m_cifrar{false};
+    QString m_claveCifrado;
+    bool m_modoElegido{false};   // la persona ya ha elegido modo: no se cambia solo
+    void modoPorDefecto();
     QVariantList m_manualPartitions;
 
     QThread *m_workerThread{nullptr};

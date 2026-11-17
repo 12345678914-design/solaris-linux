@@ -35,8 +35,19 @@ TitanWindow {
     readonly property string planError: {
         installerBackend.manualPartitions
         installerBackend.selectedDiskPath
-        return installerBackend.manualPartitioning ? installerBackend.validatePartitionPlan() : ""
+        installerBackend.modoDisco
+        installerBackend.disks
+        return installerBackend.validatePartitionPlan()
     }
+    // Cifrado del disco: contrasena (minimo 8) repetida igual
+    readonly property string cifradoError: {
+        if (!installerBackend.cifrar || installerBackend.modoDisco === "manual") return ""
+        if (claveCifradoField.text.length < 8) return "La contraseña del disco debe tener al menos 8 caracteres."
+        if (claveCifradoField.text !== claveCifrado2Field.text) return "Las dos contraseñas del disco no coinciden."
+        return ""
+    }
+    readonly property var disco: installerBackend.discoElegido
+    readonly property string nombreOtro: disco.otroSistema ? disco.otroSistema : "otro sistema"
 
     // ======================= Controles con estilo propio =======================
     // Todos los controles se dibujan aquí: el estilo Basic de Qt (puntos negros,
@@ -871,13 +882,66 @@ TitanWindow {
 
                 Opcion {
                     width: parent.width
+                    visible: window.disco.particiones > 0 && installerBackend.isUefi
+                    titulo: "Instalar junto a " + window.nombreOtro
+                    detalle: "Inti OS usa el espacio libre del disco (" + (window.disco.libreTexto || "0 GB") + " sin particionar) y deja " + window.nombreOtro + " y sus archivos como están. Al encender el equipo podrás elegir cuál arrancar."
+                    seleccionado: installerBackend.modoDisco === "junto"
+                    onElegido: installerBackend.modoDisco = "junto"
+
+                    Column {
+                        visible: installerBackend.modoDisco === "junto"
+                        width: parent.width
+                        spacing: 8
+                        Row {
+                            spacing: 12
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Sistema de archivos"
+                                color: window.txt2
+                                font.pixelSize: window.theme.fontBody
+                            }
+                            Selector {
+                                implicitWidth: 230
+                                model: [
+                                    { t: "ext4 (recomendado)", v: "ext4" },
+                                    { t: "btrfs (puntos de restauración)", v: "btrfs" }
+                                ]
+                                textRole: "t"
+                                valueRole: "v"
+                                Component.onCompleted: currentIndex = indexOfValue(window.selectedFs)
+                                onActivated: window.selectedFs = currentValue
+                            }
+                        }
+                        Ayuda {
+                            width: parent.width
+                            error: true
+                            text: window.planError
+                            visible: text !== ""
+                        }
+                        Flow {
+                            width: parent.width
+                            spacing: 8
+                            Boton {
+                                text: "Volver a buscar"
+                                onClicked: installerBackend.refreshDisks()
+                            }
+                            Boton {
+                                text: "Abrir GParted (reducir una partición)"
+                                onClicked: installerBackend.openExternalPartitioner()
+                            }
+                        }
+                    }
+                }
+
+                Opcion {
+                    width: parent.width
                     titulo: "Borrar el disco e instalar Inti OS"
-                    detalle: "Recomendado. Crea automáticamente las particiones necesarias (arranque " + (installerBackend.isUefi ? "EFI de 512 MB" : "BIOS") + " y sistema)."
-                    seleccionado: !installerBackend.manualPartitioning
-                    onElegido: installerBackend.manualPartitioning = false
+                    detalle: "Recomendado si el disco no tiene nada que quieras conservar. Crea automáticamente las particiones necesarias (arranque " + (installerBackend.isUefi ? "EFI de 512 MB" : "BIOS") + " y sistema)."
+                    seleccionado: installerBackend.modoDisco === "borrar"
+                    onElegido: installerBackend.modoDisco = "borrar"
 
                     Row {
-                        visible: !installerBackend.manualPartitioning
+                        visible: installerBackend.modoDisco === "borrar"
                         spacing: 12
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
@@ -889,7 +953,7 @@ TitanWindow {
                             implicitWidth: 230
                             model: [
                                 { t: "ext4 (recomendado)", v: "ext4" },
-                                { t: "btrfs", v: "btrfs" }
+                                { t: "btrfs (puntos de restauración)", v: "btrfs" }
                             ]
                             textRole: "t"
                             valueRole: "v"
@@ -903,8 +967,8 @@ TitanWindow {
                     width: parent.width
                     titulo: "Particionado manual"
                     detalle: "Para usuarios avanzados: elige tú los puntos de montaje (/boot/efi, /, /home…), sus tamaños y formatos."
-                    seleccionado: installerBackend.manualPartitioning
-                    onElegido: installerBackend.manualPartitioning = true
+                    seleccionado: installerBackend.modoDisco === "manual"
+                    onElegido: installerBackend.modoDisco = "manual"
 
                     Column {
                         visible: installerBackend.manualPartitioning
@@ -978,11 +1042,66 @@ TitanWindow {
                     }
                 }
 
+                // Cifrado (solo en los modos automaticos)
+                Tarjeta {
+                    visible: installerBackend.disks.length > 0 && installerBackend.modoDisco !== "manual"
+                    width: parent.width
+                    height: cifradoCol.implicitHeight + 28
+                    Column {
+                        id: cifradoCol
+                        x: 14
+                        y: 14
+                        width: parent.width - 28
+                        spacing: 10
+                        Interruptor {
+                            width: parent.width
+                            text: "Cifrar el disco"
+                            checked: installerBackend.cifrar
+                            onToggled: installerBackend.cifrar = checked
+                        }
+                        Ayuda {
+                            width: parent.width
+                            text: "Si pierdes o te roban el equipo, nadie puede leer tus archivos sin esta contraseña. Se pide cada vez que lo enciendes. Si la olvidas, los datos no se pueden recuperar."
+                        }
+                        Column {
+                            visible: installerBackend.cifrar
+                            width: parent.width
+                            spacing: 6
+                            Etiqueta { text: "Contraseña del disco" }
+                            Campo {
+                                id: claveCifradoField
+                                width: parent.width
+                                echoMode: TextInput.Password
+                                invalido: tocado && text.length < 8
+                            }
+                            Etiqueta { text: "Repite la contraseña" }
+                            Campo {
+                                id: claveCifrado2Field
+                                width: parent.width
+                                echoMode: TextInput.Password
+                                invalido: tocado && text !== claveCifradoField.text
+                            }
+                            Ayuda {
+                                width: parent.width
+                                error: true
+                                text: window.cifradoError
+                                visible: text !== "" && (claveCifradoField.tocado || claveCifrado2Field.tocado)
+                            }
+                        }
+                    }
+                }
+
                 Aviso {
-                    visible: installerBackend.disks.length > 0
+                    visible: installerBackend.disks.length > 0 && installerBackend.modoDisco !== "junto"
                     width: parent.width
                     tono: "aviso"
                     texto: "Se borrará todo lo que haya en " + installerBackend.selectedDiskName + ". Haz una copia de seguridad de lo que quieras conservar."
+                }
+                Aviso {
+                    visible: installerBackend.modoDisco === "junto"
+                    width: parent.width
+                    tono: "info"
+                    texto: "No se borra ni se mueve nada de " + window.nombreOtro + ". Aun así, es buena idea tener una copia de seguridad antes de tocar las particiones de un disco."
                 }
             }
 
@@ -1236,9 +1355,16 @@ TitanWindow {
                         Dato {
                             width: parent.width
                             etiqueta: "Particionado"
-                            valor: installerBackend.manualPartitioning
+                            valor: installerBackend.modoDisco === "manual"
                                    ? ("Manual (" + installerBackend.manualPartitions.length + " particiones)")
-                                   : ("Borrar el disco · " + window.selectedFs)
+                                   : installerBackend.modoDisco === "junto"
+                                     ? ("Junto a " + window.nombreOtro + " · " + window.selectedFs)
+                                     : ("Borrar el disco · " + window.selectedFs)
+                        }
+                        Dato {
+                            width: parent.width
+                            etiqueta: "Cifrado"
+                            valor: installerBackend.cifrar && installerBackend.modoDisco !== "manual" ? "Sí (LUKS2): contraseña al encender" : "No"
                         }
                         Dato { width: parent.width; etiqueta: "Arranque"; valor: installerBackend.isUefi ? "UEFI (GPT)" : "BIOS (MBR)"; ultima: true }
                     }
@@ -1266,8 +1392,10 @@ TitanWindow {
 
                 Aviso {
                     width: parent.width
-                    tono: "peligro"
-                    texto: "Al pulsar «Instalar ahora» se borrará " + installerBackend.selectedDiskName + ". No se puede deshacer."
+                    tono: installerBackend.modoDisco === "junto" ? "info" : "peligro"
+                    texto: installerBackend.modoDisco === "junto"
+                           ? "Al pulsar «Instalar ahora» se crearán las particiones de Inti OS en el espacio libre de " + installerBackend.selectedDiskName + ". " + window.nombreOtro + " no se toca."
+                           : "Al pulsar «Instalar ahora» se borrará " + installerBackend.selectedDiskName + ". No se puede deshacer."
                 }
             }
 
@@ -1467,11 +1595,13 @@ TitanWindow {
                     if (installerBackend.currentStep === 2)
                         return installerBackend.disks.length > 0
                                && window.planError === ""
+                               && window.cifradoError === ""
                     if (installerBackend.currentStep === 3) return window.accountError() === ""
                     return true
                 }
                 onClicked: {
                     if (installerBackend.currentStep === 4) {
+                        installerBackend.setClaveCifrado(installerBackend.cifrar ? claveCifradoField.text : "")
                         installerBackend.startInstallation(
                             window.selectedFs,
                             fullNameField.text.trim(),

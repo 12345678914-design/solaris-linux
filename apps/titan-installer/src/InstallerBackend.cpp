@@ -7,12 +7,97 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QThread>
+#include <algorithm>
+#include <cmath>
 #include <QCoreApplication>
 #include <QDebug>
 #include <sys/sysinfo.h>
 #include <unistd.h>
+
+// Tabla de particiones de un disco segun 'parted -m ... unit MiB print free'.
+namespace {
+struct ParteDisco {
+    int numero = 0;
+    double inicio = 0, fin = 0, tamano = 0;   // MiB
+    QString fs, nombre, flags;
+};
+struct TablaDisco {
+    QString tabla;              // gpt | msdos | unknown
+    QList<ParteDisco> partes;
+    double huecoInicio = 0, huecoFin = 0;   // el hueco libre mas grande
+    double huecoMb() const { return huecoFin - huecoInicio; }
+    int numeroEsp() const
+    {
+        for (const ParteDisco &p : partes)
+            if (p.flags.contains(QStringLiteral("esp")))
+                return p.numero;
+        return 0;
+    }
+};
+
+TablaDisco leerTablaDisco(const QString &disco)
+{
+    TablaDisco t;
+    t.tabla = QStringLiteral("unknown");
+    QProcess p;
+    // En ingles: con el live en espanol parted escribe "0,02MiB" (coma) y
+    // traduce las marcas ("arranque"), y las cuentas salian mal.
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    p.setProcessEnvironment(env);
+    p.start(QStringLiteral("parted"), {QStringLiteral("-m"), QStringLiteral("-s"), disco,
+                                       QStringLiteral("unit"), QStringLiteral("MiB"),
+                                       QStringLiteral("print"), QStringLiteral("free")});
+    if (!p.waitForFinished(10000))
+        return t;
+    auto mib = [](QString v) { return v.remove(QStringLiteral("MiB")).toDouble(); };
+    const QStringList lineas = QString::fromUtf8(p.readAllStandardOutput()).split(QLatin1Char('\n'));
+    for (QString l : lineas) {
+        l = l.trimmed();
+        if (l.endsWith(QLatin1Char(';')))
+            l.chop(1);
+        const QStringList c = l.split(QLatin1Char(':'));
+        if (c.size() >= 6 && c.at(0).startsWith(QLatin1Char('/'))) {
+            t.tabla = c.at(5);
+            continue;
+        }
+        if (c.size() < 5)
+            continue;
+        bool esNumero = false;
+        const int n = c.at(0).toInt(&esNumero);
+        if (!esNumero)
+            continue;
+        if (c.at(4) == QStringLiteral("free")) {
+            const double ini = mib(c.at(1)), fin = mib(c.at(2));
+            if (fin - ini > t.huecoMb()) {
+                t.huecoInicio = ini;
+                t.huecoFin = fin;
+            }
+            continue;
+        }
+        ParteDisco pd;
+        pd.numero = n;
+        pd.inicio = mib(c.at(1));
+        pd.fin = mib(c.at(2));
+        pd.tamano = mib(c.at(3));
+        pd.fs = c.at(4);
+        pd.nombre = c.value(5);
+        pd.flags = c.value(6);
+        t.partes << pd;
+    }
+    return t;
+}
+
+QString nodoParticion(const QString &disco, int numero)
+{
+    // /dev/nvme0n1 -> /dev/nvme0n1p2 ; /dev/sda -> /dev/sda2
+    const bool conP = disco.contains(QRegularExpression(QStringLiteral("[0-9]$")));
+    return disco + (conP ? QStringLiteral("p") : QString()) + QString::number(numero);
+}
+} // namespace
 
 class InstallWorker : public QObject
 {
@@ -30,6 +115,9 @@ public:
     bool isUefi{true};
     bool manualPartitioning{false};
     QVariantList manualPartitions;
+    QString modoDisco{QStringLiteral("borrar")};   // borrar | junto | manual
+    bool cifrar{false};
+    QString claveCifrado;
 
 signals:
     void progress(int percent, const QString &message);
@@ -77,17 +165,44 @@ public slots:
         auto fail = [&](const QString &msg) {
             const QString detail = lastError;
             QProcess::execute(QStringLiteral("umount"), {QStringLiteral("-R"), QStringLiteral("/mnt")});
+            QProcess::execute(QStringLiteral("cryptsetup"), {QStringLiteral("close"), QStringLiteral("cryptroot")});
             emit finished(false, detail.isEmpty() ? msg : msg + QStringLiteral("\n\nDetalle: ") + detail);
         };
 
+        // Como runCmd, pero pasando datos por la entrada estandar (la clave de
+        // cifrado: asi no aparece en la lista de procesos).
+        auto runConEntrada = [&lastError](const QString &cmd, const QStringList &args, const QByteArray &entrada) -> bool {
+            QProcess p;
+            p.start(cmd, args);
+            if (!p.waitForStarted(15000)) {
+                lastError = QStringLiteral("%1: no se ha podido ejecutar").arg(cmd);
+                return false;
+            }
+            p.write(entrada);
+            p.closeWriteChannel();
+            p.waitForFinished(-1);
+            if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+                lastError = QStringLiteral("%1 %2 (codigo %3): %4").arg(cmd, args.value(0)).arg(p.exitCode())
+                                .arg(QString::fromUtf8(p.readAllStandardError()).trimmed().right(400));
+                return false;
+            }
+            return true;
+        };
+
         emit progress(5, QStringLiteral("Desmontando particiones anteriores..."));
-        // Que /mnt no este montado no es un error.
+        // Que /mnt no este montado no es un error. Un intento anterior fallido
+        // puede haber dejado abierto el volumen cifrado.
         QProcess::execute(QStringLiteral("umount"), {QStringLiteral("-R"), QStringLiteral("/mnt")});
+        QProcess::execute(QStringLiteral("cryptsetup"), {QStringLiteral("close"), QStringLiteral("cryptroot")});
 
         QString sep = (diskPath.contains(QRegularExpression(QStringLiteral("[0-9]$")))) ? QStringLiteral("p") : QString();
         QString efiDev;
         QString rootDev;
+        QString bootDev;     // /boot aparte (con cifrado: GRUB no lee LUKS2 con argon2)
+        QString luksDev;     // particion cifrada (la raiz va dentro, /dev/mapper/cryptroot)
+        bool formatearEsp = true;   // en "junto" la ESP es la de Windows: no se toca
         QMap<QString, QString> mountToDev;
+        const bool usarCifrado = cifrar && !manualPartitioning;
 
         emit progress(10, QStringLiteral("Preparando tabla de particiones del disco..."));
 
@@ -135,6 +250,85 @@ public slots:
 
                 mountToDev[mPoint] = partDev;
             }
+        } else if (modoDisco == QStringLiteral("junto")) {
+            // ==========================================
+            // MODO JUNTO A OTRO SISTEMA: solo el hueco libre
+            // ==========================================
+            // No se borra ni se mueve nada: Inti OS va en el mayor hueco sin
+            // particionar (el que deja "Reducir volumen" en Windows) y usa la
+            // particion EFI que ya hay, sin formatearla.
+            const TablaDisco antes = leerTablaDisco(diskPath);
+            if (!isUefi || antes.tabla != QStringLiteral("gpt") || antes.numeroEsp() == 0) {
+                lastError.clear();
+                return fail(QStringLiteral("Instalar junto a otro sistema necesita arranque UEFI, tabla GPT y una partición EFI en ") + diskPath);
+            }
+            const double ini = std::ceil(antes.huecoInicio) + 1;
+            const double fin = std::floor(antes.huecoFin) - 1;
+            if (fin - ini < 20 * 1024) {
+                lastError.clear();
+                return fail(QStringLiteral("No hay al menos 20 GB libres sin particionar en ") + diskPath);
+            }
+            auto mkpart = [&](const QString &nombre, const QString &fs, double a, double b) {
+                return runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), QStringLiteral("-a"), QStringLiteral("optimal"), diskPath,
+                                                         QStringLiteral("mkpart"), nombre, fs,
+                                                         QString::number(qint64(a)) + QStringLiteral("MiB"),
+                                                         QString::number(qint64(b)) + QStringLiteral("MiB")});
+            };
+            const bool ok = usarCifrado
+                ? (mkpart(QStringLiteral("IntiBoot"), QStringLiteral("ext4"), ini, ini + 1024) &&
+                   mkpart(QStringLiteral("IntiCifrado"), QStringLiteral("ext4"), ini + 1024, fin))
+                : mkpart(QStringLiteral("IntiRoot"), QStringLiteral("ext4"), ini, fin);
+            if (!ok)
+                return fail(QStringLiteral("No se pudieron crear las particiones en el espacio libre de ") + diskPath);
+
+            // Las nuevas son las que no estaban antes (por orden en el disco).
+            QList<int> previas;
+            for (const ParteDisco &pd : antes.partes)
+                previas << pd.numero;
+            QList<ParteDisco> nuevas;
+            for (const ParteDisco &pd : leerTablaDisco(diskPath).partes)
+                if (!previas.contains(pd.numero))
+                    nuevas << pd;
+            std::sort(nuevas.begin(), nuevas.end(), [](const ParteDisco &a, const ParteDisco &b) { return a.inicio < b.inicio; });
+            if (nuevas.size() != (usarCifrado ? 2 : 1)) {
+                lastError.clear();
+                return fail(QStringLiteral("No se encuentran las particiones nuevas en ") + diskPath);
+            }
+            efiDev = nodoParticion(diskPath, antes.numeroEsp());
+            formatearEsp = false;
+            if (usarCifrado) {
+                bootDev = nodoParticion(diskPath, nuevas.at(0).numero);
+                luksDev = nodoParticion(diskPath, nuevas.at(1).numero);
+            } else {
+                rootDev = nodoParticion(diskPath, nuevas.at(0).numero);
+            }
+        } else if (usarCifrado) {
+            // ==========================================
+            // MODO AUTOMÁTICO CIFRADO: EFI + /boot + raíz LUKS2
+            // ==========================================
+            const QString etiqueta = isUefi ? QStringLiteral("gpt") : QStringLiteral("msdos");
+            if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), etiqueta}))
+                return fail(QStringLiteral("No se pudo crear la tabla de particiones en ") + diskPath);
+            int n = 1;
+            int inicio = 1;
+            if (isUefi) {
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("EFI"), QStringLiteral("fat32"), QStringLiteral("1MiB"), QStringLiteral("513MiB")}) ||
+                    !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("esp"), QStringLiteral("on")}))
+                    return fail(QStringLiteral("No se pudo crear la partición EFI en ") + diskPath);
+                efiDev = nodoParticion(diskPath, n++);
+                inicio = 513;
+            }
+            const QString tipo = isUefi ? QStringLiteral("IntiBoot") : QStringLiteral("primary");
+            const QString tipoCifrado = isUefi ? QStringLiteral("IntiCifrado") : QStringLiteral("primary");
+            if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), tipo, QStringLiteral("ext4"),
+                                                   QString::number(inicio) + QStringLiteral("MiB"), QString::number(inicio + 1024) + QStringLiteral("MiB")}) ||
+                !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), tipoCifrado, QStringLiteral("ext4"),
+                                                   QString::number(inicio + 1024) + QStringLiteral("MiB"), QStringLiteral("100%")}))
+                return fail(QStringLiteral("No se pudieron crear las particiones en ") + diskPath);
+            bootDev = nodoParticion(diskPath, n);
+            if (!isUefi && !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QString::number(n), QStringLiteral("boot"), QStringLiteral("on")}))
+                return fail(QStringLiteral("No se pudo marcar la partición de arranque"));
+            luksDev = nodoParticion(diskPath, n + 1);
         } else {
             // ==========================================
             // MODO AUTOMÁTICO (BORRAR DISCO COMPLETO)
@@ -164,14 +358,28 @@ public slots:
             }
         }
 
-        if (rootDev.isEmpty())
-            return fail(QStringLiteral("No se ha definido ninguna partición con punto de montaje '/' (Raíz)."));
-
         // Refrescar nodos de bloques
         QThread::msleep(800);
         runCmd(QStringLiteral("partprobe"), {diskPath});
         runCmd(QStringLiteral("udevadm"), {QStringLiteral("settle")});
         QThread::msleep(800);
+
+        if (!luksDev.isEmpty()) {
+            emit progress(15, QStringLiteral("Cifrando el disco (LUKS2)..."));
+            // La clave va por la entrada estandar, tal cual (sin salto de linea):
+            // es exactamente lo que se escribira al encender el equipo.
+            const QByteArray clave = claveCifrado.toUtf8();
+            if (!runConEntrada(QStringLiteral("cryptsetup"), {QStringLiteral("luksFormat"), QStringLiteral("--type"), QStringLiteral("luks2"),
+                                                              QStringLiteral("--batch-mode"), QStringLiteral("--key-file=-"), luksDev}, clave))
+                return fail(QStringLiteral("No se pudo cifrar ") + luksDev);
+            if (!runConEntrada(QStringLiteral("cryptsetup"), {QStringLiteral("open"), QStringLiteral("--key-file=-"), luksDev,
+                                                              QStringLiteral("cryptroot")}, clave))
+                return fail(QStringLiteral("No se pudo abrir el volumen cifrado ") + luksDev);
+            rootDev = QStringLiteral("/dev/mapper/cryptroot");
+        }
+
+        if (rootDev.isEmpty())
+            return fail(QStringLiteral("No se ha definido ninguna partición con punto de montaje '/' (Raíz)."));
 
         emit progress(20, QStringLiteral("Formateando sistemas de archivos..."));
 
@@ -197,10 +405,13 @@ public slots:
                     return fail(QStringLiteral("No se pudo formatear ") + pDev + QStringLiteral(" (") + mPoint + QStringLiteral(")"));
             }
         } else {
-            if (isUefi && !efiDev.isEmpty()) {
-                if (!runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), efiDev}))
+            if (isUefi && !efiDev.isEmpty() && formatearEsp) {
+                if (!runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), QStringLiteral("-n"), QStringLiteral("EFI"), efiDev}))
                     return fail(QStringLiteral("No se pudo formatear la partición EFI ") + efiDev);
             }
+            if (!bootDev.isEmpty() &&
+                !runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("INTIBOOT"), bootDev}))
+                return fail(QStringLiteral("No se pudo formatear la partición de arranque ") + bootDev);
             const bool rootOk = (fsType == QStringLiteral("btrfs"))
                 ? runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev})
                 : runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
@@ -212,6 +423,12 @@ public slots:
         QDir().mkpath(QStringLiteral("/mnt"));
         if (!runCmd(QStringLiteral("mount"), {rootDev, QStringLiteral("/mnt")}))
             return fail(QStringLiteral("No se pudo montar la partición raíz ") + rootDev);
+        if (!bootDev.isEmpty()) {
+            // Antes de copiar: los kernels y GRUB tienen que quedar en /boot.
+            QDir().mkpath(QStringLiteral("/mnt/boot"));
+            if (!runCmd(QStringLiteral("mount"), {bootDev, QStringLiteral("/mnt/boot")}))
+                return fail(QStringLiteral("No se pudo montar la partición de arranque ") + bootDev);
+        }
 
         emit progress(40, QStringLiteral("Copiando el sistema operativo al disco..."));
         {
@@ -422,6 +639,8 @@ public slots:
             QFile::remove(QStringLiteral("/mnt/etc/sudoers.d/20-calamares"));
             QDir(QStringLiteral("/mnt/etc/systemd/system/serial-getty@ttyS0.service.d")).removeRecursively();
             QDir(QStringLiteral("/mnt/etc/systemd/system/getty@tty1.service.d")).removeRecursively();
+            // En el live polkit no pide contrasena al grupo wheel; instalado, si.
+            QFile::remove(QStringLiteral("/mnt/etc/polkit-1/rules.d/49-titan-live.rules"));
             // Cada instalacion tiene que tener su propio machine-id. Vacio, systemd
             // genera uno nuevo en el primer arranque.
             QFile mid(QStringLiteral("/mnt/etc/machine-id"));
@@ -592,20 +811,77 @@ public slots:
             }
         }
 
-        // Configuración de /etc/default/grub para el sistema instalado
+        auto uuidDe = [&runCmd](const QString &dev) -> QString {
+            runCmd(QStringLiteral("udevadm"), {QStringLiteral("settle")});
+            QProcess b;
+            b.start(QStringLiteral("blkid"), {QStringLiteral("-c"), QStringLiteral("/dev/null"), QStringLiteral("-s"), QStringLiteral("UUID"),
+                                              QStringLiteral("-o"), QStringLiteral("value"), dev});
+            b.waitForFinished(5000);
+            return QString::fromUtf8(b.readAllStandardOutput()).trimmed();
+        };
+        // Cifrado: el initramfs (hook encrypt) abre la particion LUKS.
+        QString parametroCifrado;
+        if (!luksDev.isEmpty()) {
+            const QString u = uuidDe(luksDev);
+            if (u.isEmpty()) {
+                lastError.clear();
+                return fail(QStringLiteral("No se pudo leer el UUID de la partición cifrada ") + luksDev);
+            }
+            parametroCifrado = QStringLiteral("cryptdevice=UUID=%1:cryptroot ").arg(u);
+        }
+
+        // Configuración de /etc/default/grub para el sistema instalado.
+        // - splash: pantalla de arranque de Plymouth; tty0 va la ULTIMA en
+        //   console= porque /dev/console es la ultima, y ahi pinta Plymouth.
+        // - os-prober: Windows y otros sistemas aparecen en el menu de GRUB.
         {
             QFile gDef(QStringLiteral("/mnt/etc/default/grub"));
             if (gDef.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                gDef.write("GRUB_DEFAULT=0\n"
+                gDef.write(QStringLiteral(
+                           "GRUB_DEFAULT=0\n"
                            "GRUB_TIMEOUT=5\n"
                            "GRUB_DISTRIBUTOR=\"Inti OS\"\n"
-                           "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet\"\n"
-                           "GRUB_CMDLINE_LINUX=\"console=tty0 console=ttyS0,115200n8\"\n"
+                           "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet splash\"\n"
+                           "GRUB_CMDLINE_LINUX=\"%1console=ttyS0,115200n8 console=tty0\"\n"
                            "GRUB_DISABLE_SUBMENU=y\n"
                            "GRUB_TERMINAL_OUTPUT=\"gfxterm console\"\n"
-                           "GRUB_GFXMODE=auto\n");
+                           "GRUB_GFXMODE=auto\n"
+                           "GRUB_DISABLE_OS_PROBER=false\n").arg(parametroCifrado).toUtf8());
                 gDef.close();
             }
+        }
+
+        // Puntos de restauracion (btrfs): snapper con la plantilla de Inti OS,
+        // instantaneas antes/despues de cada pacman (snap-pac), una por hora y
+        // entradas en el menu de arranque (grub-btrfs).
+        bool raizBtrfs = false;
+        {
+            QProcess f;
+            f.start(QStringLiteral("findmnt"), {QStringLiteral("-no"), QStringLiteral("FSTYPE"), QStringLiteral("/mnt")});
+            f.waitForFinished(5000);
+            raizBtrfs = QString::fromUtf8(f.readAllStandardOutput()).trimmed() == QStringLiteral("btrfs");
+        }
+        if (raizBtrfs && QFile::exists(QStringLiteral("/mnt/usr/bin/snapper"))) {
+            emit progress(84, QStringLiteral("Configurando los puntos de restauración..."));
+            QStringList cc{QStringLiteral("/mnt"), QStringLiteral("snapper"), QStringLiteral("--no-dbus"), QStringLiteral("-c"),
+                           QStringLiteral("root"), QStringLiteral("create-config")};
+            if (QFile::exists(QStringLiteral("/mnt/etc/snapper/config-templates/titan")))
+                cc << QStringLiteral("-t") << QStringLiteral("titan");
+            cc << QStringLiteral("/");
+            if (runCmd(QStringLiteral("arch-chroot"), cc)) {
+                runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("chmod"), QStringLiteral("750"), QStringLiteral("/.snapshots")});
+                runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("chgrp"), QStringLiteral("wheel"), QStringLiteral("/.snapshots")});
+                QStringList unidades{QStringLiteral("snapper-timeline.timer"), QStringLiteral("snapper-cleanup.timer")};
+                if (QFile::exists(QStringLiteral("/mnt/usr/lib/systemd/system/grub-btrfsd.service")))
+                    unidades << QStringLiteral("grub-btrfsd.service");
+                runCmd(QStringLiteral("arch-chroot"), QStringList{QStringLiteral("/mnt"), QStringLiteral("systemctl"), QStringLiteral("enable")} + unidades);
+            } else {
+                // Sin puntos de restauracion el sistema funciona igual: no se corta.
+                qWarning() << "snapper create-config fallo:" << lastError;
+            }
+        } else {
+            // Sin btrfs no hay instantaneas: grub-btrfsd no tiene nada que vigilar.
+            QFile::remove(QStringLiteral("/mnt/etc/systemd/system/multi-user.target.wants/grub-btrfsd.service"));
         }
 
         // Configuración de mkinitcpio para el sistema instalado
@@ -614,15 +890,32 @@ public slots:
 
         // 2. Escribir configuración estándar de mkinitcpio para disco local
         {
+            // plymouth: despues de kms (necesita la grafica) y ANTES de encrypt,
+            // para que la contrasena del disco se pida en la pantalla de arranque.
+            const QString hooksDir = QStringLiteral("/mnt/usr/lib/initcpio/install/");
+            QStringList hooks{QStringLiteral("base"), QStringLiteral("udev"), QStringLiteral("modconf"), QStringLiteral("kms")};
+            if (QFile::exists(hooksDir + QStringLiteral("plymouth")))
+                hooks << QStringLiteral("plymouth");
+            hooks << QStringLiteral("keyboard") << QStringLiteral("keymap") << QStringLiteral("consolefont") << QStringLiteral("block");
+            if (!luksDev.isEmpty()) {
+                if (!QFile::exists(hooksDir + QStringLiteral("encrypt"))) {
+                    lastError.clear();
+                    return fail(QStringLiteral("Falta el hook 'encrypt' de mkinitcpio: el sistema cifrado no podría arrancar"));
+                }
+                hooks << QStringLiteral("encrypt");
+            }
+            hooks << QStringLiteral("filesystems") << QStringLiteral("fsck");
+            // Arrancar una instantanea (de solo lectura) desde el menu de GRUB
+            if (raizBtrfs && QFile::exists(hooksDir + QStringLiteral("grub-btrfs-overlayfs")))
+                hooks << QStringLiteral("grub-btrfs-overlayfs");
             QFile mkConf(QStringLiteral("/mnt/etc/mkinitcpio.conf"));
             if (mkConf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                mkConf.write(
+                mkConf.write(QStringLiteral(
                     "MODULES=(virtio_blk virtio_pci virtio_net virtio_scsi ahci nvme ext4 btrfs vfat xfs)\n"
                     "BINARIES=()\n"
                     "FILES=()\n"
-                    "HOOKS=(base udev modconf kms keyboard keymap consolefont block filesystems fsck)\n"
-                    "COMPRESSION=\"zstd\"\n"
-                );
+                    "HOOKS=(%1)\n"
+                    "COMPRESSION=\"zstd\"\n").arg(hooks.join(QLatin1Char(' '))).toUtf8());
                 mkConf.close();
             }
         }
@@ -692,6 +985,18 @@ public slots:
             rUuid = QString::fromUtf8(blkProc.readAllStandardOutput()).trimmed();
         }
         QString rootParam = !rUuid.isEmpty() ? (QStringLiteral("root=UUID=") + rUuid) : (QStringLiteral("root=") + rootDev);
+        if (!luksDev.isEmpty())
+            rootParam = parametroCifrado + QStringLiteral("root=/dev/mapper/cryptroot");
+
+        // Donde estan los kernels para GRUB: la particion /boot aparte (rutas
+        // sin /boot delante) o la raiz. Se busca por UUID: buscar un fichero
+        // (/etc/os-release) podia encontrar OTRO Linux del mismo equipo.
+        const QString arranqueDev = bootDev.isEmpty() ? rootDev : bootDev;
+        const QString arranqueUuid = uuidDe(arranqueDev);
+        const QString prefijoBoot = bootDev.isEmpty() ? QStringLiteral("/boot") : QString();
+        const QString buscarArranque = arranqueUuid.isEmpty()
+            ? QStringLiteral("search --no-floppy --file %1/grub/grub.cfg --set=root").arg(prefijoBoot)
+            : QStringLiteral("search --no-floppy --fs-uuid --set=root %1").arg(arranqueUuid);
 
         // Identificar pares coherentes (kernel, initramfs)
         struct BootEntry {
@@ -751,43 +1056,48 @@ public slots:
                 "    insmod ext2\n"
                 "    insmod btrfs\n"
                 "    insmod xfs\n"
-                "    search --no-floppy --file /etc/os-release --set=root\n"
-                "    linux /boot/%2 %3 rw loglevel=3 quiet console=tty0 console=ttyS0,115200n8\n"
-                "    initrd /boot/%4\n"
+                "    %5\n"
+                "    linux %6/%2 %3 rw loglevel=3 quiet splash console=ttyS0,115200n8 console=tty0\n"
+                "    initrd %6/%4\n"
                 "}\n\n"
-            ).arg(e.title, e.kernel, rootParam, e.initrd);
+            ).arg(e.title, e.kernel, rootParam, e.initrd, buscarArranque, prefijoBoot);
         }
 
+        // Fuente de GRUB (menu grafico) y modulos, en /boot/grub del sistema
+        QDir().mkpath(QStringLiteral("/mnt/boot/grub/fonts"));
+        if (QFile::exists(QStringLiteral("/mnt/usr/share/grub/unicode.pf2")))
+            runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/usr/share/grub/unicode.pf2"), QStringLiteral("/mnt/boot/grub/fonts/")});
+
         if (isUefi) {
-            runCmd(QStringLiteral("arch-chroot"), {
-                QStringLiteral("/mnt"),
-                QStringLiteral("grub-install"),
-                QStringLiteral("--target=x86_64-efi"),
-                QStringLiteral("--efi-directory=/boot/efi"),
-                QStringLiteral("--bootloader-id=IntiOS"),
-                QStringLiteral("--removable"),
-                QStringLiteral("--no-nvram"),
-                QStringLiteral("--recheck")
-            });
-
-            QDir().mkpath(QStringLiteral("/mnt/boot/efi/EFI/BOOT"));
-            QDir().mkpath(QStringLiteral("/mnt/boot/efi/EFI/IntiOS"));
-
-            // Respaldar kernel e initramfs en la partición EFI para garantizar arranque directo bajo cualquier firmware
-            for (const auto &e : entries) {
-                if (QFile::exists(QStringLiteral("/mnt/boot/") + e.kernel)) {
-                    runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/") + e.kernel, QStringLiteral("/mnt/boot/efi/EFI/BOOT/") + e.kernel});
-                }
-                if (QFile::exists(QStringLiteral("/mnt/boot/") + e.initrd)) {
-                    runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/") + e.initrd, QStringLiteral("/mnt/boot/efi/EFI/BOOT/") + e.initrd});
-                }
+            // Todo lo de Inti OS va en EFI/IntiOS. EFI/BOOT/BOOTX64.EFI (la ruta
+            // de reserva del firmware) solo se escribe si el disco es entero de
+            // Inti OS o si no hay nada: junto a Windows no se le pisa nada.
+            const QString esp = QStringLiteral("/mnt/boot/efi");
+            const bool soloInti = modoDisco != QStringLiteral("junto");
+            if (soloInti) {
+                runCmd(QStringLiteral("arch-chroot"), {
+                    QStringLiteral("/mnt"),
+                    QStringLiteral("grub-install"),
+                    QStringLiteral("--target=x86_64-efi"),
+                    QStringLiteral("--efi-directory=/boot/efi"),
+                    QStringLiteral("--bootloader-id=IntiOS"),
+                    QStringLiteral("--removable"),
+                    QStringLiteral("--no-nvram"),
+                    QStringLiteral("--recheck")
+                });
             }
+            QDir().mkpath(esp + QStringLiteral("/EFI/IntiOS"));
+            // Instalaciones anteriores copiaban aqui los kernels: en la ESP de
+            // Windows (100 MB) no caben. Ya no se copian; se quitan los viejos.
+            for (const QString &viejo : QDir(esp + QStringLiteral("/EFI/BOOT")).entryList({QStringLiteral("vmlinuz-*"), QStringLiteral("initramfs-*")}, QDir::Files))
+                QFile::remove(esp + QStringLiteral("/EFI/BOOT/") + viejo);
 
-            // Configuración directa y autónoma de arranque en la partición EFI (/EFI/BOOT/grub.cfg)
+            // grub.cfg de reserva en la ESP: entradas escritas a mano, por si el
+            // grub.cfg del sistema (grub-mkconfig) no esta o falla.
             {
-                QFile espCfg(QStringLiteral("/mnt/boot/efi/EFI/BOOT/grub.cfg"));
+                QFile espCfg(esp + QStringLiteral("/EFI/IntiOS/grub.cfg"));
                 if (espCfg.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                    QString espContent = QStringLiteral(
+                    const QString espContent = QStringLiteral(
                         "set default=0\n"
                         "set timeout=5\n"
                         "insmod part_gpt\n"
@@ -805,11 +1115,13 @@ public slots:
                 }
             }
 
-            // Crear configuración de búsqueda de raíz temprana para el standalone EFI
+            // Configuracion incrustada en el ejecutable: primero el menu del
+            // sistema (grub-mkconfig: Windows por os-prober, instantaneas de
+            // grub-btrfs, kernels); si no, el de reserva de la ESP.
             {
                 QFile earlyCfg(QStringLiteral("/mnt/boot/efi/early-grub.cfg"));
                 if (earlyCfg.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                    earlyCfg.write(
+                    earlyCfg.write(QStringLiteral(
                         "insmod part_gpt\n"
                         "insmod part_msdos\n"
                         "insmod fat\n"
@@ -818,54 +1130,51 @@ public slots:
                         "insmod xfs\n"
                         "insmod all_video\n"
                         "insmod gfxterm\n"
-                        "search --no-floppy --file /EFI/BOOT/grub.cfg --set=efipart\n"
+                        "%1\n"
+                        "if [ -n \"$root\" -a -f ($root)%2/grub/grub.cfg ]; then\n"
+                        "    set prefix=($root)%2/grub\n"
+                        "    configfile ($root)%2/grub/grub.cfg\n"
+                        "fi\n"
+                        "search --no-floppy --file /EFI/IntiOS/grub.cfg --set=efipart\n"
                         "if [ -n \"$efipart\" ]; then\n"
                         "    set root=$efipart\n"
-                        "    set prefix=($efipart)/EFI/BOOT\n"
-                        "    configfile ($efipart)/EFI/BOOT/grub.cfg\n"
-                        "fi\n"
-                        "search --no-floppy --set=sysroot --file /etc/os-release\n"
-                        "if [ -n \"$sysroot\" ]; then\n"
-                        "    set root=$sysroot\n"
-                        "    set prefix=($root)/boot/grub\n"
-                        "    if [ -f ($root)/boot/grub/grub.cfg ]; then\n"
-                        "        configfile ($root)/boot/grub/grub.cfg\n"
-                        "    fi\n"
-                        "fi\n"
-                    );
+                        "    set prefix=($efipart)/EFI/IntiOS\n"
+                        "    configfile ($efipart)/EFI/IntiOS/grub.cfg\n"
+                        "fi\n").arg(buscarArranque, prefijoBoot).toUtf8());
                     earlyCfg.close();
                 }
             }
 
-            // Generar siempre el ejecutable autónomo para asegurar que BOOTX64.EFI existe y funciona 100%
+            const QString modulos = QStringLiteral(
+                "--modules=part_gpt part_msdos fat ext2 btrfs xfs ntfs chain search search_fs_uuid search_fs_file "
+                "search_label configfile normal linux echo test probe regexp gfxterm gfxmenu all_video font png jpeg loadenv reboot");
+            const QString destino = QStringLiteral("/boot/efi/EFI/IntiOS/grubx64.efi");
             runCmd(QStringLiteral("arch-chroot"), {
                 QStringLiteral("/mnt"),
                 QStringLiteral("grub-mkstandalone"),
-                QStringLiteral("-O"),
-                QStringLiteral("x86_64-efi"),
-                QStringLiteral("-o"),
-                QStringLiteral("/boot/efi/EFI/BOOT/BOOTX64.EFI"),
-                QStringLiteral("--modules=part_gpt part_msdos fat ext2 btrfs xfs search search_fs_uuid search_fs_file search_label configfile normal linux echo test gfxterm all_video font loadenv reboot"),
+                QStringLiteral("-O"), QStringLiteral("x86_64-efi"),
+                QStringLiteral("-o"), destino,
+                modulos,
                 QStringLiteral("boot/grub/grub.cfg=/boot/efi/early-grub.cfg")
             });
-
-            if (!QFile::exists(QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI")) || QFile(QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI")).size() < 1000) {
+            if (QFile(QStringLiteral("/mnt") + destino).size() < 1000) {
                 runCmd(QStringLiteral("grub-mkstandalone"), {
-                    QStringLiteral("-O"),
-                    QStringLiteral("x86_64-efi"),
-                    QStringLiteral("-o"),
-                    QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"),
-                    QStringLiteral("--modules=part_gpt part_msdos fat ext2 btrfs xfs search search_fs_uuid search_fs_file search_label configfile normal linux echo test gfxterm all_video font loadenv reboot"),
+                    QStringLiteral("-O"), QStringLiteral("x86_64-efi"),
+                    QStringLiteral("-o"), QStringLiteral("/mnt") + destino,
+                    modulos,
                     QStringLiteral("boot/grub/grub.cfg=/mnt/boot/efi/early-grub.cfg")
                 });
             }
-
-            if (QFile(QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI")).size() < 1000)
-                return fail(QStringLiteral("No se pudo instalar el cargador de arranque UEFI (BOOTX64.EFI)"));
-
-            runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/bootx64.efi")});
-            runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/IntiOS/grubx64.efi")});
             QFile::remove(QStringLiteral("/mnt/boot/efi/early-grub.cfg"));
+            if (QFile(QStringLiteral("/mnt") + destino).size() < 1000)
+                return fail(QStringLiteral("No se pudo instalar el cargador de arranque UEFI (grubx64.efi)"));
+
+            const QString reserva = esp + QStringLiteral("/EFI/BOOT/BOOTX64.EFI");
+            if (soloInti || !QFile::exists(reserva)) {
+                QDir().mkpath(esp + QStringLiteral("/EFI/BOOT"));
+                QFile::remove(reserva);
+                runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt") + destino, reserva});
+            }
         } else {
             if (!runCmd(QStringLiteral("arch-chroot"), {
                     QStringLiteral("/mnt"),
@@ -922,13 +1231,36 @@ public slots:
                 partNum = match.captured(1);
             }
 
-            // Crear la entrada de Inti OS en el firmware
+            // Quitar entradas "Inti OS" de instalaciones anteriores (si no, se
+            // acumulan en el menu del firmware) y crear la nueva.
+            {
+                QProcess pViejas;
+                pViejas.start(QStringLiteral("efibootmgr"));
+                if (pViejas.waitForFinished(3000)) {
+                    static const QRegularExpression reVieja(QStringLiteral("^Boot([0-9A-Fa-f]{4})\\*?\\s+Inti OS"));
+                    for (const QString &l : QString::fromUtf8(pViejas.readAllStandardOutput()).split(QLatin1Char('\n'))) {
+                        const auto m = reVieja.match(l.trimmed());
+                        if (m.hasMatch())
+                            runCmd(QStringLiteral("efibootmgr"), {QStringLiteral("-q"), QStringLiteral("-b"), m.captured(1), QStringLiteral("-B")});
+                    }
+                }
+            }
+            // La ESP puede estar en otro disco (manual): el disco es el de efiDev.
+            QString discoEsp = diskPath;
+            {
+                QProcess pk;
+                pk.start(QStringLiteral("lsblk"), {QStringLiteral("-npo"), QStringLiteral("PKNAME"), efiDev});
+                pk.waitForFinished(3000);
+                const QString padre = QString::fromUtf8(pk.readAllStandardOutput()).trimmed();
+                if (!padre.isEmpty())
+                    discoEsp = padre;
+            }
             runCmd(QStringLiteral("efibootmgr"), {
                 QStringLiteral("-c"),
-                QStringLiteral("-d"), diskPath,
+                QStringLiteral("-d"), discoEsp,
                 QStringLiteral("-p"), partNum,
                 QStringLiteral("-L"), QStringLiteral("Inti OS"),
-                QStringLiteral("-l"), QStringLiteral("\\EFI\\BOOT\\BOOTX64.EFI")
+                QStringLiteral("-l"), QStringLiteral("\\EFI\\IntiOS\\grubx64.efi")
             });
 
             // Reordenar BootOrder para colocar Inti OS en la primera posición (index = 0 / prioridad 1)
@@ -1136,7 +1468,26 @@ void InstallerBackend::refreshDisks()
         if (model.isEmpty())
             model = QStringLiteral("Disco de Almacenamiento");
 
+        // Que hay ya en el disco: para "instalar junto a" hace falta GPT, una
+        // particion EFI y un hueco libre de 20 GB.
+        const TablaDisco tabla = leerTablaDisco(path);
+        QString otro;
+        for (const ParteDisco &pd : tabla.partes) {
+            if (pd.fs.startsWith(QStringLiteral("ntfs")) || pd.flags.contains(QStringLiteral("msftdata")) || pd.nombre.contains(QStringLiteral("Microsoft"))) {
+                otro = QStringLiteral("Windows");
+                break;
+            }
+            if (pd.fs == QStringLiteral("ext4") || pd.fs == QStringLiteral("btrfs") || pd.fs == QStringLiteral("xfs"))
+                otro = QStringLiteral("otro sistema");
+        }
+
         QVariantMap dMap;
+        dMap[QStringLiteral("tabla")] = tabla.tabla;
+        dMap[QStringLiteral("libreMb")] = qint64(tabla.huecoMb());
+        dMap[QStringLiteral("libreTexto")] = QStringLiteral("%1 GB").arg(tabla.huecoMb() * 1.048576 / 1000.0, 0, 'f', 1);
+        dMap[QStringLiteral("tieneEsp")] = tabla.numeroEsp() > 0;
+        dMap[QStringLiteral("otroSistema")] = otro;
+        dMap[QStringLiteral("particiones")] = int(tabla.partes.size());
         dMap[QStringLiteral("path")] = path;
         dMap[QStringLiteral("size")] = size;
         dMap[QStringLiteral("tran")] = tran;
@@ -1152,6 +1503,21 @@ void InstallerBackend::refreshDisks()
 
     emit disksChanged();
     emit selectedDiskChanged();
+    modoPorDefecto();
+}
+
+// Como Ubuntu: si el disco ya tiene Windows u otro sistema, lo propuesto es
+// instalar al lado, no borrarlo. Solo mientras la persona no haya elegido.
+void InstallerBackend::modoPorDefecto()
+{
+    if (m_modoElegido)
+        return;
+    const bool hayOtro = !discoElegido().value(QStringLiteral("otroSistema")).toString().isEmpty();
+    const QString modo = (hayOtro && m_isUefi) ? QStringLiteral("junto") : QStringLiteral("borrar");
+    if (m_modoDisco != modo) {
+        m_modoDisco = modo;
+        emit modoDiscoChanged();
+    }
 }
 
 void InstallerBackend::setCurrentStep(int step)
@@ -1168,6 +1534,7 @@ void InstallerBackend::setSelectedDiskIndex(int idx)
         m_selectedDiskIndex = idx;
         emit selectedDiskIndexChanged();
         emit selectedDiskChanged();
+        modoPorDefecto();
     }
 }
 
@@ -1195,8 +1562,47 @@ QString InstallerBackend::selectedDiskSize() const
     return QString();
 }
 
+QVariantMap InstallerBackend::discoElegido() const
+{
+    if (m_selectedDiskIndex >= 0 && m_selectedDiskIndex < m_disks.size())
+        return m_disks[m_selectedDiskIndex].toMap();
+    return QVariantMap();
+}
+
+void InstallerBackend::setModoDisco(const QString &modo)
+{
+    if (modo != QStringLiteral("borrar") && modo != QStringLiteral("junto") && modo != QStringLiteral("manual"))
+        return;
+    m_modoElegido = true;
+    if (m_modoDisco != modo) {
+        m_modoDisco = modo;
+        emit modoDiscoChanged();
+    }
+    setManualPartitioning(modo == QStringLiteral("manual"));
+}
+
+void InstallerBackend::setCifrar(bool cifrar)
+{
+    if (m_cifrar != cifrar) {
+        m_cifrar = cifrar;
+        emit cifrarChanged();
+    }
+}
+
+void InstallerBackend::setClaveCifrado(const QString &clave)
+{
+    m_claveCifrado = clave;
+}
+
 void InstallerBackend::setManualPartitioning(bool manual)
 {
+    if (manual && m_modoDisco != QStringLiteral("manual")) {
+        m_modoDisco = QStringLiteral("manual");
+        emit modoDiscoChanged();
+    } else if (!manual && m_modoDisco == QStringLiteral("manual")) {
+        m_modoDisco = QStringLiteral("borrar");
+        emit modoDiscoChanged();
+    }
     if (m_manualPartitioning != manual) {
         m_manualPartitioning = manual;
         if (m_manualPartitioning && m_manualPartitions.isEmpty()) {
@@ -1259,6 +1665,16 @@ void InstallerBackend::removeManualPartition(int index)
 
 QString InstallerBackend::validatePartitionPlan() const
 {
+    if (m_modoDisco == QStringLiteral("junto")) {
+        const QVariantMap d = discoElegido();
+        if (!m_isUefi)
+            return QStringLiteral("Instalar junto a otro sistema necesita que el equipo arranque en modo UEFI.");
+        if (d.value(QStringLiteral("tabla")).toString() != QStringLiteral("gpt") || !d.value(QStringLiteral("tieneEsp")).toBool())
+            return QStringLiteral("Este disco no tiene tabla GPT con partición EFI: no hay otro sistema UEFI al que añadir Inti OS.");
+        if (d.value(QStringLiteral("libreMb")).toLongLong() < 20 * 1024 + 4)
+            return QStringLiteral("Hacen falta al menos 20 GB sin particionar. En Windows: Administración de discos → clic derecho en C: → Reducir volumen. Después pulsa «Volver a buscar».");
+        return QString();
+    }
     if (!m_manualPartitioning) return QString();
 
     bool hasRoot = false;
@@ -1316,7 +1732,13 @@ void InstallerBackend::startInstallation(const QString &fsType,
         return;
     }
 
-    if (m_manualPartitioning) {
+    if (m_cifrar && !m_manualPartitioning && m_claveCifrado.size() < 8) {
+        m_errorMessage = QStringLiteral("La contraseña de cifrado debe tener al menos 8 caracteres.");
+        emit errorMessageChanged();
+        return;
+    }
+
+    {
         QString vError = validatePartitionPlan();
         if (!vError.isEmpty()) {
             m_errorMessage = vError;
@@ -1358,6 +1780,10 @@ void InstallerBackend::startInstallation(const QString &fsType,
     m_worker->isUefi = m_isUefi;
     m_worker->manualPartitioning = m_manualPartitioning;
     m_worker->manualPartitions = m_manualPartitions;
+    m_worker->modoDisco = m_modoDisco;
+    m_worker->cifrar = m_cifrar && !m_manualPartitioning;
+    m_worker->claveCifrado = m_claveCifrado;
+    m_claveCifrado.clear();   // la copia del worker es la unica
 
     m_worker->moveToThread(m_workerThread);
 
