@@ -6,6 +6,22 @@
         <file>qml/WallpaperView.qml</file>
         <file>qml/WifiView.qml</file>
         <file>qml/BluetoothView.qml</file>
+        <file>qml/PaginaAjustes.qml</file>
+        <file>qml/Grupo.qml</file>
+        <file>qml/Fila.qml</file>
+        <file>qml/Interruptor.qml</file>
+        <file>qml/Boton.qml</file>
+        <file>qml/Segmentos.qml</file>
+        <file>qml/SelectorMinutos.qml</file>
+        <file>qml/EnergiaView.qml</file>
+        <file>qml/BloqueoView.qml</file>
+        <file>qml/SeguridadView.qml</file>
+        <file>qml/AccesibilidadView.qml</file>
+        <file>qml/TecladoView.qml</file>
+        <file>qml/ImpresorasView.qml</file>
+        <file>qml/RestaurarView.qml</file>
+        <file>qml/VpnView.qml</file>
+        <file>qml/AlmacenamientoView.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>

@@ -46,7 +46,9 @@ void SettingsBackend::initSections()
     add(QStringLiteral("wifi"), QStringLiteral("Wi-Fi"), QStringLiteral("📶"), QStringLiteral("#007aff"));
     add(QStringLiteral("bluetooth"), QStringLiteral("Bluetooth"), QStringLiteral("ᛒ"), QStringLiteral("#007aff"));
     add(QStringLiteral("red"), QStringLiteral("Red"), QStringLiteral("↔"), QStringLiteral("#007aff"));
+    add(QStringLiteral("VPN"), QStringLiteral("VPN"), QStringLiteral("🔐"), QStringLiteral("#007aff"));
     add(QStringLiteral("General"), QStringLiteral("General"), QStringLiteral("⚙️"), QStringLiteral("#636366"));
+    add(QStringLiteral("Accesibilidad"), QStringLiteral("Accesibilidad"), QStringLiteral("♿"), QStringLiteral("#007aff"));
     add(QStringLiteral("Apariencia"), QStringLiteral("Apariencia"), QStringLiteral("◐"), QStringLiteral("#1c1c1e"));
     add(QStringLiteral("Fondo de pantalla"), QStringLiteral("Fondo de pantalla"), QStringLiteral("🖼️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Pantallas"), QStringLiteral("Pantallas"), QStringLiteral("☀️"), QStringLiteral("#007aff"));
@@ -58,8 +60,12 @@ void SettingsBackend::initSections()
     add(QStringLiteral("Sonido"), QStringLiteral("Sonido"), QStringLiteral("🔊"), QStringLiteral("#ff3b30"));
     add(QStringLiteral("Concentración"), QStringLiteral("Concentración"), QStringLiteral("🌙"), QStringLiteral("#af52de"));
     add(QStringLiteral("Bloquear pantalla"), QStringLiteral("Bloquear pantalla"), QStringLiteral("🔒"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Privacidad y seguridad"), QStringLiteral("Privacidad y seguridad"), QStringLiteral("🛡️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Usuarios y grupos"), QStringLiteral("Usuarios y grupos"), QStringLiteral("👤"), QStringLiteral("#007aff"));
     add(QStringLiteral("Teclado"), QStringLiteral("Teclado"), QStringLiteral("⌨️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Impresoras y escáneres"), QStringLiteral("Impresoras y escáneres"), QStringLiteral("🖨️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Almacenamiento"), QStringLiteral("Almacenamiento"), QStringLiteral("💽"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Restaurar sistema"), QStringLiteral("Restaurar sistema"), QStringLiteral("🕘"), QStringLiteral("#34c759"));
 
     emit sectionsChanged();
 }

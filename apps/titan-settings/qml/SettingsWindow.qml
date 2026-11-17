@@ -295,6 +295,8 @@ TitanWindow {
                 return wifiComponent
             } else if (sec === "Bluetooth" || sec === "bluetooth") {
                 return bluetoothComponent
+            } else if (vistasSistema[sec] !== undefined) {
+                return vistasSistema[sec]
             } else {
                 return dynamicSectionComponent
             }
@@ -306,6 +308,28 @@ TitanWindow {
     Component { id: generalComponent; GeneralView {} }
     Component { id: wifiComponent; WifiView {} }
     Component { id: bluetoothComponent; BluetoothView {} }
+
+    // Secciones con datos reales del sistema (backend Sistema)
+    readonly property var vistasSistema: ({
+        "Batería": energiaComponent,
+        "Bloquear pantalla": bloqueoComponent,
+        "Privacidad y seguridad": seguridadComponent,
+        "Accesibilidad": accesibilidadComponent,
+        "Teclado": tecladoComponent,
+        "Impresoras y escáneres": impresorasComponent,
+        "Restaurar sistema": restaurarComponent,
+        "VPN": vpnComponent,
+        "Almacenamiento": almacenamientoComponent
+    })
+    Component { id: energiaComponent; EnergiaView {} }
+    Component { id: bloqueoComponent; BloqueoView {} }
+    Component { id: seguridadComponent; SeguridadView {} }
+    Component { id: accesibilidadComponent; AccesibilidadView {} }
+    Component { id: tecladoComponent; TecladoView {} }
+    Component { id: impresorasComponent; ImpresorasView {} }
+    Component { id: restaurarComponent; RestaurarView {} }
+    Component { id: vpnComponent; VpnView {} }
+    Component { id: almacenamientoComponent; AlmacenamientoView {} }
 
     // Componente dinámico y completo para todas las demás secciones
     Component {

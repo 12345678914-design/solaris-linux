@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "SettingsBackend.h"
+#include "Sistema.h"
 #include "ThemeManager.h"
 
 int main(int argc, char *argv[])
@@ -34,6 +35,9 @@ int main(int argc, char *argv[])
 
     for (int i = 1; i < argc; ++i) {
         QString arg = QString::fromLocal8Bit(argv[i]);
+        // --seccion=X o --seccion X (asi la abre el aviso de actualizaciones)
+        if (arg == QStringLiteral("--seccion") && i + 1 < argc)
+            arg = QStringLiteral("--seccion=") + QString::fromLocal8Bit(argv[++i]);
         if (arg.startsWith(QStringLiteral("--seccion="))) {
             QString sec = arg.mid(10);
             if (sec == QStringLiteral("wallpaper") || sec == QStringLiteral("fondo")) {
@@ -47,7 +51,9 @@ int main(int argc, char *argv[])
     }
 
     QQmlApplicationEngine engine;
+    Sistema sistema;
     engine.rootContext()->setContextProperty(QStringLiteral("settingsBackend"), &backend);
+    engine.rootContext()->setContextProperty(QStringLiteral("sistema"), &sistema);
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
 
     const QUrl url(QStringLiteral("qrc:/qml/SettingsWindow.qml"));

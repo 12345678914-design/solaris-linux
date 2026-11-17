@@ -14,10 +14,12 @@ INCLUDEPATH += \
 SOURCES += \
     src/main.cpp \
     src/SettingsBackend.cpp \
+    src/Sistema.cpp \
     ../titan-common/ThemeManager.cpp
 
 HEADERS += \
     src/SettingsBackend.h \
+    src/Sistema.h \
     ../titan-common/ThemeManager.h
 
 RESOURCES += resources.qrc
