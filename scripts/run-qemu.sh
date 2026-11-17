@@ -197,6 +197,10 @@ bat_host_cap="$(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | head -n1
 bat_host_stat="$(cat /sys/class/power_supply/BAT*/status 2>/dev/null | head -n1 || true)"
 ac_host_on="$(cat /sys/class/power_supply/A*/online 2>/dev/null | head -n1 || echo 0)"
 
+# Puerto serie virtual unico (vser0) para los canales con el invitado
+# (bateria y portapapeles). Tiene que ir antes que sus puertos.
+args+=(-device virtio-serial-pci,id=vser0)
+
 has_battery_sync=0
 bat_sock="${RUN_DIR}/titan-battery.sock"
 
@@ -284,9 +288,6 @@ if (( ! no_disk )); then
     info "disco virtual conectado para instalación: ${disk_img} (bootindex=2)"
   fi
 fi
-
-# Puerto serie virtual unico (vser0) para los canales con el invitado.
-args+=(-device virtio-serial-pci,id=vser0)
 
 # Portapapeles compartido: QEMU hace de agente SPICE (qemu-vdagent) y la
 # ventana GTK lo conecta con el portapapeles del anfitrion. En el invitado,
