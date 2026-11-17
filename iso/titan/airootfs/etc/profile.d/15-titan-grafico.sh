@@ -133,6 +133,11 @@ if command -v lspci >/dev/null 2>&1; then
   lspci | grep -qiE "(vga|3d).*nvidia" && ES_NVIDIA=1
 fi
 
+# Cargar módulos nvidia si hay GPU NVIDIA y aún no están en el kernel
+if [ "${ES_NVIDIA}" -eq 1 ] && [ ! -d /sys/module/nvidia_drm ]; then
+  modprobe -q nvidia-drm 2>/dev/null || modprobe -q nvidia_drm 2>/dev/null || true
+fi
+
 # Verificar si el driver privativo de NVIDIA (nvidia/nvidia-drm) está realmente cargado en el kernel y activo
 if [ -d /sys/module/nvidia_drm ] && { [ -e /dev/nvidia0 ] || [ -e /dev/nvidiactl ]; }; then
   NVIDIA_PROPIETARIO=1
@@ -205,14 +210,28 @@ else
     echo "Titan Linux: Laptop con gráficos híbridos detectada (Intel/AMD + NVIDIA)."
     echo "-> Asignando pantalla principal a la GPU integrada (PRIME Offload disponible para NVIDIA)."
     target_card="${IGPU_CARD:-${CARD_PANTALLA}}"
+    sec_card=""
+    for c in /sys/class/drm/card[0-9]; do
+      [ -d "$c" ] || continue
+      cn="$(basename "$c")"
+      if [ -n "$target_card" ] && [ "$cn" != "$target_card" ] && [ -e "/dev/dri/$cn" ]; then
+        sec_card="$cn"
+        break
+      fi
+    done
     if [ -n "${target_card}" ] && [ -e "/dev/dri/${target_card}" ]; then
-      export WLR_DRM_DEVICES="/dev/dri/${target_card}"
+      if [ -n "${sec_card}" ]; then
+        export WLR_DRM_DEVICES="/dev/dri/${target_card}:/dev/dri/${sec_card}"
+      else
+        export WLR_DRM_DEVICES="/dev/dri/${target_card}"
+      fi
     fi
     # No forzar variables de NVIDIA a nivel global para que el escritorio corra sobre la iGPU (Mesa)
   elif [ "${ES_NVIDIA}" -eq 1 ]; then
     if [ "${NVIDIA_PROPIETARIO}" -eq 1 ]; then
       echo "Titan Linux: GPU NVIDIA detectada con driver privativo activo (nvidia-drm)..."
       export LIBVA_DRIVER_NAME=nvidia
+      export NVD_BACKEND=direct
       export __GLX_VENDOR_LIBRARY_NAME=nvidia
       # IMPORTANTE: No fijar GBM_BACKEND=nvidia-drm (Mesa 21.2+ lo maneja internamente; fijarlo rompe labwc, Qt y Firefox)
       unset GBM_BACKEND 2>/dev/null || true
@@ -222,6 +241,7 @@ else
       unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
       unset GBM_BACKEND 2>/dev/null || true
       unset LIBVA_DRIVER_NAME 2>/dev/null || true
+      unset NVD_BACKEND 2>/dev/null || true
     fi
   else
     echo "Titan Linux: GPU Intel/AMD detectada - aceleración OpenGL/Vulkan nativa vía Mesa."
@@ -298,6 +318,7 @@ if [ $codigo_salida -ne 0 ] && [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] 
   unset GBM_BACKEND 2>/dev/null || true
   unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
   unset LIBVA_DRIVER_NAME 2>/dev/null || true
+  unset NVD_BACKEND 2>/dev/null || true
   unset WLR_DRM_DEVICES 2>/dev/null || true
   aplicar_capa_compatibilidad
   dbus-run-session -- labwc 2>&1 | tee -a /tmp/labwc.log

@@ -14,8 +14,10 @@ Uso: fijar-isa-baseline.py [--comprobar] FICHERO...
   sin opciones  reescribe la marca en los ELF que pidan mas que baseline
   --comprobar   no toca nada; sale con 1 si alguno pide mas que baseline
 """
+import os
 import struct
 import sys
+import tempfile
 
 NT_GNU_PROPERTY_TYPE_0 = 5
 ISA_1_NEEDED = 0xC0008002
@@ -95,8 +97,14 @@ def main(args):
             continue
         for pos, _ in cambios:
             struct.pack_into("<I", datos, pos, BASELINE)
-        with open(f, "r+b") as h:
+        # Fichero nuevo + rename: funciona aunque el original sea de otro
+        # usuario (p. ej. de un build anterior con sudo) y nunca deja uno a medias.
+        modo = os.stat(f).st_mode & 0o7777
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(f)), prefix=".isa-")
+        with os.fdopen(fd, "wb") as h:
             h.write(datos)
+        os.chmod(tmp, modo)
+        os.replace(tmp, f)
         print(f"{f}: {actual} -> baseline")
     return 1 if malos else 0
 

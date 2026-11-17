@@ -188,6 +188,86 @@ y ejecuta dentro del sistema las comprobaciones del catálogo de comandos,
 transcripción, informe JSON y capturas en `out/verify/`, y termina con error si
 alguna comprobación falla.
 
+También puedes verificar los componentes del escritorio y aplicaciones de la ISO:
+
+```bash
+./verify/comprobar-escritorio.sh
+```
+
+## Resolución técnica de problemas y compatibilidad NVIDIA / Multi-GPU
+
+### 1. Error «CPU ISA level is lower than required»
+
+#### Causa técnica
+Al iniciar aplicaciones gráficas como `titan-acerca`, `titan-desktop`, `titan-calc`, `titan-calendar`,
+`titan-clock`, `titan-video` o `titan-installer` (o al correr `./verify/comprobar-escritorio.sh`),
+el cargador dinámico de `glibc` (`ld.so`) abortaba la ejecución con:
+
+```text
+CPU ISA level is lower than required
+```
+
+La causa no estaba en el codigo de las apps (ninguna usa AVX ni AVX-512) sino en
+el anfitrion de compilacion: en **CachyOS con repos `cachyos-v4`**, el `Scrt1.o`
+de su `glibc` lleva la propiedad ELF `GNU_PROPERTY_X86_ISA_1_NEEDED = x86-64-v4`,
+y el enlazador la copia a **todo** lo que se compila ahi (hasta un `int main(){}`).
+`ld.so` lee esa marca y, en CPUs sin AVX-512 (Intel Core 12.ª–14.ª gen., AMD
+anteriores a Zen 4, muchas VMs), se niega a arrancar el programa.
+
+Comprobarlo: `readelf -n iso/titan/airootfs/usr/local/bin/titan-shell | grep "ISA needed"`.
+
+#### Archivos modificados para la solución
+- **`scripts/fijar-isa-baseline.py`** (nuevo): reescribe solo esa propiedad a
+  `x86-64-baseline` despues de enlazar; las demas (IBT/SHSTK) quedan intactas.
+  Con `--comprobar` no toca nada y falla si algun binario pide mas que baseline.
+  (`ld -z x86-64-baseline` no sirve: revienta binutils 2.47 con un error interno.)
+- **`scripts/build-iso.sh`**: lo aplica a todo ELF de `usr/local/bin`,
+  `usr/lib/titan` y `usr/lib/wayfire` del perfil y aborta la ISO si queda alguno marcado.
+- **`Makefile`**: `make apps` hace lo mismo al terminar. Ademas `titan-calc`,
+  `titan-calendar`, `titan-clock` y `titan-video` pasan a `.PHONY` (antes `make`
+  creia que estaban al dia porque existe la carpeta y nunca los recompilaba), se
+  anade `titan-installer` y la regla `clean` borra los ejecutables de todas las apps.
+- **`verify/comprobar-escritorio.sh`**: usa el binario de `build/` si es mas nuevo.
+
+---
+
+### 2. Soporte universal para tarjetas NVIDIA (RTX 20/30/40/50 Series) y Multi-GPU
+
+Para garantizar arranque fluido tanto en tarjetas dedicadas NVIDIA modernas como en laptops híbridas (Intel/AMD + NVIDIA) bajo Wayland (`labwc`):
+
+#### Archivos y líneas modificadas para la solución
+- **`iso/titan/airootfs/etc/modprobe.d/nvidia.conf`**:
+  - Líneas 1–6: configuración de `options nvidia-drm modeset=1 fbdev=1` (obligatorio para framebuffer DRM en Wayland) y `options nvidia NVreg_PreserveVideoMemoryAllocations=1` (gestión de memoria de video y suspensión).
+- **`iso/titan/airootfs/root/customize_airootfs.sh`**:
+  - Habilita `nvidia-suspend`, `nvidia-hibernate` y `nvidia-resume`, que `PreserveVideoMemoryAllocations=1` exige (el paquete los trae sin habilitar). Sin GPU NVIDIA no hacen nada.
+- **`iso/titan/grub/grub.cfg`**:
+  - Líneas 60 y 72: inclusión de los parámetros `nvidia-drm.modeset=1 nvidia-drm.fbdev=1` en los comandos de arranque del kernel en UEFI.
+- **`iso/titan/syslinux/syslinux-linux.cfg`**:
+  - Líneas 13 y 25: inclusión de `nvidia-drm.modeset=1 nvidia-drm.fbdev=1` en los comandos de arranque BIOS.
+- **`iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh`**:
+  - Líneas 122–125: comprobación proactiva y carga de `nvidia-drm` vía `modprobe` al detectar hardware NVIDIA.
+  - Líneas 190–204: detección dinámica de múltiples tarjetas de video (`/sys/class/drm/card*`) y configuración automática de `WLR_DRM_DEVICES="/dev/dri/cardX:/dev/dri/cardY"` para soporte multi-GPU transparente en Wayland.
+  - Líneas 210–221: aceleración de hardware para decodificación de video directa con `NVD_BACKEND=direct` y `LIBVA_DRIVER_NAME=nvidia`.
+
+---
+
+### 3. Aislamiento y solución a errores de E/S en la construcción de la ISO (`make iso`)
+
+Como root, el `_unshare` de `mkarchiso` no aisla nada: los montajes de `pacstrap` y
+`arch-chroot` se ven en todo el sistema y pueden quedarse ocupados. Si un `sysfs`
+queda montado en `airootfs/sys`, el `find "${work_dir}" ... -delete` de la limpieza
+tropieza con ficheros del anfitrion que dan EIO (p. ej. `/sys/module/realtek/drivers`).
+
+#### Archivos modificados para la solución
+- **`iso/titan/airootfs/root/customize_airootfs.sh`**: desmontaje perezoso
+  (`umount -l`) de `/sys/firmware/efi/efivars` y `/sys` antes de salir del chroot.
+- **`scripts/build-iso.sh`**:
+  - `mkarchiso` corre en un espacio de montajes privado (`unshare -m --propagation private`):
+    sus montajes mueren con el y nadie del anfitrion los ve.
+  - Envoltorio de `find` que solo perdona los EIO de `sys/module/*/drivers`. La salida
+    estandar pasa intacta (mkarchiso usa `find ... -exec gzip` para el `modalias.gz`
+    de syslinux, que no puede pasar por una variable de bash).
+
 ## Personalización de recursos visuales
 
 Antes de compilar la ISO puedes cambiar los recursos en:

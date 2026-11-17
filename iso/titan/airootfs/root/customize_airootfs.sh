@@ -467,6 +467,14 @@ for unit in NetworkManager systemd-resolved bluetooth; do
   fi
 done
 
+# Suspension con NVIDIA: modprobe.d/nvidia.conf pide
+# NVreg_PreserveVideoMemoryAllocations=1, que exige estos tres servicios (el
+# paquete los trae pero no los habilita). Sin GPU NVIDIA, nvidia-sleep.sh no
+# encuentra /proc/driver/nvidia/suspend y sale sin hacer nada.
+if [[ -e /usr/lib/systemd/system/nvidia-suspend.service ]]; then
+  systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service
+fi
+
 # Habilitar servicios de audio PipeWire y WirePlumber para sesiones de usuario
 install -d -m 0755 /etc/systemd/user/default.target.wants
 install -d -m 0755 /etc/systemd/user/sockets.target.wants
@@ -806,3 +814,9 @@ else
 fi
 
 log "OK: ${TITAN_VERSION} lista"
+
+# Liberar montajes virtuales (efivars y sysfs) antes de salir del chroot para
+# evitar bloqueos al desmontar y errores de E/S en los pasos finales de mkarchiso.
+umount -l /sys/firmware/efi/efivars 2>/dev/null || true
+umount -l /sys 2>/dev/null || true
+

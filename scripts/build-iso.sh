@@ -694,6 +694,27 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}" export SOURCE_DATE_EPOCH
 TITAN_VERSION="${TITAN_VERSION}" export TITAN_VERSION
 TITAN_CODENAME="${TITAN_CODENAME}" export TITAN_CODENAME
 
+# Envoltorio de find: con mkarchiso como root, un sysfs que se quede montado en
+# airootfs/sys hace que su 'find "${work_dir}" ... -delete' tropiece con ficheros
+# del anfitrion que dan EIO (p. ej. /sys/module/realtek/drivers) y aborte. Solo
+# se perdonan esos errores; la salida estandar pasa intacta (mkarchiso usa find
+# con -exec gzip para el modalias.gz de syslinux: no puede pasar por una variable).
+FIND_WRAPPER_DIR="$(mktemp -d -t titan-find-wrap.XXXXXX)"
+cat > "${FIND_WRAPPER_DIR}/find" << 'EOF'
+#!/bin/bash
+errores="$(mktemp -t titan-find-err.XXXXXX)"
+/usr/bin/find "$@" 2>"$errores"
+codigo=$?
+if (( codigo != 0 )) && ! grep -qvE 'sys/module/.*/drivers.*(Input/output error|Error de entrada/salida)' "$errores"; then
+  codigo=0   # solo habia errores de sysfs del anfitrion
+else
+  cat "$errores" >&2
+fi
+rm -f "$errores"
+exit "$codigo"
+EOF
+chmod +x "${FIND_WRAPPER_DIR}/find"
+
 # mkarchiso no suelta ni una linea hasta el final (en archiso 90 todos sus
 # mensajes de progreso van detras del '-v', que se pide con -v aqui), asi que
 # el build parece colgarse durante cinco minutos. Este latido solo dice "sigo
@@ -707,17 +728,23 @@ if [[ -z "$verbose" ]]; then
     done
   ) &
   latido=$!
-  # Con 'trap', no con un kill aqui: si el build falla a mitad (por ejemplo en
-  # un check de customize_airootfs.sh) el script se va por 'set -e' y sin esto
-  # el latido se queda escribiendo en el log del build siguiente.
-  trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; true' EXIT
 fi
-mkarchiso "${args[@]}"
+# Con 'trap', no con un kill al final: si el build falla a mitad (por ejemplo en
+# un check de customize_airootfs.sh) el script se va por 'set -e' y sin esto
+# el latido se queda escribiendo en el log del build siguiente.
+trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; rm -rf "${FIND_WRAPPER_DIR:-}" 2>/dev/null; true' EXIT
+
+# Como root, el _unshare de mkarchiso no aisla nada: los montajes de pacstrap y
+# arch-chroot se ven en todo el sistema (udisks, gvfs...) y pueden quedarse
+# ocupados. En un espacio de montajes privado mueren con mkarchiso.
+unshare -m --propagation private -- env PATH="${FIND_WRAPPER_DIR}:${PATH}" mkarchiso "${args[@]}"
+
 if (( latido )); then
   kill "${latido}" 2>/dev/null || true
   wait "${latido}" 2>/dev/null || true
   latido=0
 fi
+rm -rf "${FIND_WRAPPER_DIR}" 2>/dev/null || true
 
 # ------------------------------------------------------------------ 6. resultado
 
