@@ -6,6 +6,9 @@
 #include "LauncherBackend.h"
 #include "DesktopBackend.h"
 #include "ThemeManager.h"
+#include "Mpris.h"
+#include <QQuickItem>
+#include <QRegion>
 
 #include <QGuiApplication>
 #include <QDir>
@@ -237,6 +240,9 @@ int main(int argc, char *argv[])
         });
     }
     
+    // Lo que suena ahora (MPRIS), para la Isla Dinamica. Antes que el motor
+    // QML: se destruye despues de el.
+    Mpris mpris;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
     engine.rootContext()->setContextProperty(QStringLiteral("shellBackend"), &shellBackend);
@@ -244,6 +250,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("dockModel"), &dockModel);
     engine.rootContext()->setContextProperty(QStringLiteral("launcherBackend"), &launcherBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopBackend"), &desktopBackend);
+    engine.rootContext()->setContextProperty(QStringLiteral("mpris"), &mpris);
     // Usuarios y grupos (panel compartido con titan-greeter, en la pantalla de bloqueo)
     Usuarios usuarios;
     engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
@@ -393,9 +400,25 @@ int main(int argc, char *argv[])
             a |= LayerShellQt::Window::AnchorRight;
             configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dynamic-island"),
                            LayerShellQt::Window::KeyboardInteractivityNone, false);
-            QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, [win, &shellBackend]() {
-                win->setVisible(shellBackend.islandActive());
-            });
+            // Visible con una notificacion o con musica sonando. La ventana
+            // ocupa todo el ancho de arriba, asi que su zona de clics (mascara)
+            // se limita a la isla: el resto deja pasar el raton a lo de debajo.
+            auto actualizarIsla = [win, &shellBackend, &mpris]() {
+                win->setVisible(shellBackend.islandActive() || mpris.disponible());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, actualizarIsla);
+            QObject::connect(&mpris, &Mpris::cambiado, win, actualizarIsla);
+            if (auto *tarjeta = win->contentItem()->findChild<QQuickItem *>(QStringLiteral("islandCard"))) {
+                auto mascara = [win, tarjeta]() {
+                    const QPointF p = tarjeta->mapToScene(QPointF(0, 0));
+                    win->setMask(QRegion(QRect(int(p.x()) - 6, 0, int(tarjeta->width()) + 12,
+                                               int(p.y() + tarjeta->height()) + 8)));
+                };
+                for (auto senal : {&QQuickItem::widthChanged, &QQuickItem::heightChanged, &QQuickItem::xChanged})
+                    QObject::connect(tarjeta, senal, win, mascara);
+                mascara();
+            }
+            actualizarIsla();
         } else if (name == QStringLiteral("workspacesWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;

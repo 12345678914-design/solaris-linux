@@ -31,18 +31,26 @@ uint NotificationsAdaptor::Notify(const QString &app_name, uint replaces_id, con
                                   const QString &summary, const QString &body, const QStringList &actions,
                                   const QVariantMap &hints, int expire_timeout)
 {
-    Q_UNUSED(replaces_id)
-    Q_UNUSED(actions)
-    Q_UNUSED(hints)
     Q_UNUSED(expire_timeout)
-    m_backend->notify(summary, body, app_icon, app_name);
+    // replaces_id: la app actualiza una notificacion suya (p. ej. progreso);
+    // se quita la vieja sin avisar de cierre (no se ha cerrado, se sustituye).
+    if (replaces_id > 0)
+        m_backend->removeNotificationSilently(static_cast<int>(replaces_id));
+    // Imagen en las pistas (notify-send -i fichero ya llega como app_icon;
+    // algunas apps la mandan en image-path).
+    QString icono = app_icon;
+    if (icono.isEmpty())
+        icono = hints.value(QStringLiteral("image-path")).toString();
+    if (icono.startsWith(QStringLiteral("file://")))
+        icono = QUrl(icono).toLocalFile();
+    m_backend->notify(summary, body, icono, app_name, actions);
     return static_cast<uint>(m_backend->lastNotificationId());
 }
 
 void NotificationsAdaptor::CloseNotification(uint id)
 {
-    Q_UNUSED(id)
-    m_backend->dismissIsland();
+    // La app la retira: motivo 3 ("cerrada con CloseNotification").
+    m_backend->closeNotificationByApp(static_cast<int>(id));
 }
 
 QStringList NotificationsAdaptor::GetCapabilities()
@@ -136,6 +144,11 @@ ShellBackend::ShellBackend(QObject *parent)
     // Con greetd la persona ya se ha identificado en la pantalla de inicio:
     // no se le vuelve a pedir la contrasena al arrancar el escritorio.
     m_lockScreenActive = !isLiveSystem() && !canSwitchUser();
+    if (m_lockScreenActive && usarBloqueoSeguro()) {
+        // Entrada por consola sin pantalla de inicio: se bloquea con gtklock.
+        m_lockScreenActive = false;
+        QTimer::singleShot(1200, this, &ShellBackend::lockScreen);
+    }
 
     ThemeManager *tm = ThemeManager::instance();
     connect(tm, &ThemeManager::wallpapersChanged, this, &ShellBackend::wallpapersChanged);
@@ -1250,19 +1263,50 @@ void ShellBackend::closeNotificationCenter()
 
 void ShellBackend::clearNotifications()
 {
+    // Motivo 2: la ha descartado el usuario (spec de notificaciones).
+    for (const QVariant &v : std::as_const(m_notifications))
+        emit NotificationClosed(v.toMap().value(QStringLiteral("id")).toUInt(), 2);
     m_notifications.clear();
     emit notificationsChanged();
 }
 
-void ShellBackend::removeNotification(int id)
+bool ShellBackend::takeNotification(int id)
 {
     for (int i = 0; i < m_notifications.size(); ++i) {
         if (m_notifications[i].toMap().value(QStringLiteral("id")).toInt() == id) {
             m_notifications.removeAt(i);
             emit notificationsChanged();
-            break;
+            if (m_islandActive && m_currentIslandNotification.value(QStringLiteral("id")).toInt() == id)
+                dismissIsland();
+            return true;
         }
     }
+    return false;
+}
+
+void ShellBackend::removeNotification(int id)
+{
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 2);
+}
+
+void ShellBackend::removeNotificationSilently(int id)
+{
+    takeNotification(id);
+}
+
+void ShellBackend::closeNotificationByApp(int id)
+{
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 3);
+}
+
+void ShellBackend::invokeNotificationAction(int id, const QString &key)
+{
+    // Pulsar un boton (o la notificacion, accion "default") la cierra.
+    emit ActionInvoked(static_cast<uint>(id), key.isEmpty() ? QStringLiteral("default") : key);
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 2);
 }
 
 void ShellBackend::dismissIsland()
@@ -1273,11 +1317,26 @@ void ShellBackend::dismissIsland()
     }
 }
 
-void ShellBackend::notify(const QString &title, const QString &message, const QString &icon, const QString &appName)
+void ShellBackend::notify(const QString &title, const QString &message, const QString &icon, const QString &appName,
+                          const QStringList &actions)
 {
     m_lastNotificationId++;
     QVariantMap n;
     n[QStringLiteral("id")] = m_lastNotificationId;
+    // Acciones: lista plana [clave, texto, clave, texto...]. "default" es el
+    // clic en la notificacion; no lleva boton propio.
+    QVariantList botones;
+    for (int i = 0; i + 1 < actions.size(); i += 2) {
+        if (actions.at(i) == QStringLiteral("default")) {
+            n[QStringLiteral("defaultAction")] = true;
+            continue;
+        }
+        QVariantMap b;
+        b[QStringLiteral("key")] = actions.at(i);
+        b[QStringLiteral("label")] = actions.at(i + 1);
+        botones.append(b);
+    }
+    n[QStringLiteral("actions")] = botones;
     n[QStringLiteral("title")] = title.isEmpty() ? QStringLiteral("Notificación") : title;
     n[QStringLiteral("message")] = message;
     n[QStringLiteral("appName")] = appName.isEmpty() ? QStringLiteral("Sistema") : appName;
@@ -1424,9 +1483,18 @@ void ShellBackend::switchUser()
 
 bool ShellBackend::isLiveSystem() const
 {
-    return QFile::exists(QStringLiteral("/run/archiso")) ||
-           QFile::exists(QStringLiteral("/run/archiso/bootmnt")) ||
-           QFile::exists(QStringLiteral("/etc/titan-build.env"));
+    // Solo /run/archiso: lo crea el arranque del live y no existe en un
+    // sistema instalado. Antes tambien valia /etc/titan-build.env, pero el
+    // instalador copia ese fichero al disco, y en el sistema instalado el
+    // bloqueo aceptaba cualquier contrasena.
+    return QFile::exists(QStringLiteral("/run/archiso"));
+}
+
+bool ShellBackend::usarBloqueoSeguro() const
+{
+    return !isLiveSystem() &&
+           QFile::exists(QStringLiteral("/usr/local/bin/titan-bloquear")) &&
+           QFile::exists(QStringLiteral("/usr/bin/gtklock"));
 }
 
 void ShellBackend::finishBootSplash()
@@ -1441,6 +1509,13 @@ void ShellBackend::finishBootSplash()
 
 void ShellBackend::lockScreen()
 {
+    // Bloqueo de verdad (ext-session-lock con gtklock): lo garantiza el
+    // compositor y no depende de que titan-shell siga vivo. La pantalla de
+    // bloqueo en QML queda solo para el live o si falta gtklock.
+    if (usarBloqueoSeguro()) {
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-bloquear"), {});
+        return;
+    }
     if (!m_lockScreenActive) {
         m_lockScreenActive = true;
         emit lockScreenActiveChanged();

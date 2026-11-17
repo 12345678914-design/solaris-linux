@@ -177,6 +177,7 @@ Rectangle {
 
             delegate: Rectangle {
                 id: notifDelegate
+                readonly property int idNotificacion: modelData.id
                 width: notifList.width
                 height: notifCol.implicitHeight + 18
                 radius: 12
@@ -258,6 +259,37 @@ Rectangle {
                             width: parent.width
                             maximumLineCount: 3
                             elide: Text.ElideRight
+                        }
+
+                        // Botones de la app (p. ej. "Actualizar")
+                        Row {
+                            visible: modelData.actions && modelData.actions.length > 0
+                            spacing: 6
+                            topPadding: 6
+                            Repeater {
+                                model: modelData.actions ? modelData.actions : []
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    height: 22
+                                    width: etiquetaAccion.implicitWidth + 20
+                                    radius: 11
+                                    color: index === 0 ? theme.accent
+                                                       : (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08))
+                                    Text {
+                                        id: etiquetaAccion
+                                        anchors.centerIn: parent
+                                        text: modelData.label
+                                        color: index === 0 ? "#ffffff" : theme.headerText
+                                        font.pixelSize: 11
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: shellBackend.invokeNotificationAction(notifDelegate.idNotificacion, modelData.key)
+                                    }
+                                }
+                            }
                         }
                     }
 

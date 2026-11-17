@@ -28,7 +28,7 @@ huella="$(printf '%s' "$lista" | md5sum | cut -c1-32)"
 printf '%s\n' "$huella" > "$estado/actualizaciones-avisadas"
 
 if [ "$n" -eq 1 ]; then texto="Hay 1 actualización disponible"; else texto="Hay $n actualizaciones disponibles"; fi
-accion="$(notify-send -a "Actualizaciones" -i system-software-update \
+accion="$(timeout 3600 notify-send -a "Actualizaciones" -i system-software-update \
     -A actualizar=Actualizar --wait \
     "$texto" "Inti OS se mantiene al día con las versiones de Arch Linux." 2>/dev/null)"
 if [ "$accion" = actualizar ]; then

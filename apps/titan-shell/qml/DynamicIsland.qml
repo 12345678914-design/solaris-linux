@@ -35,8 +35,31 @@ Item {
         return s
     }
 
+    // ---------- Musica (MPRIS) ----------
+    // Sin notificacion delante, la isla ensena lo que suena: una pastilla con
+    // caratula y titulo que se abre (clic, o sola al cambiar de cancion) en
+    // una tarjeta con anterior / pausa / siguiente.
+    readonly property bool hayMpris: typeof mpris !== "undefined" && mpris !== null
+    readonly property bool musica: hayMpris && mpris.disponible && !active
+    property bool musicaAbierta: false
+    onMusicaChanged: if (!musica) musicaAbierta = false
+    Timer {
+        id: cierreMusica
+        interval: 4500
+        onTriggered: if (!ratonIsla.hovered) dynamicIslandRoot.musicaAbierta = false
+    }
+    Connections {
+        target: dynamicIslandRoot.hayMpris ? mpris : null
+        function onCancionNueva() {
+            if (!dynamicIslandRoot.active) {
+                dynamicIslandRoot.musicaAbierta = true
+                cierreMusica.restart()
+            }
+        }
+    }
+
     // Dibujar la isla (visible solo si hay algo que mostrar)
-    readonly property bool shown: active || showIdlePill
+    readonly property bool shown: active || showIdlePill || musica
 
     signal actionTriggered(var action)       // conecta esto a tu backend
 
@@ -55,6 +78,7 @@ Item {
 
     Item {
         id: islandCard
+        objectName: "islandCard"   // main.cpp limita la zona de clics a esta tarjeta
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
 
@@ -63,10 +87,14 @@ Item {
 
         width: dynamicIslandRoot.active
                ? Math.min(dynamicIslandRoot.expandedWidth, (typeof Screen !== "undefined" && Screen.width > 0 ? Screen.width : 1920) - 32)
-               : dynamicIslandRoot.compactWidth
+               : dynamicIslandRoot.musica
+                 ? (dynamicIslandRoot.musicaAbierta ? 360 : 236)
+                 : dynamicIslandRoot.compactWidth
         height: dynamicIslandRoot.active
                 ? Math.max(64, contentH + 28)
-                : dynamicIslandRoot.compactHeight
+                : dynamicIslandRoot.musica
+                  ? (dynamicIslandRoot.musicaAbierta ? 112 : 34)
+                  : dynamicIslandRoot.compactHeight
         readonly property real cornerRadius: Math.min(height / 2, 24)
 
         onWidthChanged: Qt.callLater(dynamicIslandRoot.updateOrigin)
@@ -185,8 +213,156 @@ Item {
             enabled: dynamicIslandRoot.active
             cursorShape: Qt.PointingHandCursor
             onClicked: {
+                if (dynamicIslandRoot.notif && dynamicIslandRoot.notif.defaultAction) {
+                    shellBackend.invokeNotificationAction(dynamicIslandRoot.notif.id, "default")
+                    return
+                }
                 shellBackend.dismissIsland()
                 shellBackend.toggleNotificationCenter()
+            }
+        }
+
+        // ---------- MUSICA ----------
+        HoverHandler {
+            id: ratonIsla
+            enabled: dynamicIslandRoot.musica
+            onHoveredChanged: {
+                if (hovered) cierreMusica.stop()
+                else if (dynamicIslandRoot.musicaAbierta) cierreMusica.restart()
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            z: -1
+            enabled: dynamicIslandRoot.musica
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                dynamicIslandRoot.musicaAbierta = !dynamicIslandRoot.musicaAbierta
+                if (dynamicIslandRoot.musicaAbierta) cierreMusica.restart()
+            }
+        }
+
+        // Pastilla: caratula pequena, titulo y barras de sonido
+        Item {
+            id: musicaCompacta
+            anchors.fill: parent
+            anchors.leftMargin: 6
+            anchors.rightMargin: 14
+            opacity: dynamicIslandRoot.musica && !dynamicIslandRoot.musicaAbierta && islandCard.height < 50 ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 140 } }
+
+            Caratula {
+                id: caratulaPequena
+                width: 24; height: 24; radio: 12
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                anchors.left: caratulaPequena.right
+                anchors.leftMargin: 9
+                anchors.right: barras.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                text: dynamicIslandRoot.hayMpris ? mpris.titulo : ""
+                color: "#ffffff"
+                font.pixelSize: 12
+                font.weight: Font.Medium
+                elide: Text.ElideRight
+            }
+            BarrasSonido {
+                id: barras
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        // Tarjeta abierta: caratula, titulo, artista y controles
+        Item {
+            id: musicaAbierta
+            anchors.fill: parent
+            anchors.margins: 14
+            opacity: dynamicIslandRoot.musica && dynamicIslandRoot.musicaAbierta && islandCard.height > 80 ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity {
+                SequentialAnimation {
+                    PauseAnimation { duration: dynamicIslandRoot.musicaAbierta ? 90 : 0 }
+                    NumberAnimation { duration: 150 }
+                }
+            }
+
+            Caratula {
+                id: caratulaGrande
+                width: 76; height: 76; radio: 14
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: mpris.mostrarReproductor()
+                }
+            }
+
+            Column {
+                anchors.left: caratulaGrande.right
+                anchors.leftMargin: 14
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.topMargin: 2
+                spacing: 1
+                Row {
+                    spacing: 6
+                    width: parent.width
+                    Text {
+                        text: dynamicIslandRoot.hayMpris ? mpris.reproductor : ""
+                        color: theme.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Medium
+                    }
+                }
+                Text {
+                    width: parent.width - 30
+                    text: dynamicIslandRoot.hayMpris ? mpris.titulo : ""
+                    color: "#ffffff"
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width - 30
+                    visible: text.length > 0
+                    text: dynamicIslandRoot.hayMpris ? mpris.artista : ""
+                    color: Qt.rgba(1, 1, 1, 0.62)
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+            }
+            BarrasSonido {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.topMargin: 4
+            }
+
+            Row {
+                anchors.left: caratulaGrande.right
+                anchors.leftMargin: 8
+                anchors.bottom: parent.bottom
+                spacing: 4
+                BotonMedio {
+                    tipo: "anterior"
+                    activo: dynamicIslandRoot.hayMpris && mpris.puedeAnterior
+                    onPulsado: mpris.anterior()
+                }
+                BotonMedio {
+                    tipo: dynamicIslandRoot.hayMpris && mpris.reproduciendo ? "pausa" : "play"
+                    grande: true
+                    onPulsado: mpris.alternar()
+                }
+                BotonMedio {
+                    tipo: "siguiente"
+                    activo: dynamicIslandRoot.hayMpris && mpris.puedeSiguiente
+                    onPulsado: mpris.siguiente()
+                }
             }
         }
 
@@ -359,11 +535,136 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: dynamicIslandRoot.actionTriggered(modelData)
+                            onClicked: {
+                                dynamicIslandRoot.actionTriggered(modelData)
+                                shellBackend.invokeNotificationAction(dynamicIslandRoot.notif.id, modelData.key)
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    // ---------- Piezas de la musica ----------
+    component Caratula: Item {
+        property real radio: 8
+        Rectangle {
+            id: fondoCaratula
+            anchors.fill: parent
+            radius: parent.radio
+            color: Qt.rgba(1, 1, 1, 0.10)
+            // Nota musical si el reproductor no da caratula
+            Text {
+                anchors.centerIn: parent
+                visible: imagenCaratula.status !== Image.Ready
+                text: "\u266A"
+                color: Qt.rgba(1, 1, 1, 0.7)
+                font.pixelSize: parent.height * 0.5
+            }
+        }
+        Image {
+            id: imagenCaratula
+            anchors.fill: parent
+            source: dynamicIslandRoot.hayMpris ? mpris.caratula : ""
+            sourceSize: Qt.size(160, 160)
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            smooth: true
+            visible: false
+        }
+        MultiEffect {
+            anchors.fill: parent
+            source: imagenCaratula
+            visible: imagenCaratula.status === Image.Ready
+            maskEnabled: true
+            maskSource: mascaraCaratula
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1.0
+        }
+        Rectangle {
+            id: mascaraCaratula
+            anchors.fill: parent
+            radius: parent.radio
+            visible: false
+            layer.enabled: true
+        }
+    }
+
+    component BarrasSonido: Row {
+        spacing: 2
+        height: 14
+        Repeater {
+            model: 4
+            Rectangle {
+                id: barra
+                required property int index
+                width: 3
+                radius: 1.5
+                anchors.bottom: parent.bottom
+                color: theme.accent
+                readonly property bool suena: dynamicIslandRoot.hayMpris && mpris.reproduciendo && dynamicIslandRoot.musica
+                height: suena ? 4 : 3
+                SequentialAnimation on height {
+                    running: barra.suena
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 6 + (barra.index * 5) % 9; duration: 220 + barra.index * 60; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 3 + barra.index % 2; duration: 260 + barra.index * 40; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 14 - barra.index * 2; duration: 200 + barra.index * 50; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 4; duration: 240; easing.type: Easing.InOutSine }
+                }
+            }
+        }
+    }
+
+    component BotonMedio: Item {
+        id: boton
+        property string tipo: "play"
+        property bool grande: false
+        property bool activo: true
+        signal pulsado()
+        width: grande ? 36 : 30
+        height: 30
+        opacity: activo ? 1 : 0.35
+        Rectangle {
+            anchors.centerIn: parent
+            width: 30; height: 30; radius: 15
+            color: ratonBoton.containsMouse && boton.activo ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+        }
+        Canvas {
+            id: dibujo
+            anchors.centerIn: parent
+            width: 18; height: 18
+            property string t: boton.tipo
+            onTChanged: requestPaint()
+            onPaint: {
+                var c = getContext("2d")
+                c.reset()
+                c.fillStyle = "#ffffff"
+                function tri(x0, dir) {   // triangulo de 8 px de ancho apuntando a dir
+                    c.beginPath()
+                    if (dir > 0) { c.moveTo(x0, 4); c.lineTo(x0 + 8, 9); c.lineTo(x0, 14) }
+                    else { c.moveTo(x0 + 8, 4); c.lineTo(x0, 9); c.lineTo(x0 + 8, 14) }
+                    c.closePath(); c.fill()
+                }
+                if (t === "play") {
+                    c.beginPath(); c.moveTo(5, 2); c.lineTo(16, 9); c.lineTo(5, 16); c.closePath(); c.fill()
+                } else if (t === "pausa") {
+                    c.fillRect(4, 3, 3.5, 12); c.fillRect(10.5, 3, 3.5, 12)
+                } else if (t === "siguiente") {
+                    tri(2, 1); tri(9, 1)
+                } else {
+                    tri(1, -1); tri(8, -1)
+                }
+            }
+        }
+        MouseArea {
+            id: ratonBoton
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: boton.activo
+            cursorShape: Qt.PointingHandCursor
+            onClicked: boton.pulsado()
         }
     }
 }

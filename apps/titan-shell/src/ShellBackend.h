@@ -179,7 +179,11 @@ public:
     Q_INVOKABLE void clearNotifications();
     Q_INVOKABLE void removeNotification(int id);
     Q_INVOKABLE void dismissIsland();
-    Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString());
+    Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString(),
+                            const QStringList &actions = QStringList());
+    Q_INVOKABLE void invokeNotificationAction(int id, const QString &key);
+    void removeNotificationSilently(int id);
+    void closeNotificationByApp(int id);
     Q_INVOKABLE void openFinder();
     Q_INVOKABLE void suspend();
     Q_INVOKABLE void reboot();
@@ -233,6 +237,10 @@ public:
     Q_INVOKABLE void setVolume(qreal level);
 
 signals:
+    // Mismas firmas que NotificationsAdaptor: setAutoRelaySignals las publica en D-Bus.
+    void NotificationClosed(uint id, uint reason);
+    void ActionInvoked(uint id, const QString &action_key);
+
     void launcherVisibleChanged();
     void wallpaperPickerVisibleChanged();
     void controlCenterVisibleChanged();
@@ -267,6 +275,9 @@ signals:
     void lockScreenActiveChanged();
     
 private:
+    bool usarBloqueoSeguro() const;
+    bool takeNotification(int id);
+
     void updateBatteryStatus();
     void syncHardwareStatus();
 
