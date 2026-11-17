@@ -505,6 +505,18 @@ if (( ${#elfs_propios[@]} )); then
   info "${#elfs_propios[@]} binarios propios listos para cualquier CPU x86-64"
 fi
 
+# Escritorio completo (polkit, bloqueo, capturas, impresion, cortafuegos,
+# instantaneas, instalador con cifrado...): paquetes, scripts y configuracion.
+if [[ -x "${DISTRO}/verify/comprobar-escritorio-completo.sh" ]]; then
+  info "comprobando el escritorio completo (verify/comprobar-escritorio-completo.sh)"
+  if ! "${DISTRO}/verify/comprobar-escritorio-completo.sh" \
+       >"${WORK_DIR}/titan-escritorio-completo-test.log" 2>&1; then
+    red "Fallo la comprobacion del escritorio completo; fallos:"
+    grep -F 'FALLO' "${WORK_DIR}/titan-escritorio-completo-test.log" >&2
+    exit 1
+  fi
+fi
+
 if [[ -x "${DISTRO}/verify/comprobar-acerca.sh" ]]; then
   info "comprobando app Acerca y su entrada en el catalogo"
   if ! TITAN_ACERCA="${ACERCA}/build/titan-acerca" \
