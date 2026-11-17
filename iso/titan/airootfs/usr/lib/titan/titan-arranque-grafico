@@ -1,0 +1,16 @@
+#!/bin/bash
+# Inti OS - arranque del escritorio tras iniciar sesion con greetd.
+#
+# Es la misma sesion que en tty1: /etc/profile carga
+# /etc/profile.d/15-titan-grafico.sh, que elige compositor (Wayfire o labwc),
+# prepara la grafica y lo arranca. TITAN_DESDE_GREETD le dice que no hace
+# falta ser una shell interactiva en tty1, y a titan-shell que la sesion ya
+# esta autenticada (no muestra la pantalla de bloqueo al empezar).
+#
+# Cuando el escritorio se cierra, termina la sesion y greetd vuelve a
+# mostrar la pantalla de inicio.
+
+export TITAN_DESDE_GREETD=1
+cd "${HOME}" 2>/dev/null || cd /
+# shellcheck disable=SC1091
+. /etc/profile

@@ -1,0 +1,15 @@
+[Unit]
+Description=Inti OS: gestion de usuarios y grupos
+
+[Service]
+ExecStart=/usr/local/bin/titan-usuarios-helper
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=120
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes

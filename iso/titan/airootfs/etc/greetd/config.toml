@@ -1,0 +1,10 @@
+# Inti OS - gestor de inicio de sesion (solo en el sistema instalado; el
+# instalador activa greetd.service, el live sigue con entrada automatica).
+
+[terminal]
+vt = 1
+
+# Pantalla de inicio: titan-greeter dentro de cage, como usuario 'greeter'.
+[default_session]
+command = "/usr/lib/titan/titan-greeter-sesion"
+user = "greeter"
