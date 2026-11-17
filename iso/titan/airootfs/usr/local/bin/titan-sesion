@@ -59,5 +59,14 @@ lanzar_titan_shell() {
         chmod 0666 /tmp/.titan-display 2>/dev/null || true
     fi
     dbus-update-activation-environment --all 2>/dev/null || true
+
+    # Portapapeles compartido con el anfitrion en una VM (QEMU qemu-vdagent,
+    # virt-manager/SPICE). El agente es de X11: va por Xwayland, y el
+    # compositor pasa el portapapeles entre X11 y Wayland. spice-vdagentd
+    # (sistema) lo arranca udev al aparecer el puerto com.redhat.spice.0.
+    if [ -e /dev/virtio-ports/com.redhat.spice.0 ] && [ -n "$DISPLAY" ] \
+       && command -v spice-vdagent >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -x spice-vdagent >/dev/null; then
+        GDK_BACKEND=x11 spice-vdagent >/tmp/spice-vdagent.log 2>&1 || true
+    fi
 ) &
 

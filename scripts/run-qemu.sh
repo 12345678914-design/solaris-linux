@@ -207,8 +207,7 @@ if [[ -n "${bat_host_cap}" ]]; then
   args+=(
     -fw_cfg "name=opt/titan/battery,string=${bat_host_cap}|${bat_host_stat}|${ac_host_on}"
     -chardev "socket,id=batsock,path=${bat_sock},server=on,wait=off"
-    -device "virtio-serial"
-    -device "virtserialport,chardev=batsock,name=titan.battery"
+    -device "virtserialport,bus=vser0.0,chardev=batsock,name=titan.battery"
   )
 fi
 
@@ -284,6 +283,21 @@ if (( ! no_disk )); then
     )
     info "disco virtual conectado para instalación: ${disk_img} (bootindex=2)"
   fi
+fi
+
+# Puerto serie virtual unico (vser0) para los canales con el invitado.
+args+=(-device virtio-serial-pci,id=vser0)
+
+# Portapapeles compartido: QEMU hace de agente SPICE (qemu-vdagent) y la
+# ventana GTK lo conecta con el portapapeles del anfitrion. En el invitado,
+# spice-vdagentd arranca solo al ver el puerto y titan-sesion lanza el agente.
+# TITAN_QEMU_PORTAPAPELES=0 lo desactiva.
+if [[ "${TITAN_QEMU_PORTAPAPELES:-1}" == "1" ]]; then
+  args+=(
+    -chardev "qemu-vdagent,id=vdagent,clipboard=on,mouse=off"
+    -device "virtserialport,bus=vser0.0,chardev=vdagent,name=com.redhat.spice.0"
+  )
+  info "portapapeles compartido con el anfitrion (spice-vdagent)"
 fi
 
 # Soporte de dispositivos USB (físico del host o pendrive virtual de prueba)

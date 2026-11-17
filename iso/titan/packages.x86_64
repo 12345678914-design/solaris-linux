@@ -166,6 +166,8 @@ tmux
 wayfire
 labwc
 xorg-xwayland
+# Portapapeles compartido con el anfitrion cuando corre en una VM
+spice-vdagent
 dbus
 qt6-base
 qt6-wayland
