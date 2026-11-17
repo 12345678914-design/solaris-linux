@@ -160,9 +160,11 @@ ln -sfn /usr/share/fastfetch/presets/titan.jsonc \
 
 # ------------------------------------------- 2b. escritorio grafico ---------
 #
-# Labwc inicia titan-desktop y titan-shell desde su autostart.
-# El perfil 15-titan-grafico.sh inicia la sesion grafica en tty1.
-log "escritorio: Labwc y titan-shell"
+# El perfil 15-titan-grafico.sh inicia la sesion grafica en tty1: Wayfire si
+# hay GPU con 3D, labwc si no. Las dos lanzan titan-desktop y titan-shell con
+# /usr/local/bin/titan-sesion (labwc desde su autostart, Wayfire desde
+# [autostart] de ~/.config/wayfire.ini).
+log "escritorio: Wayfire/labwc y titan-shell"
 
 for fichero in \
     /usr/local/bin/titan-shell \
@@ -172,6 +174,8 @@ for fichero in \
     /usr/local/bin/titan-panel \
     /usr/local/bin/titan-acerca \
     /usr/local/bin/titan-audio-setup \
+    /usr/local/bin/titan-sesion \
+    /etc/skel/.config/wayfire.ini \
     /usr/share/applications/titan-acerca.desktop \
     /etc/titan/base.conf \
     /etc/profile.d/15-titan-grafico.sh \

@@ -86,10 +86,7 @@ elif command -v calamares >/dev/null 2>&1 && calamares --version >/dev/null 2>&1
 elif [ -x /usr/bin/calamares ] && /usr/bin/calamares --version >/dev/null 2>&1; then
     echo -e "${VERDE}[ OK ] Iniciando interfaz gráfica de Calamares (/usr/bin/calamares)...${SIN_COLOR}"
     exec /usr/bin/calamares -d "$@"
-# Prioridad 3: Asistente GUI alternativo o instalador base del sistema
-elif [ -x /root/instalador/ventana-gui.py ]; then
-    echo -e "${AMARILLO}[ AVISO ] Iniciando instalador gráfico Inti OS (ventana-gui)...${SIN_COLOR}"
-    exec /root/instalador/ventana-gui.py "$@"
+# Prioridad 3: instalador de consola
 elif [ -x /root/install.sh ]; then
     echo -e "${AMARILLO}[ AVISO ] Iniciando instalador de consola de Titan...${SIN_COLOR}"
     exec /root/install.sh "$@"

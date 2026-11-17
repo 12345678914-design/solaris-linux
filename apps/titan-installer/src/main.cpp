@@ -51,6 +51,10 @@ int main(int argc, char *argv[])
     if (modoComprobar) {
         std::cout << "titan-installer=ok" << std::endl;
         std::cout << "interfaz=calamares-native" << std::endl;
+        // Los discos que se ofrecerian, para poder comprobar desde la consola
+        // que el USB del live no sale y que el resto si.
+        for (const QVariant &d : backend.disks())
+            std::cout << "disco=" << d.toMap().value(QStringLiteral("name")).toString().toStdString() << std::endl;
         return 0;
     }
 

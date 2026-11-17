@@ -10,10 +10,82 @@ TitanWindow {
     minimumWidth: 800
     minimumHeight: 520
     title: "Instalador de Inti OS"
-    showSidebar: false
+    showSidebar: true
+    expandedSidebarWidth: 236
     showStatusBar: false
 
     TitanTheme { id: theme }
+
+    // ---------- Colores del tema (claro y oscuro) ----------
+    // Antes todo el texto era blanco fijo: con el tema claro no se leía.
+    readonly property bool dark: window.theme.isDark
+    readonly property color txt: window.theme.contentTextPrimary
+    readonly property color txt2: window.theme.contentTextSecondary
+    readonly property color accent: window.theme.accent
+    readonly property color okColor: "#34c759"
+    readonly property color warnColor: dark ? "#ff9f0a" : "#c66b00"
+    readonly property color errColor: dark ? "#ff453a" : "#d70015"
+    // Velo: blanco translúcido en oscuro, negro translúcido en claro.
+    function veil(a) { return dark ? Qt.rgba(1, 1, 1, a) : Qt.rgba(0, 0, 0, a * 0.7) }
+    function tintOf(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+    // ---------- Controles con estilo propio ----------
+    component Boton: Button {
+        id: btn
+        font.pixelSize: 13
+        font.weight: btn.highlighted ? Font.DemiBold : Font.Normal
+        implicitHeight: 32
+        leftPadding: 18
+        rightPadding: 18
+        contentItem: Text {
+            text: btn.text
+            font: btn.font
+            color: btn.highlighted ? "#ffffff" : window.txt
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        background: Rectangle {
+            radius: 8
+            opacity: btn.enabled ? 1.0 : 0.45
+            color: btn.highlighted
+                   ? (btn.down ? Qt.darker(window.accent, 1.15) : (btn.hovered ? Qt.lighter(window.accent, 1.08) : window.accent))
+                   : (btn.down ? window.veil(0.16) : (btn.hovered ? window.veil(0.11) : window.veil(0.06)))
+            border.width: btn.highlighted ? 0 : 1
+            border.color: window.veil(0.12)
+            Behavior on color { ColorAnimation { duration: 120 } }
+        }
+    }
+
+    component Campo: TextField {
+        id: campo
+        font.pixelSize: 13
+        implicitHeight: 34
+        leftPadding: 10
+        rightPadding: 10
+        color: window.txt
+        placeholderTextColor: window.txt2
+        selectionColor: window.accent
+        selectedTextColor: "#ffffff"
+        background: Rectangle {
+            radius: 8
+            color: window.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.9)
+            border.width: campo.activeFocus ? 2 : 1
+            border.color: campo.activeFocus ? window.accent : window.veil(0.16)
+        }
+    }
+
+    // Título y subtítulo de cada paso, iguales en todos.
+    component Titulo: Text {
+        color: window.txt
+        font.pixelSize: window.theme.fontTitle
+        font.weight: Font.Bold
+    }
+    component Subtitulo: Text {
+        color: window.txt2
+        font.pixelSize: window.theme.fontBody
+        wrapMode: Text.WordWrap
+    }
 
     property var steps: [
         "Bienvenida",
@@ -31,91 +103,126 @@ TitanWindow {
     property string selectedFs: "ext4"
     property bool autoLogin: false
 
-    RowLayout {
-        anchors.fill: parent
-        spacing: 0
+    // Lo que impide crear la cuenta, o "" si se puede. Las mismas reglas que
+    // useradd: si el nombre no las cumple, la cuenta no se crea y el sistema
+    // instalado se queda sin usuario.
+    function accountError() {
+        var u = userField.text
+        if (u.length === 0) return "Escribe un nombre de usuario."
+        if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(u))
+            return "El usuario solo puede llevar minúsculas, números, '-' y '_', y empezar por letra."
+        if (["root", "bin", "daemon", "mail", "ftp", "http", "nobody", "dbus"].indexOf(u) !== -1)
+            return "El nombre '" + u + "' está reservado por el sistema."
+        if (!/^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(hostnameField.text))
+            return "El nombre del equipo solo puede llevar letras, números y '-'."
+        if (passField.text.length < 4) return "La contraseña debe tener al menos 4 caracteres."
+        if (passField.text !== confirmPassField.text) return "Las contraseñas no coinciden."
+        return ""
+    }
 
-        // ==============================================================================
-        // BARRA LATERAL IZQUIERDA (PASOS DE INSTALACIÓN)
-        // ==============================================================================
-        Rectangle {
-            Layout.fillHeight: parent
-            Layout.preferredWidth: 230
-            color: Qt.rgba(0.08, 0.08, 0.12, 0.85)
-            border.color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
 
+    // ==============================================================================
+    // BARRA LATERAL (PASOS DE INSTALACIÓN): la tarjeta flotante de TitanWindow
+    // ==============================================================================
+    sidebarContentData: [
+        Column {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            anchors.topMargin: 6
+            spacing: 14
+
+            // Logo y Título
+            Row {
+                spacing: 12
+                Image {
+                    source: "qrc:/icons/solaris-logo.png"
+                    width: 38
+                    height: 38
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "Inti OS"
+                        color: window.txt
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+                    Text {
+                        text: "Instalador del Sistema"
+                        color: window.txt2
+                        font.pixelSize: 11
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: window.veil(0.1)
+            }
+
+            // Lista de Pasos: el actual va en una fila resaltada (como una
+            // barra lateral de macOS); los hechos llevan ✓ en verde.
             Column {
-                anchors.fill: parent
-                anchors.margins: 20
-                spacing: 16
-
-                // Logo y Título
-                Row {
-                    spacing: 12
-                    Image {
-                        source: "qrc:/icons/solaris-logo.png"
-                        width: 38
-                        height: 38
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                    }
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            text: "Inti OS"
-                            color: "#ffffff"
-                            font.pixelSize: 15
-                            font.bold: true
-                        }
-                        Text {
-                            text: "Instalador del Sistema"
-                            color: "#8e8e93"
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: Qt.rgba(1, 1, 1, 0.1)
-                }
-
-                // Lista de Pasos
+                width: parent.width
+                spacing: 2
                 Repeater {
                     model: steps
-                    delegate: Row {
-                        spacing: 12
-                        opacity: installerBackend.currentStep === index ? 1.0 : (index < installerBackend.currentStep ? 0.8 : 0.4)
+                    delegate: Rectangle {
+                        id: stepRow
+                        required property int index
+                        required property string modelData
+                        readonly property bool current: installerBackend.currentStep === index
+                        readonly property bool done: index < installerBackend.currentStep
+                        width: parent.width
+                        height: 32
+                        radius: 8
+                        color: current ? window.tintOf(window.accent, window.dark ? 0.30 : 0.16) : "transparent"
+                        Behavior on color { ColorAnimation { duration: 160 } }
 
-                        Rectangle {
-                            width: 24
-                            height: 24
-                            radius: 12
-                            color: index < installerBackend.currentStep ? "#34c759" : (installerBackend.currentStep === index ? "#007aff" : Qt.rgba(1, 1, 1, 0.1))
+                        Row {
                             anchors.verticalCenter: parent.verticalCenter
+                            x: 8
+                            spacing: 10
+
+                            Rectangle {
+                                width: 20
+                                height: 20
+                                radius: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: stepRow.done ? window.okColor : (stepRow.current ? window.accent : "transparent")
+                                border.width: (stepRow.done || stepRow.current) ? 0 : 1.5
+                                border.color: window.veil(0.3)
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: stepRow.done ? "✓" : (stepRow.index + 1)
+                                    color: (stepRow.done || stepRow.current) ? "#ffffff" : window.txt2
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                            }
 
                             Text {
-                                anchors.centerIn: parent
-                                text: index < installerBackend.currentStep ? "✓" : (index + 1)
-                                color: "#ffffff"
-                                font.pixelSize: 11
-                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: stepRow.modelData
+                                color: stepRow.current || stepRow.done ? window.txt : window.txt2
+                                font.pixelSize: 13
+                                font.weight: stepRow.current ? Font.DemiBold : Font.Normal
                             }
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData
-                            color: "#ffffff"
-                            font.pixelSize: 13
-                            font.bold: installerBackend.currentStep === index
                         }
                     }
                 }
             }
         }
+    ]
+
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
 
         // ==============================================================================
         // ÁREA DE CONTENIDO PRINCIPAL
@@ -154,7 +261,7 @@ TitanWindow {
 
                             Text {
                                 text: "Bienvenido a Inti OS"
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 22
                                 font.bold: true
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -162,7 +269,7 @@ TitanWindow {
 
                             Text {
                                 text: "Este instalador configurará Inti OS en tu equipo con la interfaz inspirada en macOS, compatibilidad universal de hardware y alto rendimiento."
-                                color: "#a1a1aa"
+                                color: window.txt2
                                 font.pixelSize: 13
                                 wrapMode: Text.WordWrap
                                 horizontalAlignment: Text.AlignHCenter
@@ -174,8 +281,8 @@ TitanWindow {
                                 width: parent.width
                                 height: 120
                                 radius: 10
-                                color: Qt.rgba(1, 1, 1, 0.05)
-                                border.color: Qt.rgba(1, 1, 1, 0.1)
+                                color: window.veil(0.05)
+                                border.color: window.veil(0.1)
 
                                 Column {
                                     anchors.fill: parent
@@ -184,18 +291,18 @@ TitanWindow {
 
                                     Row {
                                         spacing: 10
-                                        Text { text: installerBackend.reqRamOk ? "✓" : "✗"; color: installerBackend.reqRamOk ? "#34c759" : "#ff3b30"; font.bold: true }
-                                        Text { text: "Memoria RAM: " + Math.round(installerBackend.ramMb / 1024) + " GB detectados (mínimo 2 GB)"; color: "#ffffff"; font.pixelSize: 12 }
+                                        Text { text: installerBackend.reqRamOk ? "✓" : "✗"; color: installerBackend.reqRamOk ? window.okColor : window.errColor; font.bold: true }
+                                        Text { text: "Memoria RAM: " + Math.round(installerBackend.ramMb / 1024) + " GB detectados (mínimo 2 GB)"; color: window.txt; font.pixelSize: 12 }
                                     }
                                     Row {
                                         spacing: 10
-                                        Text { text: installerBackend.reqDiskOk ? "✓" : "✗"; color: installerBackend.reqDiskOk ? "#34c759" : "#ff3b30"; font.bold: true }
-                                        Text { text: installerBackend.reqDiskOk ? ("Discos disponibles: " + installerBackend.disks.length + " unidad(es) de almacenamiento") : "No se ha detectado ningún disco duro o SSD"; color: "#ffffff"; font.pixelSize: 12 }
+                                        Text { text: installerBackend.reqDiskOk ? "✓" : "✗"; color: installerBackend.reqDiskOk ? window.okColor : window.errColor; font.bold: true }
+                                        Text { text: installerBackend.reqDiskOk ? ("Discos disponibles: " + installerBackend.disks.length + " unidad(es) de almacenamiento") : "No se ha detectado ningún disco duro o SSD"; color: window.txt; font.pixelSize: 12 }
                                     }
                                     Row {
                                         spacing: 10
-                                        Text { text: installerBackend.reqPowerOk ? "✓" : "!"; color: installerBackend.reqPowerOk ? "#34c759" : "#ff9500"; font.bold: true }
-                                        Text { text: installerBackend.reqPowerOk ? "Alimentación eléctrica: Conectado a la corriente" : "Aviso: batería baja en el portátil"; color: "#ffffff"; font.pixelSize: 12 }
+                                        Text { text: installerBackend.reqPowerOk ? "✓" : "!"; color: installerBackend.reqPowerOk ? window.okColor : window.warnColor; font.bold: true }
+                                        Text { text: installerBackend.reqPowerOk ? "Alimentación eléctrica: Conectado a la corriente" : "Aviso: batería baja en el portátil"; color: window.txt; font.pixelSize: 12 }
                                     }
                                 }
                             }
@@ -212,19 +319,19 @@ TitanWindow {
 
                             Text {
                                 text: "Ubicación, Región y Teclado"
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 18
                                 font.bold: true
                             }
 
                             Text {
                                 text: "Selecciona tu zona horaria y la distribución de teclado que prefieras."
-                                color: "#a1a1aa"
+                                color: window.txt2
                                 font.pixelSize: 12
                             }
 
                             // Zona horaria
-                            Text { text: "Zona Horaria:"; color: "#ffffff"; font.pixelSize: 13; font.bold: true }
+                            Text { text: "Zona Horaria:"; color: window.txt; font.pixelSize: 13; font.bold: true }
                             ComboBox {
                                 width: parent.width
                                 model: [
@@ -242,7 +349,7 @@ TitanWindow {
                             }
 
                             // Distribución de teclado
-                            Text { text: "Distribución de Teclado:"; color: "#ffffff"; font.pixelSize: 13; font.bold: true }
+                            Text { text: "Distribución de Teclado:"; color: window.txt; font.pixelSize: 13; font.bold: true }
                             ComboBox {
                                 width: parent.width
                                 model: ["es (Español)", "latam (Latinoamericano)", "us (Inglés EE. UU.)"]
@@ -254,11 +361,11 @@ TitanWindow {
                                 }
                             }
 
-                            Text { text: "Prueba tu teclado aquí:"; color: "#a1a1aa"; font.pixelSize: 12 }
-                            TextField {
+                            Text { text: "Prueba tu teclado aquí:"; color: window.txt2; font.pixelSize: 12 }
+                            Campo {
                                 width: parent.width
                                 placeholderText: "Escribe aquí para verificar caracteres: ñ, á, @, #, €..."
-                                color: "#ffffff"
+                                color: window.txt
                             }
                         }
                     }
@@ -278,14 +385,23 @@ TitanWindow {
 
                                 Text {
                                     text: "Seleccionar Disco y Particionamiento"
-                                    color: "#ffffff"
+                                    color: window.txt
                                     font.pixelSize: 18
                                     font.bold: true
                                 }
 
                                 Text {
                                     text: "Elige la unidad donde se instalará Inti OS y el esquema de particionado."
-                                    color: "#a1a1aa"
+                                    color: window.txt2
+                                    font.pixelSize: 12
+                                }
+
+                                Text {
+                                    visible: installerBackend.disks.length === 0
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: "No se ha encontrado ningún disco donde instalar (de al menos 8 GB). El USB desde el que arranca Inti OS no se muestra, para no borrarlo por error."
+                                    color: window.warnColor
                                     font.pixelSize: 12
                                 }
 
@@ -300,8 +416,8 @@ TitanWindow {
                                         width: parent.width
                                         height: 52
                                         radius: 8
-                                        color: installerBackend.selectedDiskIndex === index ? Qt.rgba(0, 0.48, 1, 0.25) : Qt.rgba(1, 1, 1, 0.05)
-                                        border.color: installerBackend.selectedDiskIndex === index ? "#007aff" : Qt.rgba(1, 1, 1, 0.12)
+                                        color: installerBackend.selectedDiskIndex === index ? window.tintOf(window.accent, 0.25) : window.veil(0.05)
+                                        border.color: installerBackend.selectedDiskIndex === index ? window.accent : window.veil(0.12)
                                         border.width: installerBackend.selectedDiskIndex === index ? 2 : 1
 
                                         Row {
@@ -319,14 +435,14 @@ TitanWindow {
                                             Column {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 Text {
-                                                    text: modelData.path + " — " + modelData.size + " (" + modelData.tran + ")"
-                                                    color: "#ffffff"
+                                                    text: modelData.path + " — " + modelData.size + (modelData.tran ? " (" + modelData.tran + ")" : "")
+                                                    color: window.txt
                                                     font.pixelSize: 13
                                                     font.bold: true
                                                 }
                                                 Text {
                                                     text: modelData.model
-                                                    color: "#8e8e93"
+                                                    color: window.txt2
                                                     font.pixelSize: 11
                                                 }
                                             }
@@ -342,7 +458,7 @@ TitanWindow {
 
                                 Text {
                                     text: "Esquema de Instalación:"
-                                    color: "#ffffff"
+                                    color: window.txt
                                     font.pixelSize: 13
                                     font.bold: true
                                 }
@@ -352,8 +468,8 @@ TitanWindow {
                                     width: parent.width
                                     height: 50
                                     radius: 8
-                                    color: !installerBackend.manualPartitioning ? Qt.rgba(0, 0.48, 1, 0.2) : Qt.rgba(1, 1, 1, 0.05)
-                                    border.color: !installerBackend.manualPartitioning ? "#007aff" : Qt.rgba(1, 1, 1, 0.12)
+                                    color: !installerBackend.manualPartitioning ? window.tintOf(window.accent, 0.2) : window.veil(0.05)
+                                    border.color: !installerBackend.manualPartitioning ? window.accent : window.veil(0.12)
 
                                     Row {
                                         anchors.fill: parent
@@ -370,13 +486,13 @@ TitanWindow {
                                             anchors.verticalCenter: parent.verticalCenter
                                             Text {
                                                 text: "Borrar disco e instalar automáticamente"
-                                                color: "#ffffff"
+                                                color: window.txt
                                                 font.pixelSize: 12
                                                 font.bold: true
                                             }
                                             Text {
                                                 text: "Crea automáticamente la partición EFI (/boot/efi de 512M) y la partición Raíz (/)."
-                                                color: "#a1a1aa"
+                                                color: window.txt2
                                                 font.pixelSize: 10
                                             }
                                         }
@@ -393,8 +509,9 @@ TitanWindow {
                                 Row {
                                     visible: !installerBackend.manualPartitioning
                                     spacing: 12
-                                    Text { text: "Sistema de archivos:"; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 12 }
+                                    Text { text: "Sistema de archivos:"; color: window.txt; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 12 }
                                     ComboBox {
+                                        implicitWidth: 210
                                         model: ["ext4 (Recomendado)", "btrfs"]
                                         currentIndex: 0
                                         onActivated: window.selectedFs = (index === 0) ? "ext4" : "btrfs"
@@ -406,8 +523,8 @@ TitanWindow {
                                     width: parent.width
                                     height: 50
                                     radius: 8
-                                    color: installerBackend.manualPartitioning ? Qt.rgba(0, 0.48, 1, 0.2) : Qt.rgba(1, 1, 1, 0.05)
-                                    border.color: installerBackend.manualPartitioning ? "#007aff" : Qt.rgba(1, 1, 1, 0.12)
+                                    color: installerBackend.manualPartitioning ? window.tintOf(window.accent, 0.2) : window.veil(0.05)
+                                    border.color: installerBackend.manualPartitioning ? window.accent : window.veil(0.12)
 
                                     Row {
                                         anchors.fill: parent
@@ -424,13 +541,13 @@ TitanWindow {
                                             anchors.verticalCenter: parent.verticalCenter
                                             Text {
                                                 text: "Particionamiento manual (Puntos de montaje, tamaños y formatos)"
-                                                color: "#ffffff"
+                                                color: window.txt
                                                 font.pixelSize: 12
                                                 font.bold: true
                                             }
                                             Text {
                                                 text: "Configura tus propias particiones, puntos de montaje (/boot/efi, /, /home) y tamaños."
-                                                color: "#a1a1aa"
+                                                color: window.txt2
                                                 font.pixelSize: 10
                                             }
                                         }
@@ -453,15 +570,15 @@ TitanWindow {
                                     Rectangle {
                                         width: parent.width
                                         height: 26
-                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                        color: window.veil(0.08)
                                         radius: 4
                                         Row {
                                             anchors.fill: parent
                                             anchors.margins: 6
-                                            Text { width: 140; text: "Punto de Montaje"; color: "#a1a1aa"; font.pixelSize: 11; font.bold: true }
-                                            Text { width: 120; text: "Tamaño (MiB)"; color: "#a1a1aa"; font.pixelSize: 11; font.bold: true }
-                                            Text { width: 110; text: "Formato"; color: "#a1a1aa"; font.pixelSize: 11; font.bold: true }
-                                            Text { text: "Acción"; color: "#a1a1aa"; font.pixelSize: 11; font.bold: true }
+                                            Text { width: 140; text: "Punto de Montaje"; color: window.txt2; font.pixelSize: 11; font.bold: true }
+                                            Text { width: 120; text: "Tamaño (MiB)"; color: window.txt2; font.pixelSize: 11; font.bold: true }
+                                            Text { width: 110; text: "Formato"; color: window.txt2; font.pixelSize: 11; font.bold: true }
+                                            Text { text: "Acción"; color: window.txt2; font.pixelSize: 11; font.bold: true }
                                         }
                                     }
 
@@ -472,8 +589,8 @@ TitanWindow {
                                             width: parent.width
                                             height: 40
                                             radius: 6
-                                            color: Qt.rgba(1, 1, 1, 0.04)
-                                            border.color: Qt.rgba(1, 1, 1, 0.08)
+                                            color: window.veil(0.04)
+                                            border.color: window.veil(0.08)
 
                                             Row {
                                                 anchors.fill: parent
@@ -491,10 +608,10 @@ TitanWindow {
                                                 }
 
                                                 // Campo de tamaño
-                                                TextField {
+                                                Campo {
                                                     width: 112
                                                     text: modelData.size === 0 ? "Restante" : modelData.size.toString()
-                                                    color: "#ffffff"
+                                                    color: window.txt
                                                     placeholderText: "0 = Todo"
                                                     onEditingFinished: {
                                                         var val = parseInt(text) || 0
@@ -513,7 +630,7 @@ TitanWindow {
                                                 }
 
                                                 // Botón eliminar
-                                                Button {
+                                                Boton {
                                                     text: "✕"
                                                     width: 32
                                                     height: 32
@@ -526,15 +643,15 @@ TitanWindow {
                                     // Botones de acción manual
                                     Row {
                                         spacing: 8
-                                        Button {
+                                        Boton {
                                             text: "+ Añadir Partición"
                                             onClicked: installerBackend.addManualPartition("/home", 10240, "ext4")
                                         }
-                                        Button {
+                                        Boton {
                                             text: "Restablecer esquema recomendado"
                                             onClicked: installerBackend.resetDefaultPartitions()
                                         }
-                                        Button {
+                                        Boton {
                                             text: "Particionador Externo (GParted)"
                                             onClicked: installerBackend.openExternalPartitioner()
                                         }
@@ -543,7 +660,7 @@ TitanWindow {
                                     // Validación del esquema
                                     Text {
                                         text: installerBackend.validatePartitionPlan()
-                                        color: "#ff3b30"
+                                        color: window.errColor
                                         font.pixelSize: 11
                                         font.bold: true
                                         visible: text !== ""
@@ -554,13 +671,13 @@ TitanWindow {
                                     width: parent.width
                                     height: 34
                                     radius: 6
-                                    color: Qt.rgba(1, 0.23, 0.19, 0.15)
-                                    border.color: "#ff3b30"
+                                    color: window.tintOf(window.errColor, 0.15)
+                                    border.color: window.errColor
                                     Row {
                                         anchors.centerIn: parent
                                         spacing: 8
-                                        Text { text: "⚠"; color: "#ff3b30"; font.bold: true }
-                                        Text { text: "Se borrarán los datos contenidos en el disco seleccionado."; color: "#ffffff"; font.pixelSize: 11 }
+                                        Text { text: "⚠"; color: window.errColor; font.bold: true }
+                                        Text { text: "Se borrarán los datos contenidos en el disco seleccionado."; color: window.txt; font.pixelSize: 11 }
                                     }
                                 }
                             }
@@ -577,33 +694,33 @@ TitanWindow {
 
                             Text {
                                 text: "Crear Cuenta de Usuario"
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 18
                                 font.bold: true
                             }
 
-                            Text { text: "¿Cuál es tu nombre?"; color: "#ffffff"; font.pixelSize: 12 }
-                            TextField {
+                            Text { text: "¿Cuál es tu nombre?"; color: window.txt; font.pixelSize: 12 }
+                            Campo {
                                 id: fullNameField
                                 width: parent.width
                                 text: "Usuario Inti"
-                                color: "#ffffff"
+                                color: window.txt
                             }
 
-                            Text { text: "Nombre de usuario (para inicio de sesión):"; color: "#ffffff"; font.pixelSize: 12 }
-                            TextField {
+                            Text { text: "Nombre de usuario (para inicio de sesión):"; color: window.txt; font.pixelSize: 12 }
+                            Campo {
                                 id: userField
                                 width: parent.width
                                 text: "inti"
-                                color: "#ffffff"
+                                color: window.txt
                             }
 
-                            Text { text: "Nombre del equipo (Hostname):"; color: "#ffffff"; font.pixelSize: 12 }
-                            TextField {
+                            Text { text: "Nombre del equipo (Hostname):"; color: window.txt; font.pixelSize: 12 }
+                            Campo {
                                 id: hostnameField
                                 width: parent.width
                                 text: "inti-pc"
-                                color: "#ffffff"
+                                color: window.txt
                             }
 
                             Row {
@@ -612,31 +729,40 @@ TitanWindow {
                                 Column {
                                     width: parent.width / 2 - 8
                                     spacing: 4
-                                    Text { text: "Contraseña:"; color: "#ffffff"; font.pixelSize: 12 }
-                                    TextField {
+                                    Text { text: "Contraseña:"; color: window.txt; font.pixelSize: 12 }
+                                    Campo {
                                         id: passField
                                         width: parent.width
-                                        text: "1234"
+                                        text: ""
                                         echoMode: TextInput.Password
-                                        color: "#ffffff"
+                                        color: window.txt
                                     }
                                 }
                                 Column {
                                     width: parent.width / 2 - 8
                                     spacing: 4
-                                    Text { text: "Confirmar contraseña:"; color: "#ffffff"; font.pixelSize: 12 }
-                                    TextField {
+                                    Text { text: "Confirmar contraseña:"; color: window.txt; font.pixelSize: 12 }
+                                    Campo {
                                         id: confirmPassField
                                         width: parent.width
-                                        text: "1234"
+                                        text: ""
                                         echoMode: TextInput.Password
-                                        color: "#ffffff"
+                                        color: window.txt
                                     }
                                 }
                             }
 
+                            Text {
+                                visible: window.accountError() !== ""
+                                text: window.accountError()
+                                color: window.warnColor
+                                font.pixelSize: 12
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                            }
+
                             CheckBox {
-                                text: "Iniciar sesión automáticamente sin solicitar contraseña"
+                                text: "Entrar automáticamente la primera vez (después pedirá la contraseña)"
                                 checked: window.autoLogin
                                 onToggled: window.autoLogin = checked
                             }
@@ -653,14 +779,14 @@ TitanWindow {
 
                             Text {
                                 text: "Resumen de Instalación"
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 18
                                 font.bold: true
                             }
 
                             Text {
                                 text: "Por favor revisa la configuración antes de proceder con el formateo e instalación."
-                                color: "#a1a1aa"
+                                color: window.txt2
                                 font.pixelSize: 12
                             }
 
@@ -668,19 +794,19 @@ TitanWindow {
                                 width: parent.width
                                 height: 160
                                 radius: 8
-                                color: Qt.rgba(1, 1, 1, 0.05)
-                                border.color: Qt.rgba(1, 1, 1, 0.12)
+                                color: window.veil(0.05)
+                                border.color: window.veil(0.12)
 
                                 Column {
                                     anchors.fill: parent
                                     anchors.margins: 14
                                     spacing: 10
 
-                                    Text { text: "• Disco de destino: " + installerBackend.selectedDiskName; color: "#ffffff"; font.bold: true }
-                                    Text { text: "• Particionamiento: " + (installerBackend.manualPartitioning ? ("Manual (" + installerBackend.manualPartitions.length + " particiones configuradas)") : ("Automático (" + window.selectedFs + ")")); color: "#ffffff" }
-                                    Text { text: "• Modo de arranque: " + (installerBackend.isUefi ? "UEFI (GPT)" : "BIOS Legacy (MBR)"); color: "#ffffff" }
-                                    Text { text: "• Usuario: " + userField.text + " (" + hostnameField.text + ")"; color: "#ffffff" }
-                                    Text { text: "• Región y Teclado: " + window.selectedTimezone + " / " + window.selectedKeymap; color: "#ffffff" }
+                                    Text { text: "• Disco de destino: " + installerBackend.selectedDiskName; color: window.txt; font.bold: true }
+                                    Text { text: "• Particionamiento: " + (installerBackend.manualPartitioning ? ("Manual (" + installerBackend.manualPartitions.length + " particiones configuradas)") : ("Automático (" + window.selectedFs + ")")); color: window.txt }
+                                    Text { text: "• Modo de arranque: " + (installerBackend.isUefi ? "UEFI (GPT)" : "BIOS Legacy (MBR)"); color: window.txt }
+                                    Text { text: "• Usuario: " + userField.text + " (" + hostnameField.text + ")"; color: window.txt }
+                                    Text { text: "• Región y Teclado: " + window.selectedTimezone + " / " + window.selectedKeymap; color: window.txt }
                                 }
                             }
 
@@ -688,13 +814,13 @@ TitanWindow {
                                 width: parent.width
                                 height: 42
                                 radius: 6
-                                color: Qt.rgba(1, 0.23, 0.19, 0.2)
-                                border.color: "#ff3b30"
+                                color: window.tintOf(window.errColor, 0.2)
+                                border.color: window.errColor
                                 Row {
                                     anchors.centerIn: parent
                                     spacing: 8
-                                    Text { text: "⚠"; color: "#ff3b30"; font.bold: true; font.pixelSize: 16 }
-                                    Text { text: "Al pulsar 'Instalar Ahora' se aplicarán los cambios permanentemente en el disco."; color: "#ffffff"; font.pixelSize: 12 }
+                                    Text { text: "⚠"; color: window.errColor; font.bold: true; font.pixelSize: 16 }
+                                    Text { text: "Al pulsar 'Instalar Ahora' se aplicarán los cambios permanentemente en el disco."; color: window.txt; font.pixelSize: 12 }
                                 }
                             }
                         }
@@ -719,7 +845,7 @@ TitanWindow {
 
                             Text {
                                 text: "Instalando Inti OS..."
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 20
                                 font.bold: true
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -730,13 +856,13 @@ TitanWindow {
                                 width: parent.width
                                 height: 12
                                 radius: 6
-                                color: Qt.rgba(1, 1, 1, 0.1)
+                                color: window.veil(0.1)
 
                                 Rectangle {
                                     width: parent.width * (installerBackend.progressPercent / 100.0)
                                     height: parent.height
                                     radius: 6
-                                    color: "#007aff"
+                                    color: window.accent
                                     Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                                 }
                             }
@@ -748,14 +874,14 @@ TitanWindow {
                                     anchors.left: parent.left
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: installerBackend.progressMessage
-                                    color: "#a1a1aa"
+                                    color: window.txt2
                                     font.pixelSize: 12
                                 }
                                 Text {
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: installerBackend.progressPercent + "%"
-                                    color: "#ffffff"
+                                    color: window.txt
                                     font.bold: true
                                     font.pixelSize: 12
                                 }
@@ -763,11 +889,28 @@ TitanWindow {
 
                             Text {
                                 visible: installerBackend.errorMessage !== ""
-                                text: "Error: " + installerBackend.errorMessage
-                                color: "#ff3b30"
+                                text: "La instalación no se ha completado.\n" + installerBackend.errorMessage
+                                color: window.errColor
                                 font.pixelSize: 12
                                 wrapMode: Text.WordWrap
                                 width: parent.width
+                            }
+
+                            // Si falla, que haya salida: antes la pantalla se
+                            // quedaba sin ningún botón.
+                            Row {
+                                visible: !installerBackend.installing && installerBackend.errorMessage !== ""
+                                spacing: 14
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                Boton {
+                                    text: "Cerrar instalador"
+                                    onClicked: installerBackend.closeInstaller()
+                                }
+                                Boton {
+                                    text: "Volver al resumen"
+                                    highlighted: true
+                                    onClicked: installerBackend.currentStep = 4
+                                }
                             }
                         }
                     }
@@ -785,13 +928,13 @@ TitanWindow {
                                 width: 64
                                 height: 64
                                 radius: 32
-                                color: "#34c759"
+                                color: window.okColor
                                 anchors.horizontalCenter: parent.horizontalCenter
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: "✓"
-                                    color: "#ffffff"
+                                    color: window.txt
                                     font.pixelSize: 32
                                     font.bold: true
                                 }
@@ -799,15 +942,18 @@ TitanWindow {
 
                             Text {
                                 text: "¡Instalación Completada!"
-                                color: "#ffffff"
+                                color: window.txt
                                 font.pixelSize: 22
                                 font.bold: true
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
 
                             Text {
-                                text: "Inti OS se ha instalado con éxito en tu ordenador. Se ha configurado el arranque UEFI de tu disco como prioridad 1. Puedes retirar el medio USB y reiniciar el equipo para comenzar a utilizar tu nuevo sistema operativo."
-                                color: "#a1a1aa"
+                                text: "Inti OS se ha instalado con éxito en tu ordenador. "
+                                      + (installerBackend.isUefi ? "Se ha configurado el arranque UEFI de tu disco como prioridad 1. "
+                                                                 : "Se ha instalado GRUB en el disco. ")
+                                      + "Puedes retirar el medio USB y reiniciar el equipo para comenzar a utilizar tu nuevo sistema operativo."
+                                color: window.txt2
                                 font.pixelSize: 13
                                 wrapMode: Text.WordWrap
                                 horizontalAlignment: Text.AlignHCenter
@@ -818,12 +964,12 @@ TitanWindow {
                                 spacing: 14
                                 anchors.horizontalCenter: parent.horizontalCenter
 
-                                Button {
+                                Boton {
                                     text: "Continuar Probando"
                                     onClicked: installerBackend.closeInstaller()
                                 }
 
-                                Button {
+                                Boton {
                                     text: "Reiniciar Ahora"
                                     highlighted: true
                                     onClicked: installerBackend.rebootSystem()
@@ -840,26 +986,26 @@ TitanWindow {
                     Layout.fillWidth: true
                     visible: installerBackend.currentStep < 5
 
-                    Button {
+                    Boton {
                         text: "Cancelar"
                         onClicked: installerBackend.closeInstaller()
                     }
 
                     Item { Layout.fillWidth: true }
 
-                    Button {
+                    Boton {
                         text: "Atrás"
                         visible: installerBackend.currentStep > 0
                         onClicked: installerBackend.currentStep--
                     }
 
-                    Button {
+                    Boton {
                         text: installerBackend.currentStep === 4 ? "Instalar Ahora" : "Siguiente"
                         highlighted: true
                         enabled: {
                             if (installerBackend.currentStep === 0) return installerBackend.reqRamOk && installerBackend.reqDiskOk;
                             if (installerBackend.currentStep === 2) return installerBackend.disks.length > 0;
-                            if (installerBackend.currentStep === 3) return userField.text.length > 0 && passField.text.length > 0 && passField.text === confirmPassField.text;
+                            if (installerBackend.currentStep === 3) return window.accountError() === "";
                             return true;
                         }
                         onClicked: {

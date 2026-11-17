@@ -7,12 +7,6 @@
 #
 #     sudo install.sh
 #
-# O en modo GRAFICO, con ventana de GTK4 y libadwaita. La levanta cage, que
-# viene en el live; si el equipo no tiene dispositivo de grafica, avisa y sigue
-# en modo de texto, que instala igual de bien:
-#
-#     sudo install.sh --grafico
-#
 # Y se puede pasar un fichero de respuestas para no teclear nada (es lo que
 # usan las comprobaciones automaticas, y de paso deja claro que el instalador
 # no depende de que haya alguien delante):
@@ -31,26 +25,19 @@
 #   8. configura el sistema, la consola con historial y el terminal kitty
 #   9. instala las apps de la tienda y desmonta
 #
-# Las dos pantallas son el MISMO motor: no hay dos instaladores, hay una sola
-# logica de instalacion y dos maneras de preguntarle al usuario ('dialog' y
-# 'ventana-gui.py', que se reparten en 'ventana()'). La consola de texto sigue
-# disponible en todo momento (tty1, tty2 y el puerto serie): el modo grafico
-# levanta su propia pantalla encima y no se come la consola.
+# Este es el instalador de TEXTO, para equipos sin grafica, el puerto serie y
+# las comprobaciones automaticas. El instalador grafico es 'titan-installer'
+# (Qt 6), que se abre desde el escritorio del live con 'instalar'.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 AUTO="${TITAN_AUTOPILOTO:-0}"
 RESPUESTAS=""
-GRAFICO=0
-# Los argumentos tal cual han llegado, para poder volver a arrancar este mismo
-# programa dentro de cage (que es lo que hace '--grafico') sin perderlos.
-ARGUMENTOS=("$@")
 
 while (( $# )); do
   case "$1" in
     --autopiloto) AUTO=1 ;;
-    --grafico)    GRAFICO=1 ;;
     --respuestas) RESPUESTAS="${2:-}"; shift ;;
     -h|--help)    sed -n '3,/^# ---/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)            echo "Opcion desconocida: $1" >&2; exit 2 ;;
@@ -60,164 +47,6 @@ done
 
 export AUTO
 export TITAN_SILENCIO="${TITAN_SILENCIO:-0}"
-
-# --- la pantalla -------------------------------------------------------------
-#
-# asegura_asiento
-#
-# cage necesita un 'asiento' (seat) para poder dibujar en la tarjeta, y en el
-# live no hay ninguno. El de logind es el de la sesion de tty1, que es del
-# usuario normal, y el instalador va como root, que no tiene sesion propia: con
-# las dos cosas a la vez, cage muere con 'No backend was able to open a seat'
-# ANTES de dibujar nada, y sin decir por que (fallo 44).
-#
-# 'seatd' es justo para eso: un gestor de asientos minimo que ya viene en el
-# live (es dependencia de cage) y da un asiento a quien lo pida, root incluido.
-# Su socket es /run/seatd.sock, o el que diga $SEATD_SOCK, que es la variable
-# que mira libseat: el mismo codigo que usa cage, no uno inventado aqui.
-#
-# Devuelve 0 si hay asiento (ya estaba, o se acaba de abrir) y 1 si no se ha
-# podido, que es lo que hace que 'arranca_grafico' siga en modo de texto.
-#
-# Los diez intentos por 0,2 s son dos segundos: lo que se espera es a que seatd
-# llegue a enlazar su socket, no a que arranque el sistema entero.
-asegura_asiento() {
-  # El mismo socket que mira libseat. Con $SEATD_SOCK puesto se puede ensayar
-  # el camino de 'no hay asiento' sin tocar el del equipo.
-  local sock="${SEATD_SOCK:-/run/seatd.sock}"
-  if [[ -S "${sock}" ]]; then
-    return 0
-  fi
-  if ! command -v seatd >/dev/null 2>&1; then
-    echo "No esta 'seatd' en el sistema: cage no puede abrir un asiento," >&2
-    echo "y sin asiento no hay pantalla grafica. Se instala en modo" >&2
-    echo "de texto, que instala igual de bien." >&2
-    return 1
-  fi
-  if (( EUID != 0 )); then
-    echo "Abrir el asiento de la pantalla grafica pide root: arranca el" >&2
-    echo "instalador con 'sudo install.sh --grafico'. Se sigue en texto." >&2
-    return 1
-  fi
-  echo "Abriendo un asiento de pantalla para 'cage' (seatd)." >&2
-  # Con 'setsid' si lo hay, porque el asiento tiene que sobrevivir al
-  # instalador, que es quien lo abre. Sin el, cerrarse la consola se lleva por
-  # delante al asiento y cage se queda sin el a mitad de la instalacion.
-  if command -v setsid >/dev/null 2>&1; then
-    setsid seatd >/dev/null 2>&1 &
-  else
-    seatd >/dev/null 2>&1 &
-  fi
-  local intento
-  for intento in 1 2 3 4 5 6 7 8 9 10; do
-    if [[ -S "${sock}" ]]; then
-      return 0
-    fi
-    sleep 0.2
-  done
-  echo "El servicio del asiento (seatd) no ha abierto '${sock}'." >&2
-  return 1
-}
-
-# arranca_grafico
-#
-# Pone TITAN_GUI=1 si hay una pantalla, y si no la levanta con cage (un
-# compositor minimo, que esta en el live precisamente para esto) y vuelve a
-# arrancar este mismo programa dentro. Cuatro casos, y el tercero es el que
-# importa:
-#
-#   1. Ya hay sesion grafica (el live con escritorio, o una que haya abierto el
-#      usuario): se usa tal cual, sin tocar nada.
-#   2. No hay sesion pero hay dispositivo de grafica (/dev/dri) y se puede
-#      abrir un asiento: cage levanta una pantalla y el instalador corre
-#      dentro de ella.
-#   3. No hay sesion y no hay grafica (una VM sin video, un equipo al que le
-#      han quitado la tarjeta), o no esta 'cage', o no se puede abrir el
-#      asiento: NO se inventa nada. Se avisa en un par de lineas y se sigue en
-#      modo de texto, que instala exactamente igual de bien.
-#   4. Hay grafica, hay 'cage' y hay asiento, pero cage NO ARRANCA. Antes esto
-#      no podia pasar, y era la otra mitad del fallo 44: cage se quedaba con
-#      la shell ('exec cage'), de modo que si muria el instalador se iba con el
-#      y el usuario se quedaba sin instalador, sin ventana y sin un motivo.
-#      Ahora cage es un hijo: si muere, aqui se sigue en modo de texto y se
-#      dice por que.
-#
-# El caso 3 se decide ANTES de lanzar cage, y no por lo que conteste cage: cage
-# sin /dev/dri no arranca. Tambien se mira TITAN_DENTRO_GRAFICO, que es lo que
-# hace que el hijo no meta otro cage dentro del primero.
-arranca_grafico() {
-  if [[ "${TITAN_DENTRO_GRAFICO:-0}" == "1" ]]; then
-    export TITAN_GUI=1
-    return 0
-  fi
-  if [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -n "${DISPLAY:-}" ]]; then
-    export TITAN_GUI=1
-    return 0
-  fi
-  shopt -s nullglob
-  local dispositivos=(/dev/dri/renderD* /dev/dri/card*)
-  shopt -u nullglob
-  if (( ! ${#dispositivos[@]} )); then
-    echo "No hay dispositivo de grafica en /dev/dri: se instala en modo de" >&2
-    echo "texto, que instala igual de bien. Para la pantalla grafica hace" >&2
-    echo "falta un equipo con tarjeta (o una VM con video)." >&2
-    return 0
-  fi
-  if ! command -v cage >/dev/null 2>&1; then
-    echo "No esta 'cage' en el sistema: se instala en modo de texto." >&2
-    return 0
-  fi
-  if ! asegura_asiento; then
-    return 0
-  fi
-  # cage deja su socket de Wayland en XDG_RUNTIME_DIR. Sin esa variable puesta
-  # se cae en un sitio que puede no existir.
-  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/titan-xdg-$(id -u)}"
-  mkdir -p "${XDG_RUNTIME_DIR}"
-  chmod 700 "${XDG_RUNTIME_DIR}"
-  # Los bloqueos de Wayland de una vuelta anterior estorban: 'wayland' no
-  # puede abrir ninguno de los treinta y dos que prueba y cage se cae con
-  # 'Unable to open Wayland socket: Invalid argument'. Este directorio es de
-  # este mismo euid, asi que lo que se puede es borrar lo que haya en el.
-  rm -f "${XDG_RUNTIME_DIR}"/wayland-*.lock 2>/dev/null || true
-  echo "Levantando la pantalla con cage, que sale encima de la consola." >&2
-  echo "El puerto serie sigue con el instalador en modo de texto." >&2
-  # cage NO se queda con la shell (antes si, con 'exec'): si se le lanza y no
-  # puede, el instalador tiene que seguir aqui y decirlo, no desaparecer. Las
-  # dos variables van como prefijo y no como 'export' para que las examine el
-  # hijo de dentro y esta shell se quede limpia si cage muere.
-  local codigo=0
-  TITAN_DENTRO_GRAFICO=1 TITAN_GUI=1 \
-    cage -- "${BASH_SOURCE[0]}" "${ARGUMENTOS[@]}" || codigo=$?
-  if (( codigo == 0 )); then
-    # El instalador de dentro ha terminado: ya ha instalado. Si aqui se
-    # siguiera, se instalaria una segunda vez por el camino de texto.
-    exit 0
-  fi
-  if (( codigo == 3 )); then
-    # El 3 NO es de cage: es el codigo de 'cancelado' de 'instalar', y sale de
-    # la shell de dentro cuando se pulsa Esc en una pantalla SIN valor por
-    # defecto (la contrasena: 'cancelar()' en lib-comun.sh, que ya ha enseado
-    # el motivo). cage ha hecho su trabajo y el instalador de dentro ha
-    # decidido salirse.
-    #
-    # Y aqui lo que NO se puede hacer es lo de antes, que era 'return 0':
-    # volver al modo de texto con un codigo de 'sigue instalando' significa que
-    # el usuario cancela en la pantalla grafica y ve COMENZAR OTRA VEZ una
-    # instalacion sin haber pedido nada (fallo 46). Se propaga el 3 y se sale.
-    echo "" >&2
-    echo "Instalacion cancelada en la pantalla grafica. No se ha tocado" >&2
-    echo "el disco." >&2
-    exit 3
-  fi
-  echo "" >&2
-  echo "La pantalla grafica no ha podido levantarse: 'cage' ha salido con" >&2
-  echo "codigo ${codigo}. Se sigue en modo de texto, que instala igual de" >&2
-  echo "bien; el motivo esta en las lineas de arriba." >&2
-  return 0
-}
-
-[[ "${GRAFICO}" == "1" ]] && arranca_grafico
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

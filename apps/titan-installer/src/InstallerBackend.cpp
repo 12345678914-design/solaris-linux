@@ -38,20 +38,51 @@ signals:
 public slots:
     void doInstall()
     {
-        auto runCmd = [this](const QString &cmd, const QStringList &args = QStringList()) -> bool {
+        // Lo que dijo la ultima orden que fallo, para ensenarlo en la pantalla de
+        // error en vez de un "algo ha ido mal" sin pistas.
+        QString lastError;
+
+        // Sin limite de tiempo: copiar el sistema a un disco lento o compilar el
+        // initramfs puede tardar mas de cinco minutos, y con un limite QProcess
+        // mataba la orden a medias y la instalacion seguia como si nada.
+        auto runCmd = [&lastError](const QString &cmd, const QStringList &args = QStringList()) -> bool {
             QProcess p;
             p.start(cmd, args);
-            p.waitForFinished(300000); // 5 minutos máximo por comando
+            if (!p.waitForStarted(15000)) {
+                lastError = QStringLiteral("%1: no se ha podido ejecutar (%2)").arg(cmd, p.errorString());
+                qWarning() << "Comando no arrancó:" << cmd << args;
+                return false;
+            }
+            p.waitForFinished(-1);
             if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
                 QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
+                if (err.isEmpty())
+                    err = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+                // Las ultimas lineas son las que dicen el motivo.
+                const QStringList lines = err.split(QLatin1Char('\n'));
+                err = lines.mid(qMax(0, int(lines.size()) - 3)).join(QLatin1Char('\n'));
+                lastError = QStringLiteral("%1 %2 (codigo %3): %4")
+                                .arg(cmd, args.join(QLatin1Char(' ')))
+                                .arg(p.exitCode())
+                                .arg(err);
                 qWarning() << "Comando falló:" << cmd << args << "Salida de error:" << err;
                 return false;
             }
             return true;
         };
 
+        // Un fallo corta la instalacion: se desmonta lo que se haya montado y se
+        // dice que orden ha fallado. Antes cada fallo se ignoraba y al final
+        // salia "instalacion completada" con un sistema que no arrancaba.
+        auto fail = [&](const QString &msg) {
+            const QString detail = lastError;
+            QProcess::execute(QStringLiteral("umount"), {QStringLiteral("-R"), QStringLiteral("/mnt")});
+            emit finished(false, detail.isEmpty() ? msg : msg + QStringLiteral("\n\nDetalle: ") + detail);
+        };
+
         emit progress(5, QStringLiteral("Desmontando particiones anteriores..."));
-        runCmd(QStringLiteral("umount"), {QStringLiteral("-R"), QStringLiteral("/mnt")});
+        // Que /mnt no este montado no es un error.
+        QProcess::execute(QStringLiteral("umount"), {QStringLiteral("-R"), QStringLiteral("/mnt")});
 
         QString sep = (diskPath.contains(QRegularExpression(QStringLiteral("[0-9]$")))) ? QStringLiteral("p") : QString();
         QString efiDev;
@@ -65,10 +96,8 @@ public slots:
             // MODO PARTICIONAMIENTO MANUAL
             // ==========================================
             QString labelType = isUefi ? QStringLiteral("gpt") : QStringLiteral("msdos");
-            if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), labelType})) {
-                emit finished(false, QStringLiteral("No se pudo inicializar la tabla ") + labelType + QStringLiteral(" en ") + diskPath);
-                return;
-            }
+            if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), labelType}))
+                return fail(QStringLiteral("No se pudo inicializar la tabla ") + labelType + QStringLiteral(" en ") + diskPath);
 
             int startMb = 1;
             for (int i = 0; i < manualPartitions.size(); ++i) {
@@ -84,22 +113,23 @@ public slots:
                 QString pType = (isUefi || i == 0) ? QStringLiteral("primary") : QStringLiteral("primary");
                 QString pPartedFs = (pFs == QStringLiteral("fat32")) ? QStringLiteral("fat32") : ((pFs == QStringLiteral("swap")) ? QStringLiteral("linux-swap") : QStringLiteral("ext4"));
 
-                if (sizeMb > 0) {
-                    int endMb = startMb + sizeMb;
-                    runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), pType, pPartedFs, QString::number(startMb) + QStringLiteral("MiB"), QString::number(endMb) + QStringLiteral("MiB")});
-                    startMb = endMb;
-                } else {
-                    // 0 significa espacio restante hasta el 100%
-                    runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), pType, pPartedFs, QString::number(startMb) + QStringLiteral("MiB"), QStringLiteral("100%")});
-                }
+                // 0 significa espacio restante hasta el 100%
+                const QString endPos = (sizeMb > 0) ? QString::number(startMb + sizeMb) + QStringLiteral("MiB")
+                                                    : QStringLiteral("100%");
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), pType, pPartedFs, QString::number(startMb) + QStringLiteral("MiB"), endPos}))
+                    return fail(QStringLiteral("No se pudo crear la partición ") + partNum + QStringLiteral(" (") + mPoint + QStringLiteral(")"));
+                if (sizeMb > 0)
+                    startMb += sizeMb;
 
                 if (mPoint == QStringLiteral("/boot/efi") && isUefi) {
-                    runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("esp"), QStringLiteral("on")});
+                    if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("esp"), QStringLiteral("on")}))
+                        return fail(QStringLiteral("No se pudo marcar la partición EFI"));
                     efiDev = partDev;
                 } else if (mPoint == QStringLiteral("/")) {
                     rootDev = partDev;
                     if (!isUefi) {
-                        runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("boot"), QStringLiteral("on")});
+                        if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("boot"), QStringLiteral("on")}))
+                            return fail(QStringLiteral("No se pudo marcar la partición de arranque"));
                     }
                 }
 
@@ -110,37 +140,32 @@ public slots:
             // MODO AUTOMÁTICO (BORRAR DISCO COMPLETO)
             // ==========================================
             if (isUefi) {
-                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), QStringLiteral("gpt")})) {
-                    emit finished(false, QStringLiteral("No se pudo crear la tabla de particiones GPT en ") + diskPath);
-                    return;
-                }
-                // Partición 1: EFI 512MiB
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("EFI"), QStringLiteral("fat32"), QStringLiteral("1MiB"), QStringLiteral("513MiB")});
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("esp"), QStringLiteral("on")});
-                // Partición 2: Raíz restante
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("IntiRoot"), QStringLiteral("ext4"), QStringLiteral("513MiB"), QStringLiteral("100%")});
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), QStringLiteral("gpt")}))
+                    return fail(QStringLiteral("No se pudo crear la tabla de particiones GPT en ") + diskPath);
+                // Partición 1: EFI 512MiB. Partición 2: raíz con el resto.
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("EFI"), QStringLiteral("fat32"), QStringLiteral("1MiB"), QStringLiteral("513MiB")}) ||
+                    !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("esp"), QStringLiteral("on")}) ||
+                    !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("IntiRoot"), QStringLiteral("ext4"), QStringLiteral("513MiB"), QStringLiteral("100%")}))
+                    return fail(QStringLiteral("No se pudieron crear las particiones en ") + diskPath);
 
                 efiDev = diskPath + sep + QStringLiteral("1");
                 rootDev = diskPath + sep + QStringLiteral("2");
                 mountToDev[QStringLiteral("/boot/efi")] = efiDev;
                 mountToDev[QStringLiteral("/")] = rootDev;
             } else {
-                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), QStringLiteral("msdos")})) {
-                    emit finished(false, QStringLiteral("No se pudo crear la tabla de particiones MBR en ") + diskPath);
-                    return;
-                }
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("primary"), QStringLiteral("ext4"), QStringLiteral("1MiB"), QStringLiteral("100%")});
-                runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("boot"), QStringLiteral("on")});
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), QStringLiteral("msdos")}))
+                    return fail(QStringLiteral("No se pudo crear la tabla de particiones MBR en ") + diskPath);
+                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), QStringLiteral("primary"), QStringLiteral("ext4"), QStringLiteral("1MiB"), QStringLiteral("100%")}) ||
+                    !runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), QStringLiteral("1"), QStringLiteral("boot"), QStringLiteral("on")}))
+                    return fail(QStringLiteral("No se pudo crear la partición en ") + diskPath);
 
                 rootDev = diskPath + sep + QStringLiteral("1");
                 mountToDev[QStringLiteral("/")] = rootDev;
             }
         }
 
-        if (rootDev.isEmpty()) {
-            emit finished(false, QStringLiteral("No se ha definido ninguna partición con punto de montaje '/' (Raíz)."));
-            return;
-        }
+        if (rootDev.isEmpty())
+            return fail(QStringLiteral("No se ha definido ninguna partición con punto de montaje '/' (Raíz)."));
 
         // Refrescar nodos de bloques
         QThread::msleep(800);
@@ -158,47 +183,98 @@ public slots:
                 QString pDev = mountToDev.value(mPoint);
                 if (pDev.isEmpty()) continue;
 
+                bool ok;
                 if (pFs == QStringLiteral("fat32")) {
-                    runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), pDev});
+                    ok = runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), pDev});
                 } else if (pFs == QStringLiteral("btrfs")) {
-                    runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), pDev});
+                    ok = runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), pDev});
                 } else if (pFs == QStringLiteral("swap")) {
-                    runCmd(QStringLiteral("mkswap"), {QStringLiteral("-L"), QStringLiteral("SWAP"), pDev});
+                    ok = runCmd(QStringLiteral("mkswap"), {QStringLiteral("-L"), QStringLiteral("SWAP"), pDev});
                 } else {
-                    runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), (mPoint == QStringLiteral("/")) ? QStringLiteral("INTI") : QStringLiteral("DATA"), pDev});
+                    ok = runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), (mPoint == QStringLiteral("/")) ? QStringLiteral("INTI") : QStringLiteral("DATA"), pDev});
                 }
+                if (!ok)
+                    return fail(QStringLiteral("No se pudo formatear ") + pDev + QStringLiteral(" (") + mPoint + QStringLiteral(")"));
             }
         } else {
             if (isUefi && !efiDev.isEmpty()) {
-                runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), efiDev});
+                if (!runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), efiDev}))
+                    return fail(QStringLiteral("No se pudo formatear la partición EFI ") + efiDev);
             }
-            if (fsType == QStringLiteral("btrfs")) {
-                runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
-            } else {
-                runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
-            }
+            const bool rootOk = (fsType == QStringLiteral("btrfs"))
+                ? runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev})
+                : runCmd(QStringLiteral("mkfs.ext4"), {QStringLiteral("-F"), QStringLiteral("-L"), QStringLiteral("INTI"), rootDev});
+            if (!rootOk)
+                return fail(QStringLiteral("No se pudo formatear la partición raíz ") + rootDev);
         }
 
         emit progress(30, QStringLiteral("Montando sistema de archivos raíz..."));
         QDir().mkpath(QStringLiteral("/mnt"));
-        if (!runCmd(QStringLiteral("mount"), {rootDev, QStringLiteral("/mnt")})) {
-            emit finished(false, QStringLiteral("No se pudo montar la partición raíz ") + rootDev);
-            return;
-        }
+        if (!runCmd(QStringLiteral("mount"), {rootDev, QStringLiteral("/mnt")}))
+            return fail(QStringLiteral("No se pudo montar la partición raíz ") + rootDev);
 
-        emit progress(40, QStringLiteral("Sincronizando archivos del sistema operativo..."));
-        runCmd(QStringLiteral("rsync"), {
-            QStringLiteral("-aAXHv"),
-            QStringLiteral("/"),
-            QStringLiteral("/mnt"),
-            QStringLiteral("--exclude=/mnt"),
-            QStringLiteral("--exclude=/proc"),
-            QStringLiteral("--exclude=/sys"),
-            QStringLiteral("--exclude=/dev"),
-            QStringLiteral("--exclude=/run"),
-            QStringLiteral("--exclude=/tmp"),
-            QStringLiteral("--exclude=/home/titan/.cache")
-        });
+        emit progress(40, QStringLiteral("Copiando el sistema operativo al disco..."));
+        {
+            // Es el paso largo (varios GB). Con --info=progress2 rsync dice el
+            // porcentaje total, y aqui se reparte entre el 40 y el 65 de la
+            // barra; antes la barra se quedaba quieta en el 40 durante minutos.
+            QProcess rs;
+            rs.start(QStringLiteral("rsync"), {
+                QStringLiteral("-aAXH"),
+                QStringLiteral("--info=progress2"),
+                QStringLiteral("--no-inc-recursive"),
+                QStringLiteral("--exclude=/mnt"),
+                QStringLiteral("--exclude=/proc"),
+                QStringLiteral("--exclude=/sys"),
+                QStringLiteral("--exclude=/dev"),
+                QStringLiteral("--exclude=/run"),
+                QStringLiteral("--exclude=/tmp"),
+                QStringLiteral("--exclude=/home/titan/.cache"),
+                QStringLiteral("/"),
+                QStringLiteral("/mnt")
+            });
+            if (!rs.waitForStarted(15000)) {
+                lastError = QStringLiteral("rsync: no se ha podido ejecutar (%1)").arg(rs.errorString());
+                return fail(QStringLiteral("No se pudo copiar el sistema al disco"));
+            }
+            static const QRegularExpression rePct(QStringLiteral("(\\d+)%"));
+            int lastPct = -1;
+            QByteArray errBuf;
+            while (!rs.waitForFinished(500)) {
+                const QString out = QString::fromUtf8(rs.readAllStandardOutput());
+                errBuf += rs.readAllStandardError();
+                auto it = rePct.globalMatch(out);
+                int pct = -1;
+                while (it.hasNext())
+                    pct = it.next().captured(1).toInt();
+                if (pct >= 0 && pct != lastPct) {
+                    lastPct = pct;
+                    emit progress(40 + pct * 25 / 100,
+                                  QStringLiteral("Copiando el sistema operativo al disco... %1%").arg(pct));
+                }
+            }
+            errBuf += rs.readAllStandardError();
+            // 24 = "algunos ficheros desaparecieron durante la copia", normal
+            // en un sistema vivo (logs, sockets). 23 = algun fichero no se pudo
+            // copiar: se da por bueno solo si lo esencial esta (se mira abajo).
+            const int code = (rs.exitStatus() == QProcess::NormalExit) ? rs.exitCode() : -1;
+            if (code != 0 && code != 23 && code != 24) {
+                const QStringList lines = QString::fromUtf8(errBuf).trimmed().split(QLatin1Char('\n'));
+                lastError = QStringLiteral("rsync (codigo %1): %2")
+                                .arg(code)
+                                .arg(lines.mid(qMax(0, int(lines.size()) - 3)).join(QLatin1Char('\n')));
+                return fail(QStringLiteral("No se pudo copiar el sistema al disco"));
+            }
+            if (code != 0)
+                qWarning() << "rsync terminó con código" << code << QString::fromUtf8(errBuf).right(2000);
+            for (const char *esencial : {"/mnt/usr/bin/bash", "/mnt/usr/lib/os-release", "/mnt/etc/passwd", "/mnt/usr/lib/systemd/systemd"}) {
+                if (!QFile::exists(QString::fromLatin1(esencial))) {
+                    lastError = QStringLiteral("rsync (codigo %1): falta %2 en el disco de destino")
+                                    .arg(code).arg(QString::fromLatin1(esencial));
+                    return fail(QStringLiteral("La copia del sistema está incompleta"));
+                }
+            }
+        }
 
         // Crear directorios esenciales excluidos por rsync con sus permisos correctos
         QDir().mkpath(QStringLiteral("/mnt/tmp"));
@@ -233,6 +309,11 @@ public slots:
             }
         }
 
+        if (QDir(QStringLiteral("/mnt/boot")).entryList({QStringLiteral("vmlinuz*")}, QDir::Files).isEmpty()) {
+            lastError.clear();
+            return fail(QStringLiteral("No se ha encontrado ningún kernel (vmlinuz) en el medio de instalación"));
+        }
+
         // Si existe un paquete de kernel propio en /titan-repo, asegurarse de que quede registrado
         QDir repoDir(QStringLiteral("/titan-repo"));
         if (repoDir.exists()) {
@@ -252,7 +333,8 @@ public slots:
             if (!targetEfi.isEmpty()) {
                 emit progress(70, QStringLiteral("Montando partición EFI de arranque..."));
                 QDir().mkpath(QStringLiteral("/mnt/boot/efi"));
-                runCmd(QStringLiteral("mount"), {targetEfi, QStringLiteral("/mnt/boot/efi")});
+                if (!runCmd(QStringLiteral("mount"), {targetEfi, QStringLiteral("/mnt/boot/efi")}))
+                    return fail(QStringLiteral("No se pudo montar la partición EFI ") + targetEfi);
             }
         }
 
@@ -314,19 +396,189 @@ public slots:
             }
         }
 
-        // Creación del usuario
-        QString user = userName.isEmpty() ? QStringLiteral("inti") : userName.toLower().trimmed();
-        runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("useradd"), QStringLiteral("-m"), QStringLiteral("-G"), QStringLiteral("wheel,audio,video,storage,power,network,input"), QStringLiteral("-s"), QStringLiteral("/bin/bash"), user});
+        // --- Lo que es solo del live -----------------------------------------
+        // rsync copia el live tal cual, y el live trae un usuario 'titan' con
+        // contrasena 1234, sudo SIN contrasena y entrada automatica en tty1 y en
+        // el puerto serie. Nada de eso puede quedarse en un sistema instalado.
+        {
+            QFile pw(QStringLiteral("/mnt/etc/passwd"));
+            if (pw.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const bool hasLiveUser = QString::fromUtf8(pw.readAll()).contains(QRegularExpression(QStringLiteral("(^|\\n)titan:")));
+                pw.close();
+                if (hasLiveUser && !runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("userdel"), QStringLiteral("-f"), QStringLiteral("-r"), QStringLiteral("titan")})) {
+                    // '-f' porque el usuario del live es el que tiene la sesion
+                    // abierta ahora mismo, y arch-chroot monta el /proc de
+                    // verdad: sin '-f' userdel se niega. Y devuelve 12 si no
+                    // puede borrar el buzon, que el live no tiene; lo que
+                    // importa es que la cuenta se vaya, y eso se mira aqui.
+                    QFile pw2(QStringLiteral("/mnt/etc/passwd"));
+                    if (pw2.open(QIODevice::ReadOnly | QIODevice::Text) &&
+                        QString::fromUtf8(pw2.readAll()).contains(QRegularExpression(QStringLiteral("(^|\\n)titan:"))))
+                        return fail(QStringLiteral("No se pudo quitar el usuario del live (titan) del sistema instalado"));
+                }
+            }
+            QDir(QStringLiteral("/mnt/home/titan")).removeRecursively();
+            QFile::remove(QStringLiteral("/mnt/etc/sudoers.d/10-titan"));
+            QFile::remove(QStringLiteral("/mnt/etc/sudoers.d/20-calamares"));
+            QDir(QStringLiteral("/mnt/etc/systemd/system/serial-getty@ttyS0.service.d")).removeRecursively();
+            QDir(QStringLiteral("/mnt/etc/systemd/system/getty@tty1.service.d")).removeRecursively();
+            // Cada instalacion tiene que tener su propio machine-id. Vacio, systemd
+            // genera uno nuevo en el primer arranque.
+            QFile mid(QStringLiteral("/mnt/etc/machine-id"));
+            if (mid.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                mid.close();
+        }
+
+        // Creación del usuario. Solo con los grupos que existen en el sistema:
+        // con uno que no existe, useradd no crea la cuenta y el sistema se
+        // quedaba sin usuario.
+        const QString user = userName.trimmed();
+        QStringList groups;
+        {
+            QFile gf(QStringLiteral("/mnt/etc/group"));
+            QString content;
+            if (gf.open(QIODevice::ReadOnly | QIODevice::Text))
+                content = QString::fromUtf8(gf.readAll());
+            for (const QString &g : {QStringLiteral("wheel"), QStringLiteral("audio"), QStringLiteral("video"),
+                                     QStringLiteral("storage"), QStringLiteral("input"), QStringLiteral("render"),
+                                     QStringLiteral("network"), QStringLiteral("power")}) {
+                if (content.contains(QRegularExpression(QStringLiteral("(^|\\n)") + g + QStringLiteral(":"))))
+                    groups << g;
+            }
+        }
+        if (!groups.contains(QStringLiteral("wheel"))) {
+            lastError.clear();
+            return fail(QStringLiteral("El sistema copiado no tiene el grupo 'wheel'"));
+        }
+        QStringList uaArgs = {QStringLiteral("/mnt"), QStringLiteral("useradd"), QStringLiteral("-m"),
+                              QStringLiteral("-G"), groups.join(QLatin1Char(',')),
+                              QStringLiteral("-s"), QStringLiteral("/bin/bash")};
+        if (!fullName.trimmed().isEmpty())
+            uaArgs << QStringLiteral("-c") << fullName.trimmed().remove(QLatin1Char(':'));
+        uaArgs << user;
+        if (!runCmd(QStringLiteral("arch-chroot"), uaArgs))
+            return fail(QStringLiteral("No se pudo crear el usuario ") + user);
 
         // Contraseñas
-        QString pass = password.isEmpty() ? QStringLiteral("1234") : password;
         {
             QProcess pCh;
             pCh.start(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("chpasswd")});
-            pCh.waitForStarted(3000);
-            pCh.write(QStringLiteral("%1:%2\nroot:%2\n").arg(user, pass).toUtf8());
+            if (!pCh.waitForStarted(15000)) {
+                lastError = pCh.errorString();
+                return fail(QStringLiteral("No se pudo poner la contraseña"));
+            }
+            pCh.write(QStringLiteral("%1:%2\nroot:%2\n").arg(user, password).toUtf8());
             pCh.closeWriteChannel();
-            pCh.waitForFinished(10000);
+            pCh.waitForFinished(-1);
+            if (pCh.exitStatus() != QProcess::NormalExit || pCh.exitCode() != 0) {
+                lastError = QString::fromUtf8(pCh.readAllStandardError()).trimmed();
+                return fail(QStringLiteral("No se pudo poner la contraseña"));
+            }
+        }
+
+        // Inicio de sesión automático: la sesión gráfica la arranca
+        // /etc/profile.d/15-titan-grafico.sh al entrar en tty1, así que basta
+        // con que agetty entre solo con el usuario nuevo.
+        //
+        // Es SOLO para el primer arranque: un servicio de un solo uso borra el
+        // drop-in (y a sí mismo) en ese arranque. systemd ya ha leído la
+        // configuración de getty@tty1 al arrancar, así que borrar el fichero no
+        // le afecta hasta el siguiente arranque, que ya pide contraseña. No se
+        // usa 'systemctl disable' porque recarga systemd y podría quitar el
+        // autologin antes de que tty1 llegue a usarlo.
+        // Inicio de sesion grafico multiusuario: greetd con la pantalla de
+        // inicio de Inti OS (titan-greeter). Muestra todas las cuentas y deja
+        // que un administrador cree usuarios y grupos (titan-usuarios.socket).
+        // Si la copia no trae greetd o el greeter, se queda la entrada por tty1.
+        const bool usarGreetd = QFile::exists(QStringLiteral("/mnt/usr/bin/greetd")) &&
+                                QFile::exists(QStringLiteral("/mnt/usr/local/bin/titan-greeter")) &&
+                                QFile::exists(QStringLiteral("/mnt/etc/greetd/config.toml"));
+        if (usarGreetd) {
+            const QString sysd = QStringLiteral("/mnt/etc/systemd/system");
+            QDir().mkpath(sysd + QStringLiteral("/sockets.target.wants"));
+            const QString dm = sysd + QStringLiteral("/display-manager.service");
+            QFile::remove(dm);
+            bool ok = QFile::link(QStringLiteral("/usr/lib/systemd/system/greetd.service"), dm);
+            const QString sock = sysd + QStringLiteral("/sockets.target.wants/titan-usuarios.socket");
+            QFile::remove(sock);
+            if (QFile::exists(sysd + QStringLiteral("/titan-usuarios.socket")))
+                QFile::link(QStringLiteral("/etc/systemd/system/titan-usuarios.socket"), sock);
+            if (!ok)
+                qWarning() << "No se pudo activar greetd; el sistema entrara por tty1.";
+
+            // Primer arranque sin contrasena: [initial_session] de greetd, que
+            // un servicio de un solo uso quita en ese mismo arranque.
+            if (ok && autoLogin) {
+                QFile cfg(QStringLiteral("/mnt/etc/greetd/config.toml"));
+                QFile once(sysd + QStringLiteral("/inti-autologin-unavez.service"));
+                bool okAuto = cfg.open(QIODevice::Append | QIODevice::Text) &&
+                              cfg.write(QStringLiteral("\n# Solo el primer arranque (lo quita inti-autologin-unavez.service).\n"
+                                                       "[initial_session]\n"
+                                                       "command = \"/usr/lib/titan/titan-arranque-grafico\"\n"
+                                                       "user = \"%1\"\n").arg(user).toUtf8()) > 0;
+                cfg.close();
+                okAuto = okAuto && once.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text) &&
+                         once.write("[Unit]\n"
+                                    "Description=Inti OS: inicio de sesion automatico solo en el primer arranque\n"
+                                    "After=greetd.service\n\n"
+                                    "[Service]\n"
+                                    "Type=oneshot\n"
+                                    "ExecStart=/usr/bin/sed -i -e '/^# Solo el primer arranque/,$d' /etc/greetd/config.toml\n"
+                                    "ExecStart=/usr/bin/rm -f /etc/systemd/system/multi-user.target.wants/inti-autologin-unavez.service"
+                                    " /etc/systemd/system/inti-autologin-unavez.service\n\n"
+                                    "[Install]\n"
+                                    "WantedBy=multi-user.target\n") > 0;
+                once.close();
+                QDir().mkpath(sysd + QStringLiteral("/multi-user.target.wants"));
+                const QString link = sysd + QStringLiteral("/multi-user.target.wants/inti-autologin-unavez.service");
+                QFile::remove(link);
+                okAuto = okAuto && QFile::link(QStringLiteral("/etc/systemd/system/inti-autologin-unavez.service"), link);
+                if (!okAuto) {
+                    // Sin el servicio que lo quita, la entrada automatica se
+                    // quedaria para siempre: se deshace.
+                    runCmd(QStringLiteral("sed"), {QStringLiteral("-i"), QStringLiteral("-e"),
+                                                   QStringLiteral("/^# Solo el primer arranque/,$d"),
+                                                   QStringLiteral("/mnt/etc/greetd/config.toml")});
+                    QFile::remove(sysd + QStringLiteral("/inti-autologin-unavez.service"));
+                    QFile::remove(link);
+                    qWarning() << "No se pudo preparar el inicio de sesion automatico de un solo uso; se omite.";
+                }
+            }
+        }
+
+        if (autoLogin && !usarGreetd) {
+            const QString sysd = QStringLiteral("/mnt/etc/systemd/system");
+            QDir().mkpath(sysd + QStringLiteral("/getty@tty1.service.d"));
+            QDir().mkpath(sysd + QStringLiteral("/multi-user.target.wants"));
+            QFile al(sysd + QStringLiteral("/getty@tty1.service.d/10-autologin.conf"));
+            QFile once(sysd + QStringLiteral("/inti-autologin-unavez.service"));
+            bool ok = al.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text) &&
+                      al.write(QStringLiteral("[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin %1 --noclear %I linux\nType=idle\n")
+                                   .arg(user).toUtf8()) > 0;
+            al.close();
+            ok = ok && once.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text) &&
+                 once.write("[Unit]\n"
+                            "Description=Inti OS: inicio de sesion automatico solo en el primer arranque\n"
+                            "After=getty@tty1.service\n\n"
+                            "[Service]\n"
+                            "Type=oneshot\n"
+                            "ExecStart=/usr/bin/rm -f /etc/systemd/system/getty@tty1.service.d/10-autologin.conf"
+                            " /etc/systemd/system/multi-user.target.wants/inti-autologin-unavez.service"
+                            " /etc/systemd/system/inti-autologin-unavez.service\n\n"
+                            "[Install]\n"
+                            "WantedBy=multi-user.target\n") > 0;
+            once.close();
+            const QString link = sysd + QStringLiteral("/multi-user.target.wants/inti-autologin-unavez.service");
+            QFile::remove(link);
+            ok = ok && QFile::link(QStringLiteral("/etc/systemd/system/inti-autologin-unavez.service"), link);
+            if (!ok) {
+                // Sin el servicio de un solo uso el autologin se quedaría para
+                // siempre: mejor no dejarlo.
+                QFile::remove(sysd + QStringLiteral("/getty@tty1.service.d/10-autologin.conf"));
+                QFile::remove(sysd + QStringLiteral("/inti-autologin-unavez.service"));
+                QFile::remove(link);
+                qWarning() << "No se pudo preparar el inicio de sesión automático de un solo uso; se omite.";
+            }
         }
 
         // Sudoers
@@ -478,7 +730,9 @@ public slots:
                 }
             }
             if (entries.isEmpty()) {
-                entries.append({QStringLiteral("Inti OS"), QStringLiteral("vmlinuz-linux"), QStringLiteral("initramfs-linux.img")});
+                // Sin initramfs el sistema no arranca: mejor decirlo ahora que
+                // dejar una entrada de GRUB que apunta a un fichero que no existe.
+                return fail(QStringLiteral("No se pudo generar el initramfs del kernel (mkinitcpio)"));
             }
         }
 
@@ -606,17 +860,20 @@ public slots:
                 });
             }
 
+            if (QFile(QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI")).size() < 1000)
+                return fail(QStringLiteral("No se pudo instalar el cargador de arranque UEFI (BOOTX64.EFI)"));
+
             runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/bootx64.efi")});
             runCmd(QStringLiteral("cp"), {QStringLiteral("-f"), QStringLiteral("/mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"), QStringLiteral("/mnt/boot/efi/EFI/IntiOS/grubx64.efi")});
             QFile::remove(QStringLiteral("/mnt/boot/efi/early-grub.cfg"));
         } else {
-            runCmd(QStringLiteral("arch-chroot"), {
-                QStringLiteral("/mnt"),
-                QStringLiteral("grub-install"),
-                QStringLiteral("--target=i386-pc"),
-                diskPath,
-                QStringLiteral("--recheck")
-            });
+            if (!runCmd(QStringLiteral("arch-chroot"), {
+                    QStringLiteral("/mnt"),
+                    QStringLiteral("grub-install"),
+                    QStringLiteral("--target=i386-pc"),
+                    diskPath,
+                    QStringLiteral("--recheck")}))
+                return fail(QStringLiteral("No se pudo instalar GRUB en ") + diskPath);
         }
 
         emit progress(96, QStringLiteral("Generando configuración de arranque (grub.cfg)..."));
@@ -824,51 +1081,69 @@ void InstallerBackend::checkSystemRequirements()
     }
 }
 
+// El disco del que ha arrancado el live (el USB o el DVD). No puede salir en la
+// lista: si se elige, se borra el sistema que esta corriendo a mitad de la
+// instalacion. Devuelve "" si el live no esta montado desde un disco (copytoram).
+static QString liveBootDisk()
+{
+    QProcess pFind;
+    pFind.start(QStringLiteral("findmnt"), {QStringLiteral("-no"), QStringLiteral("SOURCE"), QStringLiteral("/run/archiso/bootmnt")});
+    if (!pFind.waitForFinished(3000))
+        return QString();
+    const QString dev = QString::fromUtf8(pFind.readAllStandardOutput()).trimmed();
+    if (dev.isEmpty())
+        return QString();
+    QProcess pDisk;
+    pDisk.start(QStringLiteral("lsblk"), {QStringLiteral("-npo"), QStringLiteral("PKNAME"), dev});
+    if (!pDisk.waitForFinished(3000))
+        return dev;
+    const QString parent = QString::fromUtf8(pDisk.readAllStandardOutput()).trimmed().section(QLatin1Char('\n'), 0, 0);
+    return parent.isEmpty() ? dev : parent;
+}
+
 void InstallerBackend::refreshDisks()
 {
     m_disks.clear();
 
+    // En JSON y no en columnas: con columnas vacias (TRAN en un disco virtio, o
+    // MODEL en muchos) los campos se corrian y el modelo acababa como TRAN.
     QProcess proc;
-    proc.start(QStringLiteral("lsblk"), {QStringLiteral("-dpno"), QStringLiteral("NAME,SIZE,TYPE,TRAN,MODEL")});
+    proc.start(QStringLiteral("lsblk"), {QStringLiteral("-Jdpb"), QStringLiteral("-o"), QStringLiteral("NAME,SIZE,TYPE,TRAN,MODEL,RO")});
     proc.waitForFinished(5000);
+    const QJsonArray devices = QJsonDocument::fromJson(proc.readAllStandardOutput())
+                                   .object().value(QStringLiteral("blockdevices")).toArray();
+    const QString bootDisk = liveBootDisk();
+    static const QRegularExpression virtualDev(QStringLiteral("^/dev/(loop|zram|ram|fd|sr)\\d"));
 
-    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
-    const QStringList lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-
-    for (const QString &line : lines) {
-        const QString trimmed = line.trimmed();
-        if (trimmed.isEmpty()) continue;
-
-        // Filtrar discos que no sean reales (bucles, zram, disqueteras)
-        if (trimmed.contains(QStringLiteral("loop")) ||
-            trimmed.contains(QStringLiteral("zram")) ||
-            trimmed.contains(QStringLiteral("ram")) ||
-            trimmed.contains(QStringLiteral("/dev/fd")) ||
-            trimmed.contains(QStringLiteral("fd0")) ||
-            trimmed.contains(QStringLiteral("fd1"))) {
+    for (const QJsonValue &v : devices) {
+        const QJsonObject d = v.toObject();
+        const QString path = d.value(QStringLiteral("name")).toString();
+        if (path.isEmpty() || d.value(QStringLiteral("type")).toString() != QStringLiteral("disk"))
             continue;
-        }
+        if (virtualDev.match(path).hasMatch() || path == bootDisk)
+            continue;
+        const QJsonValue ro = d.value(QStringLiteral("ro"));
+        if (ro.toBool() || ro.toString() == QStringLiteral("1"))
+            continue;
+        // lsblk da el tamano como numero o como texto segun la version.
+        const QJsonValue sizeVal = d.value(QStringLiteral("size"));
+        const double bytes = sizeVal.isString() ? sizeVal.toString().toDouble() : sizeVal.toDouble();
+        if (bytes < 8.0 * 1024 * 1024 * 1024) // menos de 8 GiB no cabe el sistema
+            continue;
+        const QString size = QStringLiteral("%1 GB").arg(bytes / 1e9, 0, 'f', bytes >= 100e9 ? 0 : 1);
+        const QString tran = d.value(QStringLiteral("tran")).toString().toUpper();
+        QString model = d.value(QStringLiteral("model")).toString().trimmed();
+        if (model.isEmpty())
+            model = QStringLiteral("Disco de Almacenamiento");
 
-        // Formato esperado de lsblk: NAME SIZE TYPE TRAN MODEL...
-        const QStringList parts = trimmed.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-        if (parts.size() >= 2) {
-            QString path = parts[0];
-            QString size = parts[1];
-            QString type = (parts.size() >= 3) ? parts[2] : QStringLiteral("disk");
-            if (type != QStringLiteral("disk")) continue;
-
-            QString tran = (parts.size() >= 4) ? parts[3] : QStringLiteral("sata");
-            QString model = (parts.size() >= 5) ? parts.mid(4).join(QLatin1Char(' ')) : QStringLiteral("Disco de Almacenamiento");
-
-            QVariantMap dMap;
-            dMap[QStringLiteral("path")] = path;
-            dMap[QStringLiteral("size")] = size;
-            dMap[QStringLiteral("tran")] = tran.toUpper();
-            dMap[QStringLiteral("model")] = model;
-            dMap[QStringLiteral("name")] = QStringLiteral("%1 (%2 %3)").arg(path, size, tran.toUpper());
-
-            m_disks.append(dMap);
-        }
+        QVariantMap dMap;
+        dMap[QStringLiteral("path")] = path;
+        dMap[QStringLiteral("size")] = size;
+        dMap[QStringLiteral("tran")] = tran;
+        dMap[QStringLiteral("model")] = model;
+        dMap[QStringLiteral("name")] = tran.isEmpty() ? QStringLiteral("%1 (%2)").arg(path, size)
+                                                      : QStringLiteral("%1 (%2 %3)").arg(path, size, tran);
+        m_disks.append(dMap);
     }
 
     if (m_selectedDiskIndex >= m_disks.size()) {
@@ -1023,6 +1298,20 @@ void InstallerBackend::startInstallation(const QString &fsType,
 {
     if (m_disks.isEmpty()) {
         m_errorMessage = QStringLiteral("No hay ningún disco seleccionado para la instalación.");
+        emit errorMessageChanged();
+        return;
+    }
+
+    // La interfaz ya lo comprueba; aqui se repite porque un nombre que useradd
+    // rechaza deja el sistema instalado sin usuario, y eso no se arregla luego.
+    static const QRegularExpression validUser(QStringLiteral("^[a-z_][a-z0-9_-]{0,31}$"));
+    if (!validUser.match(userName.trimmed()).hasMatch() || userName.trimmed() == QStringLiteral("root")) {
+        m_errorMessage = QStringLiteral("El nombre de usuario '%1' no es válido.").arg(userName);
+        emit errorMessageChanged();
+        return;
+    }
+    if (password.isEmpty()) {
+        m_errorMessage = QStringLiteral("La contraseña no puede estar vacía.");
         emit errorMessageChanged();
         return;
     }
