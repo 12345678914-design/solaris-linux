@@ -59,6 +59,8 @@ pacman:
 deps: pacman
 
 apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-installer apps/wayfire-titan
+	@# Ver scripts/fijar-isa-baseline.py: en CachyOS v4 todo sale marcado "necesita v4"
+	@python3 -I scripts/fijar-isa-baseline.py $$(find iso/titan/airootfs/usr/local/bin iso/titan/airootfs/usr/lib/titan iso/titan/airootfs/usr/lib/wayfire -type f -exec sh -c 'head -c4 "$$1" | grep -q ELF && echo "$$1"' _ {} \; 2>/dev/null)
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."

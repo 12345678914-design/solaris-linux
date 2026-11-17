@@ -73,6 +73,7 @@ done
 for cmd in mkarchiso xorriso pacstrap; do
   command -v "$cmd" >/dev/null || { red "Falta '$cmd'. Instala: pacman -S archiso devtools"; exit 1; }
 done
+command -v python3 >/dev/null || { red "Falta 'python3'. Instala: pacman -S python"; exit 1; }
 [[ -f "${PROFILE}/profiledef.sh" ]] || { red "Perfil no encontrado: ${PROFILE}"; exit 1; }
 
 avail_mb="$(df --output=avail -B1M / | tail -n1 | tr -dc '0-9')"
@@ -482,6 +483,25 @@ info "app Acerca y su entrada del catalogo en el perfil"
 if ! "${DISTRO}/scripts/build-wayfire-plugins.sh" "${PROFILE}/airootfs/usr/lib/wayfire"; then
   red "Fallo al compilar los plugins de Wayfire (apps/wayfire-titan)"
   exit 1
+fi
+
+# Marca de nivel ISA. En un anfitrion CachyOS con repos v4 todo lo enlazado
+# aqui sale marcado "necesita x86-64-v4" (lo hereda del Scrt1.o de su glibc),
+# aunque el codigo no use AVX-512; ld.so se negaria a arrancar las apps en CPUs
+# sin AVX-512 ("CPU ISA level is lower than required"). Se baja a baseline y
+# despues se comprueba: si quedara alguno marcado, la ISO no se construye.
+mapfile -t elfs_propios < <(
+  find "${PROFILE}/airootfs/usr/local/bin" "${PROFILE}/airootfs/usr/lib/titan" \
+       "${PROFILE}/airootfs/usr/lib/wayfire" -type f 2>/dev/null |
+  while read -r f; do [[ "$(head -c4 "$f" | tr -d '\0')" == $'\x7fELF' ]] && printf '%s\n' "$f"; done
+)
+if (( ${#elfs_propios[@]} )); then
+  python3 -I "${DISTRO}/scripts/fijar-isa-baseline.py" "${elfs_propios[@]}" | sed 's/^/    /'
+  if ! python3 -I "${DISTRO}/scripts/fijar-isa-baseline.py" --comprobar "${elfs_propios[@]}"; then
+    red "Hay binarios que exigen mas que x86-64-baseline"
+    exit 1
+  fi
+  info "${#elfs_propios[@]} binarios propios listos para cualquier CPU x86-64"
 fi
 
 if [[ -x "${DISTRO}/verify/comprobar-acerca.sh" ]]; then
