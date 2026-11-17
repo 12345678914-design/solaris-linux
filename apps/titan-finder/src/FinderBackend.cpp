@@ -1,4 +1,5 @@
 #include "FinderBackend.h"
+#include "TitanDesktopEntry.h"
 
 #include <QDir>
 #include <QFile>
@@ -601,9 +602,8 @@ void FinderBackend::openItem(const QString &path)
 
     // Si es un lanzador .desktop
     if (info.suffix() == QStringLiteral("desktop")) {
-        QSettings desktop(info.absoluteFilePath(), QSettings::IniFormat);
-        desktop.beginGroup(QStringLiteral("Desktop Entry"));
-        QString exec = desktop.value(QStringLiteral("Exec")).toString();
+        // QSettings no sirve para .desktop: con una coma el valor sale vacío.
+        QString exec = titan::leerDesktop(info.absoluteFilePath()).value(QStringLiteral("Exec"));
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
         if (!exec.isEmpty()) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QFileInfo>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
@@ -69,6 +70,9 @@ public slots:
     Q_INVOKABLE void selectCategory(const QString &cat);
     Q_INVOKABLE void openInFinder(const QString &filePath = QString());
     Q_INVOKABLE void refresh();
+    // Abre y reproduce un archivo concreto (doble clic en Finder, "titan-musica cancion.mp3").
+    // Si no está en la biblioteca se añade, también fuera de la carpeta Música.
+    Q_INVOKABLE void openFile(const QString &path);
 
 signals:
     void tracksChanged();
@@ -92,6 +96,7 @@ private:
     void initCategories();
     void scanDirectories();
     void filterTracks();
+    QVariantMap makeTrack(const QFileInfo &fi, int id) const;
     QString formatTime(qint64 ms) const;
     QString formatBytes(qint64 bytes) const;
 
@@ -100,6 +105,7 @@ private:
     QFileSystemWatcher *m_watcher;
 
     QVariantList m_allTracks;
+    QStringList m_extraFiles;   // abiertos con openFile: sobreviven a un nuevo escaneo
     QVariantList m_filteredTracks;
     QVariantList m_categories;
     QString m_currentCategory;

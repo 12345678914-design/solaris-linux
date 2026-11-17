@@ -345,7 +345,7 @@ ScrollView {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: settingsBackend.setAccent(modelData.color)
+                                onClicked: settingsBackend.accent = modelData.color
                             }
                         }
                     }

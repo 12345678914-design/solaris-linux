@@ -11,6 +11,8 @@ use std::process::{Command, ExitCode};
 
 use clap::{Parser, Subcommand};
 
+mod ajustes;
+
 const RELEASE_FILE: &str = "/etc/titan-release";
 const OS_RELEASE: &str = "/usr/lib/os-release";
 const LOGO_FILE: &str = "/usr/share/titan/titan.logo";
@@ -65,6 +67,37 @@ enum Command_ {
 
     /// Print the Titan Linux logo.
     Logo,
+
+    /// Tema claro u oscuro del escritorio: `titan tema oscuro`.
+    Tema {
+        /// claro | oscuro | alternar (sin valor muestra el actual).
+        modo: Option<String>,
+    },
+
+    /// Color de acento: `titan acento verde` o `titan acento #ff9500`.
+    Acento {
+        /// Nombre (azul, morado, rosa, rojo, naranja, amarillo, verde, grafito) o #rrggbb.
+        color: Option<String>,
+    },
+
+    /// Fondo de pantalla: sin argumento lista los disponibles.
+    Fondo {
+        /// Número de la lista, nombre de un fondo o ruta a una imagen.
+        imagen: Option<String>,
+    },
+
+    /// Lista las aplicaciones instaladas (nombre y orden para abrirlas).
+    Apps {
+        /// Filtra por nombre u orden.
+        filtro: Option<String>,
+    },
+
+    /// Actualiza el sistema (pacman -Syu y Flatpak).
+    Update {
+        /// Solo mira si hay actualizaciones, sin instalar nada.
+        #[arg(long)]
+        comprobar: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -77,6 +110,11 @@ fn main() -> ExitCode {
         Some(Command_::Doctor) => cmd_doctor(),
         Some(Command_::Commands) => cmd_commands(),
         Some(Command_::Logo) => cmd_logo(),
+        Some(Command_::Tema { modo }) => ajustes::cmd_tema(modo),
+        Some(Command_::Acento { color }) => ajustes::cmd_acento(color),
+        Some(Command_::Fondo { imagen }) => ajustes::cmd_fondo(imagen),
+        Some(Command_::Apps { filtro }) => ajustes::cmd_apps(filtro),
+        Some(Command_::Update { comprobar }) => ajustes::cmd_update(comprobar),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -532,5 +570,7 @@ fn cmd_commands() -> Result<(), String> {
     println!();
     println!("\x1b[1;36mTitan\x1b[0m");
     println!("  titan  |  titan info  |  titan doctor  |  titan commands  |  titan logo");
+    println!("  titan tema [claro|oscuro|alternar]  |  titan acento [color]  |  titan fondo [n|nombre|ruta]");
+    println!("  titan apps [filtro]  |  titan update [--comprobar]");
     Ok(())
 }

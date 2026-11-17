@@ -54,6 +54,18 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    // "titan-musica cancion.mp3" (o doble clic en Finder): reproducir ese archivo.
+    // Si llegan varios, suena el primero y el resto queda en la lista.
+    {
+        QStringList archivos;
+        for (const QString &arg : app.arguments().mid(1)) {
+            if (!arg.startsWith(QLatin1Char('-')))
+                archivos << arg;
+        }
+        for (int i = archivos.size() - 1; i >= 0; --i)
+            backend.openFile(archivos.at(i));
+    }
+
     return app.exec();
 }
 

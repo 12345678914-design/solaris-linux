@@ -103,36 +103,85 @@ void MusicaBackend::scanDirectories()
             }
             addedPaths << absPath;
 
-            QVariantMap track;
-            track[QStringLiteral("id")] = trackId++;
-            
-            // Nombre de la pista y metadatos limpios
-            QString baseName = fi.completeBaseName();
-            QString artist = QStringLiteral("Artista desconocido");
-            QString album = fi.dir().dirName();
-            QString title = baseName;
+            m_allTracks.append(makeTrack(fi, trackId++));
+        }
+    }
 
-            if (baseName.contains(QStringLiteral(" - "))) {
-                const QStringList parts = baseName.split(QStringLiteral(" - "));
-                if (parts.size() >= 2) {
-                    artist = parts.at(0).trimmed();
-                    title = parts.at(1).trimmed();
-                }
-            }
-
-            track[QStringLiteral("title")] = title;
-            track[QStringLiteral("artist")] = artist;
-            track[QStringLiteral("album")] = album;
-            track[QStringLiteral("path")] = absPath;
-            track[QStringLiteral("url")] = QUrl::fromLocalFile(absPath).toString();
-            track[QStringLiteral("format")] = fi.suffix().toUpper();
-            track[QStringLiteral("size")] = formatBytes(fi.size());
-
-            m_allTracks.append(track);
+    // Archivos abiertos a mano (openFile) que no están en las carpetas escaneadas
+    for (const QString &extra : std::as_const(m_extraFiles)) {
+        const QFileInfo fi(extra);
+        if (fi.exists() && !addedPaths.contains(fi.canonicalFilePath())) {
+            addedPaths << fi.canonicalFilePath();
+            m_allTracks.append(makeTrack(fi, trackId++));
         }
     }
 
     filterTracks();
+}
+
+QVariantMap MusicaBackend::makeTrack(const QFileInfo &fi, int id) const
+{
+    QVariantMap track;
+    track[QStringLiteral("id")] = id;
+
+    // Nombre de la pista y metadatos limpios ("Artista - Título.mp3")
+    const QString baseName = fi.completeBaseName();
+    QString artist = QStringLiteral("Artista desconocido");
+    const QString album = fi.dir().dirName();
+    QString title = baseName;
+
+    if (baseName.contains(QStringLiteral(" - "))) {
+        const QStringList parts = baseName.split(QStringLiteral(" - "));
+        if (parts.size() >= 2) {
+            artist = parts.at(0).trimmed();
+            title = parts.at(1).trimmed();
+        }
+    }
+
+    const QString absPath = fi.canonicalFilePath();
+    track[QStringLiteral("title")] = title;
+    track[QStringLiteral("artist")] = artist;
+    track[QStringLiteral("album")] = album;
+    track[QStringLiteral("path")] = absPath;
+    track[QStringLiteral("url")] = QUrl::fromLocalFile(absPath).toString();
+    track[QStringLiteral("format")] = fi.suffix().toUpper();
+    track[QStringLiteral("size")] = formatBytes(fi.size());
+    return track;
+}
+
+void MusicaBackend::openFile(const QString &path)
+{
+    QString local = path;
+    if (local.startsWith(QStringLiteral("file:")))
+        local = QUrl(local).toLocalFile();
+    const QFileInfo fi(local);
+    if (!fi.exists() || !fi.isFile())
+        return;
+    const QString canon = fi.canonicalFilePath();
+
+    bool known = false;
+    for (const QVariant &v : std::as_const(m_allTracks)) {
+        if (v.toMap().value(QStringLiteral("path")).toString() == canon) { known = true; break; }
+    }
+    if (!known) {
+        if (!m_extraFiles.contains(canon))
+            m_extraFiles << canon;
+        m_allTracks.append(makeTrack(fi, m_allTracks.size() + 1));
+    }
+
+    // Que la pista se vea: sin búsqueda activa
+    if (!m_searchQuery.isEmpty()) {
+        m_searchQuery.clear();
+        emit searchQueryChanged();
+    }
+    filterTracks();
+
+    for (int i = 0; i < m_filteredTracks.size(); ++i) {
+        if (m_filteredTracks.at(i).toMap().value(QStringLiteral("path")).toString() == canon) {
+            playTrack(i);
+            return;
+        }
+    }
 }
 
 void MusicaBackend::filterTracks()
