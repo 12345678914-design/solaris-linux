@@ -22,6 +22,17 @@
         <file>qml/RestaurarView.qml</file>
         <file>qml/VpnView.qml</file>
         <file>qml/AlmacenamientoView.qml</file>
+        <file>qml/Campo.qml</file>
+        <file>qml/Deslizador.qml</file>
+        <file>qml/Desplegable.qml</file>
+        <file>qml/PantallasView.qml</file>
+        <file>qml/SonidoView.qml</file>
+        <file>qml/EscritorioDockView.qml</file>
+        <file>qml/BarraMenusView.qml</file>
+        <file>qml/CentroControlView.qml</file>
+        <file>qml/NotificacionesView.qml</file>
+        <file>qml/ConcentracionView.qml</file>
+        <file>qml/UsuariosView.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>

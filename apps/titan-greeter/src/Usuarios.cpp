@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <pwd.h>
+#include <unistd.h>
 
 namespace {
 // TITAN_USUARIOS_SOCK solo sirve para pruebas (servicio falso sin root): el
@@ -16,6 +18,14 @@ namespace {
 QString rutaSocket()
 {
     return qEnvironmentVariable("TITAN_USUARIOS_SOCK", QStringLiteral("/run/titan-usuarios.sock"));
+}
+
+// /etc (o, en pruebas con un servicio falso, otra carpeta con passwd y group).
+QString rutaEtc(const QString &fichero)
+{
+    if (qEnvironmentVariableIsSet("TITAN_USUARIOS_SOCK") && qEnvironmentVariableIsSet("TITAN_USUARIOS_ETC"))
+        return qEnvironmentVariable("TITAN_USUARIOS_ETC") + QLatin1Char('/') + fichero;
+    return QStringLiteral("/etc/") + fichero;
 }
 
 bool shellDeEntrada(const QString &shell)
@@ -40,7 +50,7 @@ void Usuarios::recargar()
     QHash<QString, QStringList> miembros;
     QHash<QString, int> gids;
     QHash<int, QString> nombrePorGid;
-    QFile fg(QStringLiteral("/etc/group"));
+    QFile fg(rutaEtc(QStringLiteral("group")));
     if (fg.open(QIODevice::ReadOnly | QIODevice::Text)) {
         const auto lineas = QString::fromUtf8(fg.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         for (const QString &l : lineas) {
@@ -57,7 +67,7 @@ void Usuarios::recargar()
     QVariantList usuarios;
     QStringList admins;
     QHash<QString, QStringList> gruposDe;
-    QFile fp(QStringLiteral("/etc/passwd"));
+    QFile fp(rutaEtc(QStringLiteral("passwd")));
     if (fp.open(QIODevice::ReadOnly | QIODevice::Text)) {
         const auto lineas = QString::fromUtf8(fp.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         for (const QString &l : lineas) {
@@ -143,8 +153,10 @@ void Usuarios::enviar(QVariantMap peticion, const QString &admin, const QString 
         emit terminado(accion, false, QStringLiteral("El servicio de usuarios no esta disponible en este sistema"));
         return;
     }
-    peticion.insert(QStringLiteral("admin"), admin);
-    peticion.insert(QStringLiteral("clave"), clave);
+    if (!admin.isEmpty()) {
+        peticion.insert(QStringLiteral("admin"), admin);
+        peticion.insert(QStringLiteral("clave"), clave);
+    }
 
     setOcupado(true);
     auto *s = new QLocalSocket(this);
@@ -264,4 +276,33 @@ void Usuarios::cambiarClave(const QString &usuario, const QString &clave)
     enviar({{QStringLiteral("accion"), QStringLiteral("cambiar-clave")},
             {QStringLiteral("usuario"), usuario}, {QStringLiteral("claveNueva"), clave}},
            m_adminActivo, m_claveAdmin);
+}
+
+void Usuarios::cambiarNombre(const QString &usuario, const QString &nombre)
+{
+    enviar({{QStringLiteral("accion"), QStringLiteral("cambiar-nombre")},
+            {QStringLiteral("usuario"), usuario}, {QStringLiteral("nombre"), nombre.trimmed()}},
+           m_adminActivo, m_claveAdmin);
+}
+
+void Usuarios::borrarUsuario(const QString &usuario, bool borrarCarpeta)
+{
+    enviar({{QStringLiteral("accion"), QStringLiteral("borrar-usuario")},
+            {QStringLiteral("usuario"), usuario}, {QStringLiteral("borrarCarpeta"), borrarCarpeta}},
+           m_adminActivo, m_claveAdmin);
+}
+
+void Usuarios::cambiarMiClave(const QString &actual, const QString &nueva)
+{
+    enviar({{QStringLiteral("accion"), QStringLiteral("cambiar-mi-clave")},
+            {QStringLiteral("usuario"), usuarioActual()},
+            {QStringLiteral("claveActual"), actual},
+            {QStringLiteral("claveNueva"), nueva}},
+           QString(), QString());
+}
+
+QString Usuarios::usuarioActual() const
+{
+    struct passwd *pw = getpwuid(getuid());
+    return pw ? QString::fromLocal8Bit(pw->pw_name) : qEnvironmentVariable("USER");
 }

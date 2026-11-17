@@ -45,7 +45,7 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           plymouth orca speech-dispatcher espeak-ng fcitx5 fcitx5-qt fcitx5-gtk
           fcitx5-configtool fcitx5-chinese-addons fcitx5-mozc fcitx5-hangul hunspell
           hunspell-es_any hunspell-en_us fprintd bolt pacman-contrib cryptsetup os-prober
-          efibootmgr parted)
+          efibootmgr parted wlsunset sound-theme-freedesktop wlr-randr brightnessctl)
 faltan=()
 for p in "${paquetes[@]}"; do
     grep -qxF "$p" iso/titan/packages.x86_64 || faltan+=("$p")
@@ -68,7 +68,8 @@ fi
 echo -e "${AZUL}--- Scripts de usr/local/bin${SC}"
 scripts=(titan-bloquear titan-bloquear-avisar titan-inactividad titan-captura
          titan-elegir-pantalla titan-cortafuegos titan-actualizaciones titan-arranque-seguro
-         titan-huella titan-instantaneas titan-lector titan-sesion)
+         titan-huella titan-instantaneas titan-lector titan-sesion
+         titan-pantallas titan-luz-nocturna titan-acento)
 for s in "${scripts[@]}"; do
     f="${BIN}/${s}"
     if [[ ! -f "$f" ]]; then fallo "${s}: no existe"; continue; fi
@@ -194,6 +195,58 @@ for v in EnergiaView BloqueoView SeguridadView AccesibilidadView TecladoView Imp
     fi
 done
 contiene apps/titan-settings/src/main.cpp '"--seccion"' "titan-settings acepta '--seccion X'"
+
+# ------------------------------------------------------------------ preferencias del escritorio
+echo -e "${AZUL}--- Ajustes con datos reales (Dock, barra, acento, usuarios, redes)${SC}"
+for f in TitanPrefs.h TitanPrefs.cpp; do
+    [[ -f apps/titan-common/$f ]] && ok "titan-common/$f" || fallo "falta apps/titan-common/$f"
+done
+for app in titan-shell titan-settings; do
+    contiene apps/$app/$app.pro 'TitanPrefs.cpp' "$app compila TitanPrefs (shell.conf compartido)"
+done
+contiene apps/titan-shell/src/main.cpp 'Dock/posicion' "el shell reancla el Dock (abajo/izquierda/derecha)"
+contiene apps/titan-shell/src/main.cpp 'Barra/visible' "el shell oculta la barra de menus si se pide"
+contiene apps/titan-shell/qml/Dock.qml 'Dock/tamano' "Dock: tamano de iconos"
+contiene apps/titan-shell/qml/Dock.qml 'Dock/ocultarAuto' "Dock: ocultar automaticamente"
+contiene apps/titan-shell/qml/TopBar.qml 'Barra/estilo' "barra de menus: transparente/vidrio/solida"
+contiene apps/titan-shell/qml/ControlCenter.qml 'noMolestar' "Centro de control: No molestar"
+contiene apps/titan-shell/src/ShellBackend.cpp 'noMolestarActivo' "notificaciones: No molestar y Concentracion"
+contiene apps/titan-shell/src/ShellBackend.cpp 'Notificaciones/apps/' "notificaciones: permiso por app"
+for v in PantallasView SonidoView EscritorioDockView BarraMenusView CentroControlView NotificacionesView ConcentracionView UsuariosView Campo Deslizador Desplegable; do
+    if [[ -f "apps/titan-settings/qml/${v}.qml" ]] && grep -q "qml/${v}.qml" apps/titan-settings/resources.qrc; then
+        ok "Ajustes: ${v}"
+    else
+        fallo "Ajustes: falta ${v}.qml o no esta en resources.qrc"
+    fi
+done
+# Ninguna seccion de la barra lateral cae ya en la pagina de relleno.
+for sec in "Pantallas" "Sonido" "Escritorio y Dock" "Barra de menús" "Centro de control" "Notificaciones" "Concentración" "Usuarios y grupos"; do
+    contiene apps/titan-settings/qml/SettingsWindow.qml "\"${sec}\": " "Ajustes: seccion real '${sec}'"
+done
+H=apps/titan-greeter/helper/main.cpp
+contiene "$H" 'cambiar-mi-clave' "usuarios: cada persona cambia su contrasena (sin ser admin)"
+contiene "$H" 'SO_PEERCRED' "usuarios: cambiar-mi-clave comprueba quien pregunta (SO_PEERCRED)"
+contiene "$H" 'borrar-usuario' "usuarios: un administrador puede borrar cuentas"
+contiene "$H" 'No puedes borrar tu propia cuenta' "usuarios: nadie borra su propia cuenta"
+C=apps/titan-settings/src/Conexiones.cpp
+contiene "$C" 'connection", "edit"|QStringLiteral\("edit"\)' "Wi-Fi: la contrasena va por stdin (no en la lista de procesos)"
+contiene "$C" '"delete"' "Wi-Fi: olvidar red"
+contiene "$C" '"trust"' "Bluetooth: confiar al emparejar (se reconecta solo)"
+contiene "$C" '"remove"' "Bluetooth: olvidar dispositivo"
+contiene apps/titan-common/ThemeManager.cpp 'titan-acento' "el acento llega a GTK/kitty/bloqueo (titan-acento)"
+contiene apps/titan-common/ThemeManager.cpp 'QPalette::Highlight' "el acento colorea la seleccion de Qt"
+for v in gtk-3.0 gtk-4.0; do
+    contiene "${RAIZ}/etc/skel/.config/$v/gtk.css" 'titan-acento.css' "$v importa el acento"
+    [[ -s "${RAIZ}/etc/skel/.config/$v/titan-acento.css" ]] && ok "$v/titan-acento.css por defecto" || fallo "falta skel $v/titan-acento.css"
+done
+contiene "${RAIZ}/etc/xdg/kitty/kitty.conf" 'kitty-acento.conf' "kitty incluye el acento"
+contiene "${BIN}/titan-bloquear" 'accent=' "pantalla de bloqueo con el acento"
+contiene "${BIN}/titan-sesion" 'titan-pantallas' "la sesion aplica las pantallas guardadas"
+contiene "${BIN}/titan-sesion" 'titan-luz-nocturna' "la sesion arranca la luz nocturna"
+contiene "${BIN}/titan-sesion" 'titan-acento' "la sesion aplica el acento"
+# Sin azules fijos en lo que tiene que seguir al acento.
+azules=$(grep -rnoE '"#(0071e3|0a84ff|007aff)"' apps/titan-finder/qml apps/titan-settings/qml/{Wallpaper,General,Wifi,Bluetooth}View.qml apps/titan-shell/qml/Dock.qml apps/titan-shell/qml/WallpaperPicker.qml 2>/dev/null)
+[[ -z "$azules" ]] && ok "Finder, Ajustes y Dock usan el acento (sin azules fijos)" || fallo "azules fijos: $azules"
 
 # ------------------------------------------------------------------ instalador
 echo -e "${AZUL}--- Instalador${SC}"

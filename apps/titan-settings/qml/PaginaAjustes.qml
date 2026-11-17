@@ -6,6 +6,9 @@ ScrollView {
     id: pagina
     property string titulo: ""
     property string descripcion: ""
+    // Aviso de la ultima operacion; cada seccion puede usar el de su backend.
+    property string mensaje: sistema.aviso
+    signal mensajeCerrado()
     default property alias contenido: columna.data
     contentWidth: width
     clip: true
@@ -41,7 +44,7 @@ ScrollView {
 
         // Aviso de la ultima operacion (error o confirmacion)
         Rectangle {
-            visible: sistema.aviso.length > 0
+            visible: pagina.mensaje.length > 0
             width: parent.width
             height: textoAviso.implicitHeight + 20
             radius: 8
@@ -54,7 +57,7 @@ ScrollView {
                 anchors.right: cerrarAviso.left
                 anchors.margins: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: sistema.aviso
+                text: pagina.mensaje
                 color: tema.contentTextPrimary
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
@@ -71,7 +74,7 @@ ScrollView {
                     anchors.fill: parent
                     anchors.margins: -6
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: sistema.refrescar("")
+                    onClicked: { sistema.refrescar(""); pagina.mensajeCerrado() }
                 }
             }
         }

@@ -324,7 +324,7 @@ ScrollView {
                 height: 120
                 radius: 10
                 color: theme.isDark ? Qt.rgba(0.08, 0.35, 0.70, 0.18) : Qt.rgba(0.04, 0.45, 0.95, 0.08)
-                border.color: "#007aff"
+                border.color: theme.accent
                 border.width: 1.5
 
                 Column {
@@ -397,7 +397,7 @@ ScrollView {
                             width: 140
                             height: 28
                             radius: 6
-                            color: installMouse.containsMouse ? "#0062cc" : "#007aff"
+                            color: installMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
 
                             Text {
                                 anchors.centerIn: parent

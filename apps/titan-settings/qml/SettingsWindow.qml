@@ -83,7 +83,7 @@ TitanWindow {
             height: 28
             radius: 6
             color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(1, 1, 1, 0.6)
-            border.color: searchInput.activeFocus ? "#0071e3" : Qt.rgba(0, 0, 0, 0.12)
+            border.color: searchInput.activeFocus ? theme.accent : Qt.rgba(0, 0, 0, 0.12)
             border.width: searchInput.activeFocus ? 1.5 : 1
 
             Row {
@@ -153,7 +153,7 @@ TitanWindow {
                     width: 36
                     height: 36
                     radius: 18
-                    color: "#0a84ff"
+                    color: theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -231,7 +231,7 @@ TitanWindow {
                 Rectangle {
                     anchors.fill: parent
                     radius: 6
-                    color: isSelected ? "#0071e3" :
+                    color: isSelected ? theme.accent :
                            isHovered ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
 
                     Row {
@@ -319,8 +319,24 @@ TitanWindow {
         "Impresoras y escáneres": impresorasComponent,
         "Restaurar sistema": restaurarComponent,
         "VPN": vpnComponent,
-        "Almacenamiento": almacenamientoComponent
+        "Almacenamiento": almacenamientoComponent,
+        "Pantallas": pantallasComponent,
+        "Sonido": sonidoComponent,
+        "Escritorio y Dock": escritorioDockComponent,
+        "Barra de menús": barraMenusComponent,
+        "Centro de control": centroControlComponent,
+        "Notificaciones": notificacionesComponent,
+        "Concentración": concentracionComponent,
+        "Usuarios y grupos": usuariosComponent
     })
+    Component { id: pantallasComponent; PantallasView {} }
+    Component { id: sonidoComponent; SonidoView {} }
+    Component { id: escritorioDockComponent; EscritorioDockView {} }
+    Component { id: barraMenusComponent; BarraMenusView {} }
+    Component { id: centroControlComponent; CentroControlView {} }
+    Component { id: notificacionesComponent; NotificacionesView {} }
+    Component { id: concentracionComponent; ConcentracionView {} }
+    Component { id: usuariosComponent; UsuariosView {} }
     Component { id: energiaComponent; EnergiaView {} }
     Component { id: bloqueoComponent; BloqueoView {} }
     Component { id: seguridadComponent; SeguridadView {} }

@@ -10,7 +10,7 @@ Rectangle {
     height: 24
     radius: 12
     opacity: habilitado ? 1 : 0.45
-    color: activo ? "#34c759" : (tema.isDark ? "#39393d" : "#e5e5ea")
+    color: activo ? tema.accent : (tema.isDark ? "#39393d" : "#e5e5ea")
     Behavior on color { ColorAnimation { duration: 160 } }
 
     TitanTheme { id: tema }

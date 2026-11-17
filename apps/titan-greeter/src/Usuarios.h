@@ -51,6 +51,11 @@ public:
     Q_INVOKABLE void agregarAGrupo(const QString &usuario, const QString &grupo);
     Q_INVOKABLE void quitarDeGrupo(const QString &usuario, const QString &grupo);
     Q_INVOKABLE void cambiarClave(const QString &usuario, const QString &clave);
+    Q_INVOKABLE void cambiarNombre(const QString &usuario, const QString &nombre);
+    Q_INVOKABLE void borrarUsuario(const QString &usuario, bool borrarCarpeta);
+    // Sin administrador: la cuenta con la que se ha entrado, con su contrasena.
+    Q_INVOKABLE void cambiarMiClave(const QString &actual, const QString &nueva);
+    Q_INVOKABLE QString usuarioActual() const;
 
 signals:
     void cambiado();

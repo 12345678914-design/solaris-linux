@@ -8,6 +8,11 @@
 #include "SettingsBackend.h"
 #include "Sistema.h"
 #include "ThemeManager.h"
+#include "TitanPrefs.h"
+#include "Dispositivos.h"
+#include "Conexiones.h"
+#include "Personalizar.h"
+#include "Usuarios.h"
 
 int main(int argc, char *argv[])
 {
@@ -54,6 +59,23 @@ int main(int argc, char *argv[])
     Sistema sistema;
     engine.rootContext()->setContextProperty(QStringLiteral("settingsBackend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("sistema"), &sistema);
+    TitanPrefs prefs;
+    Dispositivos dispositivos;
+    Conexiones conexiones;
+    Personalizar personalizar(&prefs);
+    Usuarios usuarios;
+    engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("dispositivos"), &dispositivos);
+    engine.rootContext()->setContextProperty(QStringLiteral("conexiones"), &conexiones);
+    engine.rootContext()->setContextProperty(QStringLiteral("personalizar"), &personalizar);
+    engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
+    // Solo para pruebas con un servicio de usuarios falso (TITAN_USUARIOS_SOCK):
+    // entra ya desbloqueado como administrador ("usuario:clave").
+    if (qEnvironmentVariableIsSet("TITAN_USUARIOS_SOCK") && qEnvironmentVariableIsSet("TITAN_AJUSTES_DESBLOQUEAR")) {
+        const QString d = qEnvironmentVariable("TITAN_AJUSTES_DESBLOQUEAR");
+        usuarios.recargar();
+        usuarios.iniciarAdmin(d.section(QLatin1Char(':'), 0, 0), d.section(QLatin1Char(':'), 1));
+    }
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
 
     const QUrl url(QStringLiteral("qrc:/qml/SettingsWindow.qml"));
