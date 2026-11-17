@@ -265,3 +265,101 @@ wtype
 # Inicio de sesion grafico multiusuario (sistema instalado)
 greetd
 cage
+
+# --- Escritorio completo: lo que Ubuntu y Fedora traen de serie -------------
+# Ver verify/comprobar-escritorio-completo.sh: cada bloque tiene su prueba.
+# Contrasena de administrador en ventana (agente propio titan-polkit, Qt 6)
+polkit-qt6
+# Llavero de contrasenas (Secret Service) para Firefox, Wi-Fi, VS Code...
+gnome-keyring
+libsecret
+# Compartir pantalla (Meet, Zoom, Discord, OBS) y capturas por portal
+xdg-desktop-portal-wlr
+xdg-desktop-portal-gtk
+# Capturas de pantalla (titan-captura) y portapapeles de Wayland
+grim
+slurp
+wl-clipboard
+libnotify
+# Bloqueo seguro (ext-session-lock: si algo se cae, la sesion sigue bloqueada)
+# e inactividad (bloquear, apagar pantalla, suspender)
+gtklock
+gtklock-userinfo-module
+gtklock-powerbar-module
+gtklock-playerctl-module
+swayidle
+wlopm
+playerctl
+# Impresoras y escaneres (IPP Everywhere sin drivers + escaneres de red)
+cups
+cups-pk-helper
+cups-browsed
+cups-filters
+system-config-printer
+ipp-usb
+sane
+sane-airscan
+simple-scan
+avahi
+nss-mdns
+# Discos: NTFS/exFAT, moviles (MTP), papelera y carpetas de red en Finder
+ntfs-3g
+exfatprogs
+gvfs
+gvfs-mtp
+gvfs-smb
+gvfs-gphoto2
+gnome-disk-utility
+smartmontools
+# Energia: perfiles (ahorro/equilibrado/rendimiento) y bateria
+power-profiles-daemon
+upower
+# Cortafuegos (entrante cerrado salvo SSH y mDNS; ver titan-cortafuegos)
+ufw
+# Puntos de restauracion: btrfs -> snapper (antes/despues de cada pacman y en
+# el menu de GRUB); ext4 -> Timeshift
+snapper
+snap-pac
+grub-btrfs
+inotify-tools
+btrfs-assistant
+timeshift
+# Fuentes para todos los idiomas (sin ellas el chino, japones o arabe son cuadros)
+noto-fonts
+noto-fonts-cjk
+# Carpetas Documentos, Descargas, Imagenes... en el idioma del sistema
+xdg-user-dirs
+# VPN y modems moviles
+networkmanager-openvpn
+networkmanager-openconnect
+wireguard-tools
+modemmanager
+usb_modeswitch
+# Codecs que faltaban (GStreamer: AAC, H.264 por libav, MP3...)
+gst-libav
+gst-plugins-ugly
+# Arranque seguro (Secure Boot) con claves propias: titan-arranque-seguro
+sbctl
+# Animacion de arranque (sistema instalado)
+plymouth
+# Accesibilidad: lector de pantalla y sintesis de voz en espanol
+orca
+speech-dispatcher
+espeak-ng
+# Metodos de entrada (chino, japones, coreano...): se activan en Ajustes > Teclado
+fcitx5
+fcitx5-qt
+fcitx5-gtk
+fcitx5-configtool
+fcitx5-chinese-addons
+fcitx5-mozc
+fcitx5-hangul
+# Corrector ortografico (Firefox, OnlyOffice, GTK)
+hunspell
+hunspell-es_any
+hunspell-en_us
+# Lector de huellas y Thunderbolt
+fprintd
+bolt
+# Aviso de actualizaciones (checkupdates)
+pacman-contrib

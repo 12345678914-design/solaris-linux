@@ -216,11 +216,22 @@
     
     <!-- Super/Cmd + L: Bloquear pantalla (Lock Screen) -->
     <keybind key="W-l">
-      <action name="Execute" command="titan-shell --lock"/>
+      <action name="Execute" command="titan-bloquear"/>
     </keybind>
     <keybind key="W-L">
-      <action name="Execute" command="titan-shell --lock"/>
+      <action name="Execute" command="titan-bloquear"/>
     </keybind>
+
+    <!-- Capturas de pantalla (titan-captura): Impr Pant y como macOS (Super+Shift+3/4) -->
+    <keybind key="Print"><action name="Execute" command="titan-captura pantalla"/></keybind>
+    <keybind key="S-Print"><action name="Execute" command="titan-captura area"/></keybind>
+    <keybind key="W-S-3"><action name="Execute" command="titan-captura pantalla"/></keybind>
+    <keybind key="W-S-4"><action name="Execute" command="titan-captura area"/></keybind>
+    <keybind key="W-S-s"><action name="Execute" command="titan-captura area"/></keybind>
+    <keybind key="W-S-S"><action name="Execute" command="titan-captura area"/></keybind>
+
+    <!-- Lector de pantalla (Orca), como en GNOME -->
+    <keybind key="W-A-s"><action name="Execute" command="titan-lector"/></keybind>
     
     <!-- Alt + Tab: Cambiar entre ventanas abiertas con estilo Liquid Glass -->
     <keybind key="A-Tab">

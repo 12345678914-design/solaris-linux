@@ -102,6 +102,16 @@ export XDG_CURRENT_DESKTOP=Titan:labwc
 # Asegurar que DISPLAY no esté predefinido para que labwc inicialice el backend nativo
 unset DISPLAY
 
+# Metodos de entrada (fcitx5), si se activaron en Ajustes > Teclado. Las
+# variables tienen que estar antes de arrancar el compositor para que las
+# hereden todas las apps (Qt, GTK y las X11 por Xwayland).
+if grep -qs '^ACTIVO=1' "${HOME}/.config/titan/entrada.conf"; then
+  export XMODIFIERS=@im=fcitx
+  export QT_IM_MODULE=fcitx
+  export GTK_IM_MODULE=fcitx
+  export SDL_IM_MODULE=fcitx
+fi
+
 # 1. Detección de arranque en modo compatibilidad forzada (nomodeset, titan.compat, safe_graphics)
 ES_COMPAT=0
 if grep -qE '(titan\.compat|nomodeset|safe_graphics)' "${TITAN_CMDLINE}" 2>/dev/null; then

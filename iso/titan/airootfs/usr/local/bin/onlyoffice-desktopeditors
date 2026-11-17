@@ -1,0 +1,100 @@
+#!/bin/bash
+# Wrapper inteligente para ONLYOFFICE Desktop Editors (AppImage) en TITAN Linux
+
+# 1. Configuración de plataforma gráfica y localización en español
+export QT_QPA_PLATFORM=xcb
+export GDK_BACKEND=x11
+export LANG="${LANG:-es_ES.UTF-8}"
+export LANGUAGE="${LANGUAGE:-es_ES:es}"
+export LC_ALL="${LC_ALL:-es_ES.UTF-8}"
+
+# Asegurar configuración en español para ONLYOFFICE
+mkdir -p "$HOME/.config/onlyoffice" 2>/dev/null || true
+if [[ ! -f "$HOME/.config/onlyoffice/DesktopEditors.conf" ]]; then
+    cat << 'EOF' > "$HOME/.config/onlyoffice/DesktopEditors.conf"
+[General]
+titlebar=system
+UITheme=theme-dark
+app.language=es-ES
+language=es-ES
+EOF
+fi
+
+# 2. Localizar socket X11 / Xwayland existente
+if [[ -z "${DISPLAY:-}" ]]; then
+    if [[ -f /tmp/.titan-display ]] && [[ -n "$(< /tmp/.titan-display)" ]]; then
+        export DISPLAY="$(< /tmp/.titan-display)"
+    else
+        shopt -s nullglob
+        for xsocket in /tmp/.X11-unix/X*; do
+            if [[ -S "$xsocket" ]]; then
+                num="${xsocket##*/X}"
+                export DISPLAY=":${num}"
+                break
+            fi
+        done
+        shopt -u nullglob
+    fi
+fi
+export DISPLAY="${DISPLAY:-:0}"
+
+# 3. Si no existe el socket X11 pero estamos en Wayland y existe Xwayland, iniciarlo limpiamente
+XNUM="${DISPLAY#*:}"
+if ! [[ -S "/tmp/.X11-unix/X${XNUM}" ]] && command -v Xwayland >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    mkdir -p /tmp/.X11-unix 2>/dev/null || true
+    chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+    Xwayland "${DISPLAY}" -ac -noreset >/tmp/xwayland-onlyoffice.log 2>&1 &
+    for _ in {1..30}; do
+        [[ -S "/tmp/.X11-unix/X${XNUM}" ]] && break
+        sleep 0.1
+    done
+fi
+
+if command -v xhost >/dev/null 2>&1; then
+    xhost +local: >/dev/null 2>&1 || true
+fi
+
+CANDIDATES=(
+    "/opt/onlyoffice/DesktopEditors.AppImage"
+    "/opt/onlyoffice/DesktopEditors-x86_64.AppImage"
+    "/opt/onlyoffice/DesktopEditors"
+    "/usr/local/bin/DesktopEditors.AppImage"
+    "$HOME/.local/bin/DesktopEditors.AppImage"
+    "$HOME/Descargas/DesktopEditors-x86_64.AppImage"
+    "$HOME/Downloads/DesktopEditors-x86_64.AppImage"
+    "$HOME/Descargas/DesktopEditors.AppImage"
+    "$HOME/Downloads/DesktopEditors.AppImage"
+    "$HOME/DesktopEditors-x86_64.AppImage"
+    "$HOME/DesktopEditors.AppImage"
+    "$(dirname "$0")/DesktopEditors.AppImage"
+)
+
+APPIMAGE=""
+for candidate in "${CANDIDATES[@]}"; do
+    if [[ -f "$candidate" && -s "$candidate" ]]; then
+        if head -n 1 "$candidate" 2>/dev/null | grep -q "^#"; then
+            continue
+        fi
+        APPIMAGE="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$APPIMAGE" ]]; then
+    chmod +x "$APPIMAGE" 2>/dev/null || true
+
+    # Intentar ejecutar con FUSE normal
+    if command -v fusermount >/dev/null 2>&1 || [[ -e /dev/fuse ]]; then
+        "$APPIMAGE" --keeplang=es-ES --system-title-bar "$@" 2>/dev/null && exit 0
+    fi
+
+    # Fallback transparente que funciona incluso sin FUSE
+    exec "$APPIMAGE" --appimage-extract-and-run --keeplang=es-ES --system-title-bar "$@"
+fi
+
+echo "Error: No se encontró el AppImage de ONLYOFFICE." >&2
+echo "Ubicaciones soportadas:" >&2
+echo "  - /opt/onlyoffice/DesktopEditors.AppImage" >&2
+echo "  - ~/.local/bin/DesktopEditors.AppImage" >&2
+echo "  - ~/Descargas/DesktopEditors-x86_64.AppImage" >&2
+exit 1

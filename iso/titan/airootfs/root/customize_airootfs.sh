@@ -489,6 +489,148 @@ for u_sock in pipewire.socket pipewire-pulse.socket; do
   fi
 done
 
+# ------------------------------------- escritorio completo (como Ubuntu/Fedora)
+log "escritorio completo: impresion, energia, cortafuegos, llavero, mDNS"
+
+# Servicios del sistema. Solo los que existan: un paquete que falte no rompe
+# el build, lo detecta verify/comprobar-escritorio-completo.sh.
+for unidad in cups.socket cups-browsed.service avahi-daemon.service \
+              power-profiles-daemon.service ModemManager.service \
+              ufw.service titan-cortafuegos.service grub-btrfsd.service; do
+  if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
+    systemctl enable "${unidad}"
+  fi
+done
+
+# Servicios de cada usuario: llavero (socket), carpetas Documentos/Descargas...
+# en el idioma del sistema y el aviso de actualizaciones.
+for unidad in gnome-keyring-daemon.socket xdg-user-dirs-update.service \
+              titan-actualizaciones.timer; do
+  if [[ -e "/usr/lib/systemd/user/${unidad}" || -e "/etc/systemd/user/${unidad}" ]]; then
+    systemctl --global enable "${unidad}"
+  fi
+done
+
+# Llavero desbloqueado con la contrasena de entrada (greetd y consola) y que
+# cambie con ella (passwd). 'optional': si falta, se entra igual.
+for pam in greetd login; do
+  f="/etc/pam.d/${pam}"
+  [[ -f "$f" ]] || continue
+  grep -q pam_gnome_keyring "$f" && continue
+  awk '
+    /^auth/    {ultima_auth=NR}
+    /^session/ {ultima_session=NR}
+    {linea[NR]=$0}
+    END {
+      for (i=1; i<=NR; i++) {
+        print linea[i]
+        if (i==ultima_auth)    print "auth       optional     pam_gnome_keyring.so"
+        if (i==ultima_session) print "session    optional     pam_gnome_keyring.so auto_start"
+      }
+    }' "$f" > "$f.titan" && cat "$f.titan" > "$f" && rm -f "$f.titan"
+done
+if [[ -f /etc/pam.d/passwd ]] && ! grep -q pam_gnome_keyring /etc/pam.d/passwd; then
+  echo "password   optional     pam_gnome_keyring.so" >> /etc/pam.d/passwd
+fi
+
+# Impresoras y equipos de la red por su nombre (.local): avahi + nss-mdns. El
+# mDNS lo hace avahi, asi que systemd-resolved no debe competir por el 5353.
+if [[ -f /etc/nsswitch.conf ]] && ! grep -q mdns_minimal /etc/nsswitch.conf; then
+  sed -i -E 's/^(hosts:.*)\bresolve\b/\1mdns_minimal [NOTFOUND=return] resolve/' /etc/nsswitch.conf
+fi
+install -d -m 0755 /etc/systemd/resolved.conf.d
+printf '[Resolve]\nMulticastDNS=no\n' > /etc/systemd/resolved.conf.d/10-titan-mdns.conf
+
+# Administradores (wheel): ver y crear puntos de restauracion sin root.
+install -d -m 0755 /etc/snapper/config-templates
+if [[ -f /usr/share/snapper/config-templates/default ]]; then
+  sed -e 's/^ALLOW_GROUPS=.*/ALLOW_GROUPS="wheel"/' \
+      -e 's/^SYNC_ACL=.*/SYNC_ACL="yes"/' \
+      -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="5"/' \
+      -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
+      -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="0"/' \
+      -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="0"/' \
+      -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
+      -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
+      /usr/share/snapper/config-templates/default > /etc/snapper/config-templates/titan
+fi
+
+# Animacion de arranque del sistema instalado: tema "titan" (el sol de Inti
+# sobre fondo oscuro), hecho a partir del tema spinner de plymouth. El
+# instalador anade el gancho plymouth al initramfs y 'splash' al kernel.
+if [[ -d /usr/share/plymouth/themes/spinner ]]; then
+  t=/usr/share/plymouth/themes/titan
+  rm -rf "$t"
+  cp -a /usr/share/plymouth/themes/spinner "$t"
+  rm -f "$t/spinner.plymouth"
+  if [[ -f /usr/share/titan/solaris-logo.png ]]; then
+    cp -f /usr/share/titan/solaris-logo.png "$t/watermark.png"
+  fi
+  cat > "$t/titan.plymouth" <<'PLY'
+[Plymouth Theme]
+Name=Inti OS
+Description=Arranque de Inti OS: el sol de Inti y una rueda de carga
+ModuleName=two-step
+
+[two-step]
+Font=Inter 12
+TitleFont=Inter Light 26
+ImageDir=/usr/share/plymouth/themes/titan
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.62
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.38
+HorizontalAlignment=.5
+VerticalAlignment=.80
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.42
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x10121a
+BackgroundEndColor=0x10121a
+ProgressBarBackgroundColor=0x3a3f4b
+ProgressBarForegroundColor=0xf5b041
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+
+[reboot]
+UseEndAnimation=false
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Instalando actualizaciones...
+SubTitle=No apagues el equipo
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el sistema...
+SubTitle=No apagues el equipo
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el firmware...
+SubTitle=No apagues el equipo
+PLY
+  install -d -m 0755 /etc/plymouth
+  printf '[Daemon]\nTheme=titan\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
+fi
+# greetd espera a que la animacion termine (si no, se pisan en la pantalla).
+install -d -m 0755 /etc/systemd/system/greetd.service.d
+printf '[Unit]\nAfter=plymouth-quit-wait.service plymouth-quit.service\n' \
+  > /etc/systemd/system/greetd.service.d/10-plymouth.conf
+
+
 # ---------------------------------------------------------- 6. comprobaciones
 
 log "comprobacion: comando basico de Linux + titan + fastfetch"

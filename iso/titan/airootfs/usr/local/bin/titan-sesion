@@ -23,6 +23,18 @@ fi
 # 0.2 Desbloquear radio Wi-Fi en el arranque si existe hardware inalámbrico
 (sleep 1 && rfkill unblock wifi 2>/dev/null && nmcli radio wifi on 2>/dev/null) &
 
+# 0.3 Ventana de contrasena de administrador (agente de polkit). Sin agente,
+#     GNOME Software, las impresoras o los discos no pueden pedir permiso.
+if [ -x /usr/local/bin/titan-polkit ]; then
+    pgrep -u "$(id -u)" -x titan-polkit >/dev/null 2>&1 || /usr/local/bin/titan-polkit >/tmp/titan-polkit.log 2>&1 &
+fi
+
+# 0.4 Inactividad: bloquear, apagar pantallas y suspender (swayidle). Los
+#     tiempos se cambian en Ajustes > Bloquear pantalla.
+if [ -x /usr/local/bin/titan-inactividad ]; then
+    /usr/local/bin/titan-inactividad &
+fi
+
 # 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
 lanzar_titan_desktop() {
     if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
@@ -58,7 +70,28 @@ lanzar_titan_shell() {
         echo "$DISPLAY" > /tmp/.titan-display
         chmod 0666 /tmp/.titan-display 2>/dev/null || true
     fi
-    dbus-update-activation-environment --all 2>/dev/null || true
+    # --systemd: los servicios de usuario (portales para compartir pantalla,
+    # llavero, aviso de actualizaciones) tambien necesitan WAYLAND_DISPLAY y
+    # XDG_CURRENT_DESKTOP; sin esto Meet o OBS no ven la pantalla.
+    dbus-update-activation-environment --systemd --all 2>/dev/null ||
+        dbus-update-activation-environment --all 2>/dev/null || true
+
+    # Programas de /etc/xdg/autostart y ~/.config/autostart, como en GNOME o
+    # KDE (systemd-xdg-autostart-generator respeta OnlyShowIn y Hidden).
+    systemctl --user start xdg-desktop-autostart.target 2>/dev/null || true
+
+    # Carpetas Documentos, Descargas, Imagenes... en el idioma del sistema.
+    command -v xdg-user-dirs-update >/dev/null 2>&1 && xdg-user-dirs-update 2>/dev/null
+
+    # Metodos de entrada (chino, japones, coreano...): Ajustes > Teclado.
+    if grep -qs '^ACTIVO=1' "$HOME/.config/titan/entrada.conf" && command -v fcitx5 >/dev/null 2>&1; then
+        pgrep -u "$(id -u)" -x fcitx5 >/dev/null || fcitx5 -d --replace >/dev/null 2>&1
+    fi
+
+    # Lector de pantalla: Ajustes > Accesibilidad (o Super+Alt+S).
+    if grep -qs '^LECTOR=1' "$HOME/.config/titan/accesibilidad.conf" && command -v orca >/dev/null 2>&1; then
+        pgrep -u "$(id -u)" -x orca >/dev/null || (orca --replace >/dev/null 2>&1 &)
+    fi
 
     # Portapapeles compartido con el anfitrion en una VM (QEMU qemu-vdagent,
     # virt-manager/SPICE). El agente es de X11: va por Xwayland, y el

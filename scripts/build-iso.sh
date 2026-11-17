@@ -420,6 +420,7 @@ build_qt_app titan-calendar || exit 1
 build_qt_app titan-clock || exit 1
 build_qt_app titan-video || exit 1
 build_qt_app titan-greeter || exit 1
+build_qt_app titan-polkit || exit 1
 # El instalador tambien se compila en cada ISO: antes se copiaba a mano y la
 # ISO podia llevar uno viejo (sin activar greetd, por ejemplo).
 build_qt_app titan-installer || exit 1

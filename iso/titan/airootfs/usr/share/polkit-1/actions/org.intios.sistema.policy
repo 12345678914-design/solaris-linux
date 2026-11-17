@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Inti OS: acciones de Ajustes que necesitan administrador (pkexec). -->
+<policyconfig>
+  <vendor>Inti OS</vendor>
+  <action id="org.intios.cortafuegos">
+    <description>Cambiar el cortafuegos</description>
+    <message>Para activar o desactivar el cortafuegos hace falta la contraseña de administrador.</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-cortafuegos</annotate>
+  </action>
+  <action id="org.intios.huella">
+    <description>Usar la huella para entrar</description>
+    <message>Para usar el lector de huellas al entrar hace falta la contraseña de administrador.</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-huella</annotate>
+  </action>
+  <action id="org.intios.arranque-seguro">
+    <description>Preparar el arranque seguro</description>
+    <message>Para inscribir las claves de arranque seguro y firmar el sistema hace falta la contraseña de administrador.</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-arranque-seguro</annotate>
+  </action>
+  <action id="org.intios.instantaneas">
+    <description>Gestionar los puntos de restauración</description>
+    <message>Para crear o borrar puntos de restauración hace falta la contraseña de administrador.</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-instantaneas</annotate>
+  </action>
+</policyconfig>

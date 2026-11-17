@@ -1,0 +1,11 @@
+#!/bin/sh
+# Inti OS - que pantalla compartir (Meet, Zoom, Discord, OBS...).
+# Lo llama xdg-desktop-portal-wlr (/etc/xdg/xdg-desktop-portal-wlr/config)
+# y tiene que imprimir el nombre de la salida. Con una sola pantalla no
+# pregunta; con varias, se hace clic en la que se quiere compartir.
+salidas="$(wlr-randr 2>/dev/null | awk '/^[^ ]/ {print $1}')"
+if [ "$(printf '%s\n' "$salidas" | grep -c .)" -le 1 ] && [ -n "$salidas" ]; then
+    printf '%s\n' "$salidas"
+    exit 0
+fi
+exec slurp -f %o -or -b 10121a99 -c 0a84ffff -w 3

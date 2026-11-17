@@ -1,0 +1,15 @@
+#!/bin/sh
+# Inti OS - gtklock llama a esto al bloquear y al desbloquear (--lock-command y
+# --unlock-command). Deja una marca para 'titan-bloquear --esperar' y apaga la
+# musica al bloquear, como macOS.
+marca="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/titan-bloqueada"
+case "${1:-}" in
+    bloqueada)
+        : > "$marca"
+        command -v playerctl >/dev/null 2>&1 && playerctl --all-players pause >/dev/null 2>&1
+        ;;
+    desbloqueada)
+        rm -f "$marca"
+        ;;
+esac
+exit 0

@@ -1,0 +1,76 @@
+#!/bin/bash
+# Inti OS - arranque seguro (Secure Boot) con claves propias (sbctl).
+#
+# Inti OS no lleva un cargador firmado por Microsoft (shim), asi que el
+# arranque seguro se hace como en Arch: se crean claves propias, se meten en el
+# firmware junto con las de Microsoft (para que Windows y el firmware de las
+# tarjetas graficas sigan arrancando) y se firman GRUB y los kernels. sbctl
+# vuelve a firmar solo tras cada actualizacion (gancho de pacman).
+#
+#   titan-arranque-seguro estado     resumen legible (no necesita root)
+#   titan-arranque-seguro preparar   crear claves, inscribirlas y firmar (root)
+#
+# Antes de 'preparar' hay que poner el firmware en "modo de configuracion"
+# (Setup Mode): en la BIOS/UEFI, Secure Boot > borrar claves / Reset to Setup
+# Mode. Despues de 'preparar', reiniciar y activar Secure Boot en la BIOS.
+
+set -u
+
+estado() {
+    if [ ! -d /sys/firmware/efi ]; then
+        echo "sin-uefi|El equipo arranca en modo BIOS: el arranque seguro necesita UEFI."
+        return
+    fi
+    local s
+    s="$(sbctl status 2>/dev/null)"
+    if printf '%s' "$s" | grep -qiE 'Secure Boot:.*Enabled'; then
+        echo "activo|El arranque seguro está activo."
+    elif printf '%s' "$s" | grep -qiE 'Setup Mode:.*Enabled'; then
+        echo "configuracion|El firmware está en modo de configuración: ya se pueden inscribir las claves."
+    elif [ -d /var/lib/sbctl/keys ] || [ -d /usr/share/secureboot/keys ]; then
+        echo "preparado|Claves creadas y archivos firmados. Activa Secure Boot en la BIOS/UEFI."
+    else
+        echo "inactivo|El arranque seguro está desactivado. Para activarlo, pon el firmware en modo de configuración (Setup Mode) y pulsa Preparar."
+    fi
+}
+
+firmar_todo() {
+    local f
+    # Con Secure Boot, GRUB no carga modulos del disco: tienen que ir dentro
+    # del propio .efi. Y sin shim, --disable-shim-lock (la firma la comprueba
+    # el firmware). --removable deja el mismo EFI/BOOT/BOOTX64.EFI de siempre.
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --removable \
+        --disable-shim-lock \
+        --modules="tpm part_gpt part_msdos fat ext2 btrfs xfs ntfs search search_fs_uuid search_fs_file search_label configfile normal linux chain echo test gfxterm all_video font loadenv reboot cryptodisk luks2 gcry_sha256 gcry_rijndael" \
+        || return 1
+    cp -f /boot/efi/EFI/BOOT/BOOTX64.EFI /boot/efi/EFI/IntiOS/grubx64.efi 2>/dev/null
+    for f in /boot/efi/EFI/BOOT/BOOTX64.EFI /boot/efi/EFI/IntiOS/grubx64.efi \
+             /boot/vmlinuz-linux-titanlinux /boot/vmlinuz-linux; do
+        [ -f "$f" ] && sbctl sign -s "$f"
+    done
+    return 0
+}
+
+case "${1:-estado}" in
+    estado)
+        estado
+        ;;
+    preparar)
+        [ "$(id -u)" = 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+        [ -d /sys/firmware/efi ] || { echo "El equipo no arranca en modo UEFI" >&2; exit 1; }
+        if ! sbctl status 2>/dev/null | grep -qiE 'Setup Mode:.*Enabled'; then
+            echo "El firmware no está en modo de configuración (Setup Mode). Entra en la BIOS/UEFI, borra las claves de Secure Boot y vuelve a intentarlo." >&2
+            exit 3
+        fi
+        sbctl create-keys || exit 1
+        # -m: conservar las claves de Microsoft (Windows, ROM de las graficas).
+        sbctl enroll-keys -m || exit 1
+        firmar_todo || exit 1
+        sbctl verify || true
+        echo "Listo. Reinicia, entra en la BIOS/UEFI y activa Secure Boot."
+        ;;
+    *)
+        echo "uso: titan-arranque-seguro estado|preparar" >&2
+        exit 2
+        ;;
+esac

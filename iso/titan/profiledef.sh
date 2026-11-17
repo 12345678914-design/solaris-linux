@@ -67,5 +67,18 @@ file_permissions=(
   ["/usr/local/bin/instalar"]="0:0:755"
   ["/root/instalador/instalar"]="0:0:755"
   ["/usr/local/bin/titan-installer"]="0:0:755"
+  # Escritorio completo (bloqueo, inactividad, capturas, cortafuegos, etc.)
+  ["/usr/local/bin/titan-bloquear"]="0:0:755"
+  ["/usr/local/bin/titan-bloquear-avisar"]="0:0:755"
+  ["/usr/local/bin/titan-inactividad"]="0:0:755"
+  ["/usr/local/bin/titan-captura"]="0:0:755"
+  ["/usr/local/bin/titan-elegir-pantalla"]="0:0:755"
+  ["/usr/local/bin/titan-cortafuegos"]="0:0:755"
+  ["/usr/local/bin/titan-actualizaciones"]="0:0:755"
+  ["/usr/local/bin/titan-arranque-seguro"]="0:0:755"
+  ["/usr/local/bin/titan-huella"]="0:0:755"
+  ["/usr/local/bin/titan-instantaneas"]="0:0:755"
+  ["/usr/local/bin/titan-polkit"]="0:0:755"
+  ["/usr/local/bin/titan-lector"]="0:0:755"
   ["/etc/sudoers.d/20-calamares"]="0:0:0440"
 )

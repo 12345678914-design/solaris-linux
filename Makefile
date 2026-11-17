@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-installer apps/wayfire-titan
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan
 	@# Ver scripts/fijar-isa-baseline.py: en CachyOS v4 todo sale marcado "necesita v4"
 	@python3 -I scripts/fijar-isa-baseline.py $$(find iso/titan/airootfs/usr/local/bin iso/titan/airootfs/usr/lib/titan iso/titan/airootfs/usr/lib/wayfire -type f -exec sh -c 'head -c4 "$$1" | grep -q ELF && echo "$$1"' _ {} \; 2>/dev/null)
 
@@ -147,6 +147,12 @@ apps/titan-greeter:
 	install -m 0755 $(APPS)/titan-greeter/titan-greeter iso/titan/airootfs/usr/local/bin/
 	install -m 0755 $(APPS)/titan-greeter/helper/titan-usuarios-helper iso/titan/airootfs/usr/local/bin/
 
+# Ventana de contrasena de administrador (agente de polkit)
+apps/titan-polkit:
+	@echo "Compilando titan-polkit..."
+	mkdir -p $(APPS)/titan-polkit/build && cd $(APPS)/titan-polkit/build && qmake6 .. && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-polkit/build/titan-polkit iso/titan/airootfs/usr/local/bin/
+
 # Plugins de Wayfire propios (titan-wobbly-guard: sin gelatina al redimensionar)
 apps/wayfire-titan:
 	@echo "Compilando plugins de Wayfire..."
@@ -202,6 +208,7 @@ clean:
 	@find $(APPS)/titan-clock -name 'titan-clock' -type f -executable -delete
 	@find $(APPS)/titan-video -name 'titan-video' -type f -executable -delete
 	@find $(APPS)/titan-installer -name 'titan-installer' -type f -executable -delete
+	@rm -rf $(APPS)/titan-polkit/build
 	@find $(APPS)/titan-desktop -maxdepth 1 -name 'titan-desktop' -type f -executable -delete
 	@find $(APPS)/titan-acerca -maxdepth 1 -name 'titan-acerca' -type f -executable -delete
 	@rm -rf $(APPS)/titan-desktop/build $(APPS)/titan-panel/build $(APPS)/titan-acerca/build

@@ -1,0 +1,48 @@
+#!/bin/sh
+# Inti OS - lector de huellas (fprintd).
+#
+# Como en Ubuntu, la huella solo se usa para entrar cuando el usuario ya ha
+# registrado alguna: hasta entonces PAM ni la pide. 'activar' anade
+# pam_fprintd a sudo, a la ventana de contrasena de administrador (polkit) y a
+# la pantalla de bloqueo, siempre con la contrasena como alternativa.
+#
+#   titan-huella estado                  sin-lector | sin-huellas | registrada
+#   titan-huella activar|desactivar      (root) PAM con o sin huella
+# Registrar una huella: fprintd-enroll (Ajustes > Privacidad lo hace por ti).
+
+linea='auth       sufficient   pam_fprintd.so max-tries=2 timeout=10'
+servicios="sudo polkit-1 gtklock"
+
+case "${1:-estado}" in
+    estado)
+        if ! fprintd-list "$(id -un)" >/tmp/.titan-huella.$$ 2>&1 ||
+           grep -qi "no devices" /tmp/.titan-huella.$$; then
+            echo sin-lector
+        elif grep -qE '^ *- *#?[0-9]+:' /tmp/.titan-huella.$$; then
+            echo registrada
+        else
+            echo sin-huellas
+        fi
+        rm -f /tmp/.titan-huella.$$
+        ;;
+    activar)
+        for s in $servicios; do
+            f="/etc/pam.d/$s"
+            [ -f "$f" ] || continue
+            grep -q pam_fprintd "$f" && continue
+            # Justo despues de la cabecera: la huella primero, contrasena si falla.
+            awk -v l="$linea" 'NR==1 && /^#%PAM/ {print; print l; next} NR==1 {print l} {print}' "$f" > "$f.titan" &&
+                cat "$f.titan" > "$f" && rm -f "$f.titan"
+        done
+        ;;
+    desactivar)
+        for s in $servicios; do
+            f="/etc/pam.d/$s"
+            [ -f "$f" ] && sed -i '/pam_fprintd\.so/d' "$f"
+        done
+        ;;
+    *)
+        echo "uso: titan-huella estado|activar|desactivar" >&2
+        exit 2
+        ;;
+esac

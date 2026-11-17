@@ -1,0 +1,7 @@
+[Desktop Entry]
+# Inti OS: oculto aqui. fcitx5 se activa en Ajustes > Teclado; spice-vdagent
+# lo lanza titan-sesion por Xwayland. (Hidden en ~/.config/autostart gana a
+# /etc/xdg/autostart.)
+Type=Application
+Name=spice-vdagent
+Hidden=true
