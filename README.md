@@ -187,6 +187,51 @@ y ejecuta dentro del sistema las comprobaciones del catálogo de comandos,
 transcripción, informe JSON y capturas en `out/verify/`, y termina con error si
 alguna comprobación falla.
 
+También puedes verificar los componentes del escritorio y aplicaciones de la ISO:
+
+```bash
+./verify/comprobar-escritorio.sh
+```
+
+## Resolución de problemas: Error "CPU ISA level is lower than required"
+
+### Causa técnica
+Al iniciar aplicaciones como `titan-acerca`, `titan-desktop`, `titan-calc`, `titan-calendar`,
+`titan-clock`, `titan-video` o `titan-installer` (o al correr `./verify/comprobar-escritorio.sh`),
+el cargador dinámico de `glibc` (`ld.so`) puede abortar la ejecución con:
+
+```text
+CPU ISA level is lower than required
+```
+
+Este fallo ocurre cuando los binarios ELF fueron enlazados o compilados con marcas
+de nivel de microarquitectura x86-64 elevadas (por ejemplo, `x86-64-v4`, común al
+usar repositorios optimizados para CachyOS o flags como `-march=x86-64-v4` que requieren
+extensiones **AVX-512**).
+
+Si la máquina anfitriona cuenta con procesadores que soportan hasta `x86-64-v3`
+(como Intel Core de 12ª, 13ª o 14ª generación con arquitectura híbrida donde los
+núcleos E deshabilitan AVX-512, o CPUs AMD anteriores a Zen 4), el procesador no
+cumple el requerimiento de la cabecera ELF y la aplicación no puede arrancar.
+
+### Cómo se solucionó
+1. **Recompilación en nivel ISA estándar/compatible:** Se recompilaron todas las aplicaciones
+   afectadas en `apps/` utilizando el juego de instrucciones base compatible (`x86-64-v3` o genérico)
+   sin exigir extensiones AVX-512:
+   ```bash
+   make clean
+   make apps
+   ```
+2. **Sincronización de binarios en el perfil airootfs:** Los ejecutables generados se copiaron
+   a `iso/titan/airootfs/usr/local/bin/` para que la imagen ISO contenga binarios universales
+   compatibles con cualquier CPU x86_64 moderna.
+3. **Automatización en el Makefile:** Se añadió `apps/titan-installer` a la lista de compilación
+   general y se ajustaron las reglas de limpieza y copia en el `Makefile` para evitar binarios
+   huérfanos de compilaciones anteriores.
+4. **Verificación completa:** Con `./verify/comprobar-escritorio.sh` se validaron los 28 componentes
+   del sistema y aplicaciones offscreen obteniendo 0 fallos.
+
+
 ## Personalización de recursos visuales
 
 Antes de compilar la ISO puedes cambiar los recursos en:
