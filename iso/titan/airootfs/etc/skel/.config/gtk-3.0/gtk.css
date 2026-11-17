@@ -1,0 +1,45 @@
+/* Inti OS - window buttons like the Titan apps (macOS traffic lights).
+ * GTK 3: Firefox, and GTK apps that draw their own bar.
+ * The order (close, minimize, maximize on the left) comes from
+ * gtk-decoration-layout / org.gnome.desktop.wm.preferences button-layout. */
+
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 14px;
+  min-height: 14px;
+  margin: 0 3px;
+  padding: 0;
+  border: none;
+  border-radius: 100%;
+  background-image: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  /* The symbol (×, −, +) only shows on hover. */
+  color: transparent;
+  -gtk-icon-shadow: none;
+  -gtk-icon-transform: scale(0.62);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+headerbar button.titlebutton.close,
+.titlebar button.titlebutton.close { background-color: #ff5f57; }
+
+headerbar button.titlebutton.minimize,
+.titlebar button.titlebutton.minimize { background-color: #febc2e; }
+
+headerbar button.titlebutton.maximize,
+.titlebar button.titlebutton.maximize { background-color: #28c840; }
+
+headerbar:hover button.titlebutton,
+.titlebar:hover button.titlebutton { color: rgba(0, 0, 0, 0.55); }
+
+headerbar button.titlebutton:active,
+.titlebar button.titlebutton:active {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18));
+}
+
+/* Inactive window: grey lights, like macOS. */
+headerbar:backdrop button.titlebutton,
+.titlebar:backdrop button.titlebutton {
+  background-color: alpha(currentColor, 0.22);
+  color: transparent;
+}

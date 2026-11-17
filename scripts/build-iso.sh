@@ -423,6 +423,14 @@ build_qt_app titan-greeter || exit 1
 # ISO podia llevar uno viejo (sin activar greetd, por ejemplo).
 build_qt_app titan-installer || exit 1
 
+# Barra Titan de Wayfire (titan-decor): opciones del codigo = XML, y la sesion
+# la usa en lugar de la de Wayfire. Si falla, Wayfire no cargaria el plugin.
+if ! "${DISTRO}/verify/comprobar-titan-decor.sh" >"${WORK_DIR}/titan-decor-test.log" 2>&1; then
+  red "Fallo la prueba de titan-decor; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-decor-test.log" >&2
+  exit 1
+fi
+
 # Servicio root de usuarios y grupos (lo usan titan-greeter y titan-shell).
 info "compilando titan-usuarios-helper"
 if ! (

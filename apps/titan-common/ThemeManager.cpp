@@ -266,15 +266,24 @@ void ThemeManager::syncLabwcTheme()
         QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("gtk-theme"), gtkTheme
     });
 
+    QProcess::startDetached(QStringLiteral("gsettings"), {
+        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"), QStringLiteral("button-layout"),
+        QStringLiteral("close,minimize,maximize:")
+    });
+
     for (const QString &ver : {QStringLiteral("gtk-3.0"), QStringLiteral("gtk-4.0")}) {
         QString p = QDir::homePath() + QStringLiteral("/.config/") + ver;
         QDir().mkpath(p);
         QFile gf(p + QStringLiteral("/settings.ini"));
         if (gf.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream gout(&gf);
+            // Window buttons on the left like the Titan apps (the traffic
+            // lights are drawn by ~/.config/gtk-*/gtk.css).
             gout << "[Settings]\n"
                  << "gtk-application-prefer-dark-theme=" << (m_isDark ? "1" : "0") << "\n"
-                 << "gtk-theme-name=" << gtkTheme << "\n";
+                 << "gtk-theme-name=" << gtkTheme << "\n"
+                 << "gtk-icon-theme-name=Adwaita\n"
+                 << "gtk-decoration-layout=close,minimize,maximize:\n";
             gf.close();
         }
     }

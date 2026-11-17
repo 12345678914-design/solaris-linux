@@ -8,7 +8,7 @@
 # compila contra ellos. Son las mismas versiones que lleva la ISO.
 #
 # Si algo falla, avisa y sale con 0: la sesion Wayfire funciona igual sin el
-# plugin (solo vuelve la gelatina al redimensionar).
+# plugin (vuelve la gelatina al redimensionar y la barra de Wayfire).
 #
 # Uso: ./scripts/build-wayfire-plugins.sh [directorio-destino]
 
@@ -39,7 +39,7 @@ else
     done
   fi
   cflags=(-I"${sdk}/usr/include" -I"${sdk}/usr/include/wlroots-0.20")
-  for p in pixman-1 wayland-server cairo pango libdrm xkbcommon; do
+  for p in pixman-1 wayland-server cairo pango pangocairo libdrm xkbcommon; do
     if pkg-config --exists "${p}"; then
       read -r -a extra <<<"$(pkg-config --cflags "${p}")"
       cflags+=("${extra[@]}")
@@ -47,18 +47,36 @@ else
   done
 fi
 
+# Bibliotecas que usan los plugins de dibujo (titan-decor: cairo + pango).
+libs=()
+if pkg-config --exists pangocairo cairo 2>/dev/null; then
+  read -r -a libs <<<"$(pkg-config --libs pangocairo cairo)"
+fi
+
 install -d -m 0755 "${destino}"
 estado=0
-for fuente in "${fuentes}"/*.cpp; do
-  nombre="$(basename "${fuente}" .cpp)"
+compilar() {
+  local nombre="$1"; shift
   if g++ -std=c++17 -O2 -fPIC -shared -DWLR_USE_UNSTABLE "${cflags[@]}" \
-       -o "${destino}/lib${nombre}.so" "${fuente}"; then
+       -o "${destino}/lib${nombre}.so" "$@" "${libs[@]}"; then
     chmod 0755 "${destino}/lib${nombre}.so"
     echo "[wayfire-titan] lib${nombre}.so -> ${destino}"
   else
     aviso "fallo al compilar ${nombre}"
     estado=1
   fi
+}
+
+# Un plugin por fichero (titan-wobbly-guard.cpp) ...
+for fuente in "${fuentes}"/*.cpp; do
+  [[ -e "${fuente}" ]] || continue
+  compilar "$(basename "${fuente}" .cpp)" "${fuente}"
+done
+# ... o por carpeta con varios .cpp (titan-decor/).
+for carpeta in "${fuentes}"/*/; do
+  carpeta="${carpeta%/}"
+  compgen -G "${carpeta}/*.cpp" >/dev/null || continue
+  compilar "$(basename "${carpeta}")" "${carpeta}"/*.cpp
 done
 
 # Un fallo de compilacion si se senala (es un error del codigo, no del entorno).

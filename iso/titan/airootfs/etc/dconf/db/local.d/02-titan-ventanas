@@ -1,0 +1,5 @@
+# Inti OS - window buttons on the left (close, minimize, maximize),
+# like the Titan apps. On Wayland, GTK reads them from here before
+# settings.ini (Firefox, Calculator, Calendar...).
+[org/gnome/desktop/wm/preferences]
+button-layout='close,minimize,maximize:'

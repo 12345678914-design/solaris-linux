@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="titan-decor">
+		<_short>Titan decoration</_short>
+		<_long>Inti OS window bar: macOS traffic lights on the left, centred title and Titan theme colours. Based on Wayfire's decoration plugin.</_long>
+		<category>Effects</category>
+		<option name="font" type="string">
+			<_short>Font</_short>
+			<_long>Sets the font to use for the title bars.</_long>
+			<default>Inter Semi-Bold</default>
+		</option>
+		<option name="font_color" type="color">
+			<_short>Font color</_short>
+			<_long>Sets the font color to use for the title bars.</_long>
+			<default>#ffffffff</default>
+		</option>
+		<option name="font_scale" type="double">
+			<_short>Font scale</_short>
+			<_long>Sets the font scale to use for the title bars.</_long>
+			<default>0.46</default>
+			<max>1.0</max>
+			<min>0.1</min>
+		</option>
+		<option name="title_height" type="int">
+			<_short>Title bar height</_short>
+			<_long>Sets the height of the title bars in pixels.</_long>
+			<default>28</default>
+			<max>100</max>
+			<min>0</min>
+		</option>
+		<option name="border_size" type="int">
+			<_short>Border size</_short>
+			<_long>Sets the border size in pixels.</_long>
+			<default>3</default>
+			<max>100</max>
+			<min>0</min>
+		</option>
+		<option name="button_order" type="string">
+			<_short>Order of window buttons</_short>
+			<_long>Sets the order of the window buttons.</_long>
+			<default>close minimize maximize</default>
+		</option>
+		<option name="button_scale" type="double">
+			<_short>Buttons scale</_short>
+			<_long>Sets the scale for window buttons.</_long>
+			<default>0.46</default>
+			<max>1.0</max>
+			<min>0.1</min>
+		</option>
+		<option name="button_padding" type="int">
+			<_short>Buttons padding</_short>
+			<_long>Sets the vertical padding for window buttons.</_long>
+			<default>4</default>
+		</option>
+		<!-- Colors -->
+		<option name="follow_titan_theme" type="bool">
+			<_short>Follow the Titan theme</_short>
+			<_long>Bar colours from ~/.config/titan/theme.conf (light/dark). If off, active_color, inactive_color and font_color are used.</_long>
+			<default>true</default>
+		</option>
+		<option name="active_color" type="color">
+			<_short>Color when window is active</_short>
+			<_long>Sets the color when the window is active.</_long>
+			<default>#222222aa</default>
+		</option>
+		<option name="inactive_color" type="color">
+			<_short>Color when window is inactive</_short>
+			<_long>Sets the color when the window is inactive.</_long>
+			<default>#333333dd</default>
+		</option>
+		<option name="ignore_views" type="string">
+			<_short>Decoration disabled for specified window types</_short>
+			<_long>Disables window decoration for windows matching the specified criteria.</_long>
+			<default>none</default>
+		</option>
+		<option name="forced_views" type="string">
+			<_short>Force decorations for specified window types</_short>
+			<_long>Forces window decoration for windows matching the specified criteria, overriding client decoration preference.</_long>
+			<default>none</default>
+		</option>
+	</plugin>
+</wayfire>

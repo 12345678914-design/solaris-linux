@@ -268,6 +268,9 @@ if [ "${COMPOSITOR}" = "wayfire" ]; then
   export QT_WAYLAND_DISABLE_WINDOWDECORATION=0
   # Con preferred_decoration_mode=client, Firefox dibuja su barra redondeada.
   export MOZ_GTK_TITLEBAR_DECORATION=client
+  # kitty: sin su barra propia; Wayfire le pone la de Titan (titan-decor,
+  # forced_views). En labwc no se pone: alli kitty pide la barra al compositor.
+  export KITTY_CONF_DECORACION="hide_window_decorations yes"
   export NO_AT_BRIDGE=1
   echo "Iniciando Inti OS (sesión inmersiva con Wayfire)..."
   dbus-run-session -- wayfire 2>&1 | tee /tmp/wayfire.log
@@ -277,6 +280,7 @@ if [ "${COMPOSITOR}" = "wayfire" ]; then
     tail -n 15 /tmp/wayfire.log
     export XDG_CURRENT_DESKTOP=Titan:labwc
     export MOZ_GTK_TITLEBAR_DECORATION=system
+    unset KITTY_CONF_DECORACION
     unset QT_QUICK_BACKEND QSG_RHI_BACKEND
     [ "${ES_VM}" -eq 1 ] && aplicar_capa_compatibilidad
     COMPOSITOR="labwc"
