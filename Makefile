@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings build run run-software qemu qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-greeter apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/wayfire-titan
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."
@@ -130,6 +130,19 @@ apps/titan-video:
 	cd $(APPS)/titan-video && qmake6 titan-video.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-video/titan-video iso/titan/airootfs/usr/local/bin/
 
+# Pantalla de inicio de sesion (greetd) y servicio de usuarios y grupos
+apps/titan-greeter:
+	@echo "Compilando titan-greeter..."
+	cd $(APPS)/titan-greeter && qmake6 titan-greeter.pro && make -j$(shell nproc)
+	cd $(APPS)/titan-greeter/helper && qmake6 titan-usuarios-helper.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-greeter/titan-greeter iso/titan/airootfs/usr/local/bin/
+	install -m 0755 $(APPS)/titan-greeter/helper/titan-usuarios-helper iso/titan/airootfs/usr/local/bin/
+
+# Plugins de Wayfire propios (titan-wobbly-guard: sin gelatina al redimensionar)
+apps/wayfire-titan:
+	@echo "Compilando plugins de Wayfire..."
+	./scripts/build-wayfire-plugins.sh
+
 build: apps
 
 run:
@@ -143,6 +156,10 @@ run-software:
 qemu:
 	@echo "Lanzando ISO con QEMU..."
 	./scripts/run-qemu.sh
+
+qemu-gl:
+	@echo "Lanzando ISO con GPU virtual 3D (virgl): sesión inmersiva con Wayfire..."
+	TITAN_QEMU_GL=1 ./scripts/run-qemu.sh
 
 qemu-vmware:
 	@echo "Lanzando ISO con configuración VMware compatible..."

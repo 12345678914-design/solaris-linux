@@ -44,15 +44,17 @@ file_permissions=(
   # La app Acerca tambien se lanza desde el centro de aplicaciones; sin
   # 0755 el catalogo la muestra pero el clic no arranca nada.
   ["/usr/local/bin/titan-acerca"]="0:0:755"
-  # La pantalla grafica del instalador. Sin esta entrada llega a la ISO como
-  # 0644, y 'ventana()' la busca con '-x' para decidir si puede abrirla: con el
-  # permiso que no tiene se cae al modo de texto sin dar ninguna pista, y en
-  # una maquina con tarjeta el usuario ve como el instalador grafico no existe.
-  ["/root/instalador/ventana-gui.py"]="0:0:755"
   # /root a 0750 como en el paquete 'filesystem'; si no, pacman avisa de que los
   # permisos del directorio no cuadran con su .MTREE.
   ["/root/"]="0:0:750"
   ["/usr/local/bin/titan-shell"]="0:0:755"
+  ["/usr/local/bin/titan-sesion"]="0:0:755"
+  # Inicio de sesion del sistema instalado (greetd + cage + titan-greeter) y
+  # el servicio root que crea usuarios y grupos.
+  ["/usr/local/bin/titan-greeter"]="0:0:755"
+  ["/usr/local/bin/titan-usuarios-helper"]="0:0:755"
+  ["/usr/lib/titan/titan-greeter-sesion"]="0:0:755"
+  ["/usr/lib/titan/titan-arranque-grafico"]="0:0:755"
   ["/usr/local/bin/titan-finder"]="0:0:755"
   ["/usr/local/bin/titan-fotos"]="0:0:755"
   ["/usr/local/bin/titan-musica"]="0:0:755"

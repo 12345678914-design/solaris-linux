@@ -1,474 +1,495 @@
 import QtQuick 2.15
-import QtQuick.Controls 2.15
 
+// Vista de escritorios estilo GNOME (Actividades):
+//  - al abrir, el escritorio actual se encoge desde pantalla completa hasta
+//    una tarjeta centrada, con los escritorios vecinos asomando a los lados;
+//  - arriba, una tira de miniaturas para elegir otro escritorio o crear uno;
+//  - las ventanas se pueden arrastrar a otra miniatura o a otro escritorio;
+//  - clic en el escritorio central, Intro o Esc: vuelve a crecer y se cierra.
+//
+// Pensada para ir fluida tambien con el renderizado por software (QEMU sin
+// 3D): una sola animacion (progreso), el fondo se decodifica una vez a
+// tamano reducido y en segundo plano, y no hay desenfoques ni sombras.
 Item {
-    id: workspacesRoot
+    id: vista
     anchors.fill: parent
 
     TitanTheme { id: theme }
 
-    // Fondo oscurecido con desenfoque translúcido estilo macOS
-    Rectangle {
-        anchors.fill: parent
-        color: theme.isDark ? Qt.rgba(0.04, 0.05, 0.07, 0.85) : Qt.rgba(0.08, 0.10, 0.14, 0.72)
-        opacity: shellBackend.workspacesVisible ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: 200 } }
+    // 0 = escritorio a pantalla completa, 1 = vista abierta.
+    property real progreso: 0
+    property bool cerrando: false
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: shellBackend.setWorkspacesVisible(false)
+    readonly property real anchoPantalla: Math.max(1, width)
+    readonly property real altoPantalla: Math.max(1, height)
+    readonly property real proporcion: anchoPantalla / altoPantalla
+
+    // Tira de miniaturas
+    readonly property real altoMini: Math.round(Math.max(64, Math.min(116, altoPantalla * 0.11)))
+    readonly property real anchoMini: Math.round(altoMini * proporcion)
+    readonly property real yTira: 26
+
+    // Escritorio central
+    readonly property real yCentral: yTira + altoMini + 34
+    readonly property real altoCentral: {
+        var alto = altoPantalla - yCentral - 56
+        return Math.max(120, Math.min(alto, anchoPantalla * 0.78 / proporcion))
+    }
+    readonly property real anchoCentral: altoCentral * proporcion
+    readonly property real escalaInicial: altoPantalla / altoCentral
+
+    readonly property string fondo: shellBackend.currentWallpaper.length > 0
+                                    ? "file://" + shellBackend.currentWallpaper : ""
+    readonly property size tamFondo: Qt.size(Math.round(anchoCentral), Math.round(altoCentral))
+
+    function ventanasDe(indice) {
+        var todas = windowTracker.windows
+        var lista = []
+        for (var i = 0; i < todas.length; ++i) {
+            if (todas[i].workspace === indice)
+                lista.push(todas[i])
+        }
+        return lista
+    }
+
+    function iconoDe(appId) {
+        var a = (appId || "").toLowerCase()
+        if (a.indexOf("/") !== -1) return "file://" + appId
+        if (a.indexOf("terminal") !== -1 || a.indexOf("kitty") !== -1 || a.indexOf("foot") !== -1) return "qrc:/icons/terminal.png"
+        if (a.indexOf("finder") !== -1) return "qrc:/icons/finder.png"
+        if (a.indexOf("dolphin") !== -1 || a.indexOf("pcmanfm") !== -1 || a.indexOf("nautilus") !== -1) return "qrc:/icons/files.png"
+        if (a.indexOf("firefox") !== -1 || a.indexOf("browser") !== -1) return "qrc:/icons/firefox.png"
+        if (a.indexOf("code") !== -1) return "qrc:/icons/vscode.png"
+        if (a.indexOf("settings") !== -1) return "qrc:/icons/system.png"
+        if (a.indexOf("onlyoffice") !== -1 || a.indexOf("desktopeditors") !== -1) return "qrc:/icons/onlyoffice.png"
+        if (a.indexOf("calc") !== -1) return "qrc:/icons/calculator.png"
+        if (a.indexOf("calendar") !== -1) return "qrc:/icons/calendar.png"
+        if (a.indexOf("clock") !== -1) return "qrc:/icons/clock.png"
+        if (a.indexOf("video") !== -1) return "qrc:/icons/video.png"
+        if (a.indexOf("musica") !== -1 || a.indexOf("music") !== -1) return "qrc:/icons/music-app.png"
+        if (a.indexOf("fotos") !== -1) return "qrc:/icons/pictures.png"
+        if (a.indexOf("acerca") !== -1) return "qrc:/icons/about.png"
+        if (a.indexOf("vim") !== -1) return "qrc:/icons/developer.png"
+        return "qrc:/icons/apps-folder.png"
+    }
+
+    function irA(indice) {
+        if (indice < 0 || indice >= shellBackend.workspaces.length) return
+        if (indice !== shellBackend.currentWorkspace)
+            shellBackend.switchToWorkspace(indice, false)
+    }
+
+    function abrir() {
+        cerrando = false
+        animSalida.stop()
+        progreso = 0
+        animEntrada.restart()
+        vista.forceActiveFocus()
+    }
+
+    function cerrar() {
+        if (cerrando || !shellBackend.workspacesVisible) return
+        cerrando = true
+        animEntrada.stop()
+        animSalida.restart()
+    }
+
+    NumberAnimation {
+        id: animEntrada
+        target: vista; property: "progreso"
+        to: 1; duration: 320; easing.type: Easing.OutCubic
+    }
+    NumberAnimation {
+        id: animSalida
+        target: vista; property: "progreso"
+        to: 0; duration: 240; easing.type: Easing.InOutCubic
+        onFinished: {
+            vista.cerrando = false
+            shellBackend.workspacesVisible = false
         }
     }
 
-    focus: shellBackend.workspacesVisible
-    Keys.onEscapePressed: shellBackend.setWorkspacesVisible(false)
+    Connections {
+        target: shellBackend
+        function onWorkspacesVisibleChanged() {
+            if (shellBackend.workspacesVisible) vista.abrir()
+            else { animEntrada.stop(); animSalida.stop(); vista.progreso = 0; vista.cerrando = false }
+        }
+        function onWorkspacesCloseRequested() { vista.cerrar() }
+    }
+    Component.onCompleted: if (shellBackend.workspacesVisible) abrir()
 
-    // Contenedor principal sin barras ni cabeceras extra a su alrededor
-    Row {
+    focus: true
+    Keys.onEscapePressed: cerrar()
+    Keys.onReturnPressed: cerrar()
+    Keys.onEnterPressed: cerrar()
+    Keys.onLeftPressed: irA(shellBackend.currentWorkspace - 1)
+    Keys.onRightPressed: irA(shellBackend.currentWorkspace + 1)
+
+    // ── Fondo oscuro (aparece mientras el escritorio se encoge) ─────────────
+    Rectangle {
         anchors.fill: parent
-        anchors.margins: 40
-        spacing: 28
+        opacity: vista.progreso
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: theme.isDark ? "#1a1c24" : "#2a2e38" }
+            GradientStop { position: 1.0; color: theme.isDark ? "#0e0f14" : "#1a1d25" }
+        }
+    }
 
-        opacity: shellBackend.workspacesVisible ? 1.0 : 0.0
-        scale: shellBackend.workspacesVisible ? 1.0 : 0.95
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.05 } }
+    // Clic fuera de todo: cerrar. La rueda cambia de escritorio.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: vista.cerrar()
+        property real acumulado: 0
+        onWheel: function(rueda) {
+            acumulado += rueda.angleDelta.y !== 0 ? rueda.angleDelta.y : -rueda.angleDelta.x
+            if (acumulado <= -120) { acumulado = 0; vista.irA(shellBackend.currentWorkspace + 1) }
+            else if (acumulado >= 120) { acumulado = 0; vista.irA(shellBackend.currentWorkspace - 1) }
+        }
+    }
 
-        // ── LADO IZQUIERDO (GRANDE): Escritorio Actual (~68%) ──────────────────
-        Item {
-            id: leftCol
-            width: parent.width * 0.68 - 14
-            height: parent.height
+    // ── Escritorios grandes (el actual centrado, vecinos asomando) ──────────
+    Item {
+        id: carrusel
+        x: 0
+        width: vista.anchoPantalla
+        height: vista.altoCentral
+        y: vista.yCentral + (vista.altoPantalla / 2 - (vista.yCentral + vista.altoCentral / 2)) * (1 - vista.progreso)
+        scale: 1 + (vista.escalaInicial - 1) * (1 - vista.progreso)
+        transformOrigin: Item.Center
 
-            Rectangle {
-                id: mainScreenCard
-                anchors.fill: parent
-                radius: 20
-                clip: true
-                color: "#0d0e12"
-                border.color: theme.accent
-                border.width: 2.5
+        readonly property real paso: vista.anchoCentral + 44
+        // Desplazamiento de la fila: el escritorio actual queda centrado.
+        property real desplazamiento: (width - vista.anchoCentral) / 2 - shellBackend.currentWorkspace * paso
+        Behavior on desplazamiento {
+            enabled: vista.progreso > 0.99
+            NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+        }
 
-                // Fondo de pantalla del escritorio actual
-                Image {
-                    anchors.fill: parent
-                    source: shellBackend.currentWallpaper.length > 0 ? "file://" + shellBackend.currentWallpaper : ""
-                    fillMode: Image.PreserveAspectCrop
-                    opacity: 0.90
-                }
+        Repeater {
+            model: shellBackend.workspaces
+            Item {
+                id: escritorio
+                x: carrusel.desplazamiento + index * carrusel.paso
+                width: vista.anchoCentral
+                height: vista.altoCentral
+                readonly property int indice: index
+                readonly property bool esActual: index === shellBackend.currentWorkspace
+                readonly property var ventanas: { windowTracker.windows; return vista.ventanasDe(index) }
 
-                // Tinte protector
+                // Los vecinos se ven algo apagados
+                opacity: esActual ? 1 : 0.55 + 0.45 * (1 - vista.progreso)
+
                 Rectangle {
+                    id: marco
                     anchors.fill: parent
-                    color: Qt.rgba(0, 0, 0, 0.30)
-                }
+                    radius: 18 * vista.progreso
+                    color: "#101218"
+                    border.width: soltar.containsDrag ? 3 : 0
+                    border.color: theme.accent
 
-                // Barra superior simulada
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: 24
-                    color: Qt.rgba(0, 0, 0, 0.50)
-
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
-                        Rectangle {
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: "#0a84ff"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Text {
-                            text: (shellBackend.workspaces[shellBackend.currentWorkspace] !== undefined ? shellBackend.workspaces[shellBackend.currentWorkspace] : ("Escritorio " + (shellBackend.currentWorkspace + 1)))
-                            color: "#ffffff"
-                            font.pixelSize: 12
-                            font.weight: Font.Medium
-                        }
-                    }
-                }
-
-                // Rejilla de ventanas activas del escritorio actual
-                Item {
-                    anchors.fill: parent
-                    anchors.topMargin: 38
-                    anchors.bottomMargin: 46
-                    anchors.leftMargin: 24
-                    anchors.rightMargin: 24
-
-                    GridView {
-                        id: activeWinGrid
+                    Image {
                         anchors.fill: parent
-                        cellWidth: Math.max(180, (width - 20) / Math.max(1, Math.min(3, windowTracker.currentWorkspaceWindows.length)))
-                        cellHeight: Math.min(180, height - 10)
-                        clip: true
-                        model: windowTracker.currentWorkspaceWindows
-                        visible: windowTracker.currentWorkspaceWindows.length > 0
-
-                        delegate: Rectangle {
-                            id: winCard
-                            width: activeWinGrid.cellWidth - 16
-                            height: Math.min(170, activeWinGrid.cellHeight - 16)
-                            radius: 12
-                            color: winMouse.containsMouse ? Qt.rgba(0.18, 0.20, 0.26, 0.95) : Qt.rgba(0.12, 0.14, 0.18, 0.88)
-                            border.color: winMouse.containsMouse ? theme.accent : Qt.rgba(1, 1, 1, 0.22)
-                            border.width: winMouse.containsMouse ? 2 : 1
-                            scale: winMouse.containsMouse ? 1.02 : 1.0
-                            clip: true
-
-                            Behavior on border.color { ColorAnimation { duration: 120 } }
-                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 120 } }
-
-                            // Barra superior de la ventana en miniatura
-                            Rectangle {
-                                id: cardHeader
-                                anchors.top: parent.top
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                height: 26
-                                color: Qt.rgba(0, 0, 0, 0.35)
-                                z: 2
-
-                                Row {
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 6
-
-                                    // Botón cerrar estilo macOS
-                                    Rectangle {
-                                        width: 13
-                                        height: 13
-                                        radius: 6.5
-                                        color: closeMouse.containsMouse ? "#ff453a" : Qt.rgba(1, 0.3, 0.3, 0.85)
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "✕"
-                                            color: "#ffffff"
-                                            font.pixelSize: 8
-                                            font.bold: true
-                                            visible: closeMouse.containsMouse || winMouse.containsMouse
-                                        }
-
-                                        MouseArea {
-                                            id: closeMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                windowTracker.closeWindowById(modelData.id)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    width: parent.width - 50
-                                    text: modelData.title ? modelData.title : (modelData.appId ? modelData.appId : "Ventana")
-                                    color: "#ffffff"
-                                    font.pixelSize: 10
-                                    font.weight: Font.Medium
-                                    horizontalAlignment: Text.AlignHCenter
-                                    elide: Text.ElideMiddle
-                                }
-                            }
-
-                            // Contenido central con icono y nombre
-                            Column {
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: 10
-                                spacing: 8
-                                width: parent.width - 24
-
-                                Rectangle {
-                                    width: 44; height: 44; radius: 10
-                                    color: Qt.rgba(1, 1, 1, 0.10)
-                                    anchors.horizontalCenter: parent.horizontalCenter
-
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 28
-                                        height: 28
-                                        source: "qrc:/icons/apps-folder.png"
-                                        smooth: true
-                                        mipmap: true
-                                    }
-                                }
-
-                                Text {
-                                    text: modelData.title ? modelData.title : (modelData.appId ? modelData.appId : "Ventana")
-                                    color: "#e6e6e6"
-                                    font.pixelSize: 11
-                                    font.weight: Font.Medium
-                                    horizontalAlignment: Text.AlignHCenter
-                                    elide: Text.ElideMiddle
-                                    width: parent.width
-                                }
-                            }
-
-                            MouseArea {
-                                id: winMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    windowTracker.activateWindowById(modelData.id)
-                                    shellBackend.setWorkspacesVisible(false)
-                                }
-                            }
-                        }
-                    }
-
-                    // Estado vacío
-                    Item {
-                        anchors.centerIn: parent
-                        visible: windowTracker.currentWorkspaceWindows.length === 0
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 8
-                            Image {
-                                source: "qrc:/icons/desktop.png"
-                                width: 56
-                                height: 56
-                                fillMode: Image.PreserveAspectFit
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                opacity: 0.85
-                                smooth: true
-                                mipmap: true
-                            }
-                            Text {
-                                text: (shellBackend.workspaces[shellBackend.currentWorkspace] !== undefined ? shellBackend.workspaces[shellBackend.currentWorkspace] : "Escritorio Actual") + " — Sin aplicaciones"
-                                color: "#ffffff"
-                                font.pixelSize: 14
-                                font.weight: Font.Medium
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-                        }
+                        source: vista.fondo
+                        sourceSize: vista.tamFondo
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                        smooth: true
                     }
                 }
 
-                // Badge inferior
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 14
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: currentBadgeText.implicitWidth + 24
-                    height: 26
-                    radius: 13
-                    color: theme.accent
-
-                    Text {
-                        id: currentBadgeText
-                        anchors.centerIn: parent
-                        text: "● Escritorio Activo (" + (shellBackend.currentWorkspace + 1) + ")"
-                        color: "#ffffff"
-                        font.pixelSize: 11
-                        font.bold: true
-                    }
-                }
-
-                // Clic en el escritorio actual para salir de la vista
                 MouseArea {
                     anchors.fill: parent
-                    z: -1
+                    onClicked: {
+                        if (escritorio.esActual) vista.cerrar()
+                        else vista.irA(escritorio.indice)
+                    }
+                }
+
+                DropArea {
+                    id: soltar
+                    anchors.fill: parent
+                    keys: ["titan-ventana"]
+                    onDropped: function(evento) {
+                        windowTracker.moveWindowToWorkspace(evento.source.idVentana, escritorio.indice)
+                        evento.accept()
+                    }
+                }
+
+                // Ventanas del escritorio, repartidas en rejilla
+                Grid {
+                    id: rejilla
+                    anchors.centerIn: parent
+                    opacity: vista.progreso
+                    visible: opacity > 0.01
+                    readonly property int n: escritorio.ventanas.length
+                    columns: Math.max(1, Math.ceil(Math.sqrt(n)))
+                    readonly property int filas: Math.max(1, Math.ceil(n / columns))
+                    spacing: 22
+                    readonly property real anchoCelda: Math.min(vista.anchoCentral * 0.36,
+                        (vista.anchoCentral * 0.86 - (columns - 1) * spacing) / columns)
+                    readonly property real altoCelda: Math.min(anchoCelda / 1.5,
+                        (vista.altoCentral * 0.80 - (filas - 1) * spacing) / filas)
+
+                    Repeater {
+                        model: escritorio.ventanas
+
+                        Item {
+                            id: celda
+                            width: rejilla.altoCelda * 1.5
+                            height: rejilla.altoCelda
+
+                            Rectangle {
+                                id: tarjeta
+                                property var idVentana: modelData.id
+                                width: celda.width
+                                height: celda.height
+                                radius: 12
+                                color: theme.isDark ? Qt.rgba(0.13, 0.14, 0.18, 0.94) : Qt.rgba(0.96, 0.96, 0.98, 0.94)
+                                border.width: raton.containsMouse || modelData.active ? 2 : 1
+                                border.color: raton.containsMouse ? theme.accent
+                                              : (modelData.active ? Qt.rgba(1, 1, 1, 0.45) : Qt.rgba(1, 1, 1, 0.16))
+                                opacity: modelData.minimized ? 0.6 : 1
+                                z: raton.drag.active ? 100 : 0
+
+                                Drag.active: raton.drag.active
+                                Drag.keys: ["titan-ventana"]
+                                Drag.hotSpot.x: width / 2
+                                Drag.hotSpot.y: height / 2
+
+                                Rectangle {
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
+                                    height: 26
+                                    radius: 11
+                                    color: Qt.rgba(0, 0, 0, theme.isDark ? 0.30 : 0.07)
+                                    Text {
+                                        anchors.centerIn: parent
+                                        width: parent.width - 44
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideMiddle
+                                        text: modelData.title || modelData.appId || "Ventana"
+                                        color: theme.isDark ? "#f2f2f5" : "#1c1c1e"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                    }
+                                    // Cerrar ventana
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 13; height: 13; radius: 6.5
+                                        visible: raton.containsMouse || cerrarRaton.containsMouse
+                                        color: cerrarRaton.containsMouse ? "#ff453a" : "#ff5f57"
+                                        MouseArea {
+                                            id: cerrarRaton
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            onClicked: windowTracker.closeWindowById(modelData.id)
+                                        }
+                                    }
+                                }
+
+                                Image {
+                                    anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: 8
+                                    width: Math.min(64, parent.height * 0.45)
+                                    height: width
+                                    source: vista.iconoDe(modelData.appId)
+                                    sourceSize: Qt.size(128, 128)
+                                    asynchronous: true
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
+                                }
+
+                                MouseArea {
+                                    id: raton
+                                    anchors.fill: parent
+                                    anchors.topMargin: 26
+                                    hoverEnabled: true
+                                    cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                    drag.target: tarjeta
+                                    drag.threshold: 8
+                                    onReleased: {
+                                        if (drag.active || tarjeta.x !== 0 || tarjeta.y !== 0) {
+                                            tarjeta.Drag.drop()
+                                            tarjeta.x = 0
+                                            tarjeta.y = 0
+                                        }
+                                    }
+                                    onClicked: {
+                                        windowTracker.activateWindowById(modelData.id)
+                                        vista.cerrar()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: escritorio.ventanas.length === 0 && vista.progreso > 0.01
+                    opacity: vista.progreso * 0.85
+                    text: "Sin ventanas"
+                    color: "#ffffff"
+                    font.pixelSize: 15
+                    font.weight: Font.Medium
+                    style: Text.Raised
+                    styleColor: Qt.rgba(0, 0, 0, 0.4)
+                }
+            }
+        }
+    }
+
+    // Nombre del escritorio, bajo la tarjeta central
+    Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: vista.yCentral + vista.altoCentral + 14
+        opacity: vista.progreso
+        text: shellBackend.workspaces[shellBackend.currentWorkspace] !== undefined
+              ? shellBackend.workspaces[shellBackend.currentWorkspace]
+              : "Escritorio " + (shellBackend.currentWorkspace + 1)
+        color: "#ffffff"
+        font.pixelSize: 13
+        font.weight: Font.DemiBold
+    }
+
+    // ── Tira de miniaturas ──────────────────────────────────────────────────
+    Row {
+        id: tira
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: vista.yTira - (vista.altoMini + vista.yTira) * (1 - vista.progreso)
+        opacity: vista.progreso
+        spacing: 14
+
+        Repeater {
+            model: shellBackend.workspaces
+
+            Item {
+                id: mini
+                width: vista.anchoMini
+                height: vista.altoMini
+                readonly property bool esActual: index === shellBackend.currentWorkspace
+                readonly property var ventanas: { windowTracker.windows; return vista.ventanasDe(index) }
+                scale: miniRaton.containsMouse && !esActual ? 1.05 : 1
+                Behavior on scale { NumberAnimation { duration: 120 } }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 10
+                    color: "#101218"
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        source: vista.fondo
+                        sourceSize: Qt.size(vista.anchoMini * 2, vista.altoMini * 2)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                        opacity: mini.esActual ? 1 : 0.7
+                    }
+                }
+
+                // Iconos de las apps de ese escritorio
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 4
+                    Repeater {
+                        model: Math.min(4, mini.ventanas.length)
+                        Image {
+                            width: Math.round(vista.altoMini * 0.28)
+                            height: width
+                            source: vista.iconoDe(mini.ventanas[index].appId)
+                            sourceSize: Qt.size(64, 64)
+                            asynchronous: true
+                            smooth: true
+                            mipmap: true
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 6
+                    text: index + 1
+                    color: "#ffffff"
+                    font.pixelSize: 11
+                    font.bold: true
+                    style: Text.Raised
+                    styleColor: Qt.rgba(0, 0, 0, 0.5)
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 10
+                    color: "transparent"
+                    border.width: mini.esActual || miniSoltar.containsDrag ? 2.5 : 1
+                    border.color: mini.esActual || miniSoltar.containsDrag ? theme.accent : Qt.rgba(1, 1, 1, 0.22)
+                }
+
+                MouseArea {
+                    id: miniRaton
+                    anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shellBackend.setWorkspacesVisible(false)
+                    onClicked: vista.irA(index)
+                }
+
+                DropArea {
+                    id: miniSoltar
+                    anchors.fill: parent
+                    keys: ["titan-ventana"]
+                    onDropped: function(evento) {
+                        windowTracker.moveWindowToWorkspace(evento.source.idVentana, index)
+                        evento.accept()
+                    }
+                }
+
+                // Quitar escritorio (no el actual, y siempre queda uno)
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: -6
+                    width: 20; height: 20; radius: 10
+                    visible: (miniRaton.containsMouse || quitarRaton.containsMouse)
+                             && shellBackend.workspaces.length > 1 && !mini.esActual
+                    color: quitarRaton.containsMouse ? "#ff453a" : Qt.rgba(0.2, 0.2, 0.24, 0.95)
+                    border.color: Qt.rgba(1, 1, 1, 0.3)
+                    Text { anchors.centerIn: parent; text: "✕"; color: "#ffffff"; font.pixelSize: 10 }
+                    MouseArea {
+                        id: quitarRaton
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: shellBackend.removeWorkspace(index)
+                    }
                 }
             }
         }
 
-        // ── LADO DERECHO: Lista scrollable de escritorios creados + botón + (~32%) ──
-        Item {
-            id: rightCol
-            width: parent.width * 0.32 - 14
-            height: parent.height
-
-            ScrollView {
-                id: rightScroll
+        // Nuevo escritorio
+        Rectangle {
+            width: Math.round(vista.anchoMini * 0.45)
+            height: vista.altoMini
+            radius: 10
+            color: nuevoRaton.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06)
+            border.color: nuevoRaton.containsMouse ? theme.accent : Qt.rgba(1, 1, 1, 0.2)
+            Text {
+                anchors.centerIn: parent
+                text: "+"
+                color: "#ffffff"
+                font.pixelSize: 26
+                font.weight: Font.Light
+            }
+            MouseArea {
+                id: nuevoRaton
                 anchors.fill: parent
-                clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-                Column {
-                    id: cardsColumn
-                    width: rightCol.width
-                    spacing: 16
-
-                    // Lista de escritorios creados
-                    Repeater {
-                        model: shellBackend.workspaces
-
-                        Rectangle {
-                            id: spaceCard
-                            width: cardsColumn.width
-                            height: 104
-                            radius: 14
-
-                            readonly property bool isCurrent: shellBackend.currentWorkspace === index
-                            readonly property var wsWindows: windowTracker.windowsForWorkspace(index)
-
-                            color: isCurrent
-                                   ? (theme.isDark ? Qt.rgba(0.0, 0.44, 0.89, 0.32) : Qt.rgba(0.0, 0.44, 0.89, 0.18))
-                                   : (cardMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.06)) : (theme.isDark ? Qt.rgba(0.12, 0.14, 0.18, 0.65) : Qt.rgba(1, 1, 1, 0.65)))
-
-                            border.color: isCurrent ? theme.accent : (cardMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(1, 1, 1, 0.14))
-                            border.width: isCurrent ? 2 : 1
-
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                            Behavior on border.color { ColorAnimation { duration: 120 } }
-
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 14
-
-                                // Miniatura del fondo
-                                Rectangle {
-                                    width: 108
-                                    height: parent.height
-                                    radius: 8
-                                    clip: true
-                                    color: "#161820"
-                                    border.color: isCurrent ? theme.accent : Qt.rgba(1, 1, 1, 0.18)
-                                    border.width: 1
-
-                                    Image {
-                                        anchors.fill: parent
-                                        source: shellBackend.currentWallpaper.length > 0 ? "file://" + shellBackend.currentWallpaper : ""
-                                        fillMode: Image.PreserveAspectCrop
-                                        opacity: 0.80
-                                    }
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        color: Qt.rgba(0, 0, 0, 0.25)
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: (index + 1)
-                                        color: "#ffffff"
-                                        font.pixelSize: 18
-                                        font.bold: true
-                                    }
-                                }
-
-                                // Información: Nombre y aplicaciones
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 4
-                                    width: parent.width - 160
-
-                                    Text {
-                                        text: modelData
-                                        color: "#ffffff"
-                                        font.pixelSize: 14
-                                        font.weight: isCurrent ? Font.Bold : Font.Medium
-                                        elide: Text.ElideRight
-                                        width: parent.width
-                                    }
-
-                                    Text {
-                                        text: wsWindows.length > 0 ? (wsWindows.length + (wsWindows.length === 1 ? " app abierta" : " apps abiertas")) : (isCurrent ? "● Activo ahora" : "Sin aplicaciones")
-                                        color: isCurrent ? theme.accent : theme.contentTextSecondary
-                                        font.pixelSize: 11
-                                    }
-                                }
-
-                                // Botón eliminar escritorio
-                                Rectangle {
-                                    visible: shellBackend.workspaces.length > 1 && !isCurrent
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 24; height: 24; radius: 12
-                                    color: delSpaceMouse.containsMouse ? "#ff4d4d" : Qt.rgba(1, 1, 1, 0.15)
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "✕"
-                                        color: "#ffffff"
-                                        font.pixelSize: 11
-                                    }
-
-                                    MouseArea {
-                                        id: delSpaceMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: shellBackend.removeWorkspace(index)
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: cardMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: shellBackend.switchToWorkspace(index)
-                            }
-                        }
-                    }
-
-                    // Botón + del mismo tamaño exacto de las tarjetas, ubicado abajo del último escritorio
-                    Rectangle {
-                        id: addSpaceCard
-                        width: cardsColumn.width
-                        height: 104
-                        radius: 14
-                        color: addSpaceMouse.containsMouse
-                               ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08))
-                               : (theme.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03))
-                        border.color: addSpaceMouse.containsMouse ? theme.accent : Qt.rgba(1, 1, 1, 0.22)
-                        border.width: addSpaceMouse.containsMouse ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: 120 } }
-                        Behavior on border.color { ColorAnimation { duration: 120 } }
-
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 6
-
-                            Rectangle {
-                                width: 36; height: 36; radius: 18
-                                color: addSpaceMouse.containsMouse ? theme.accent : Qt.rgba(1, 1, 1, 0.15)
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                Behavior on color { ColorAnimation { duration: 120 } }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "+"
-                                    color: "#ffffff"
-                                    font.pixelSize: 22
-                                    font.bold: true
-                                }
-                            }
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Nuevo Escritorio"
-                                color: addSpaceMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                                font.pixelSize: 12
-                                font.weight: Font.Medium
-                            }
-                        }
-
-                        MouseArea {
-                            id: addSpaceMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: shellBackend.addWorkspace()
-                        }
-                    }
-                }
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: shellBackend.addWorkspace()
             }
         }
     }

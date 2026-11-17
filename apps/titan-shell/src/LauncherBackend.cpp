@@ -1,8 +1,11 @@
 #include "TitanBinary.h"
 #include "LauncherBackend.h"
+#include "TitanIconoSvg.h"
+#include "TitanDesktopEntry.h"
 #include <QDir>
 #include <QFileInfo>
-#include <QSettings>
+#include <QFile>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSet>
 #include <QProcess>
@@ -54,13 +57,21 @@ void LauncherBackend::loadApps()
         m_apps.append(app);
     };
 
-    auto resolverIcono = [](const QString &icono, const QString &exec) -> QString {
+    // Devuelve "" si no encuentra nada: quien llama genera un icono SVG.
+    auto resolverIcono = [](QString icono, const QString &exec) -> QString {
         if (icono.startsWith(QStringLiteral("qrc:/"))) {
             return icono;
         }
         if (icono.startsWith(QLatin1Char('/'))) {
-            return QUrl::fromLocalFile(icono).toString();
+            if (titan::iconoExiste(icono))
+                return QUrl::fromLocalFile(icono).toString();
+            // Ruta rota (app desinstalada a medias): se busca por el nombre.
+            icono = QFileInfo(icono).completeBaseName();
         }
+        // Icon=nombre.png: los temas guardan el nombre sin extension.
+        icono.remove(QRegularExpression(QStringLiteral("\\.(png|svg|xpm)$"), QRegularExpression::CaseInsensitiveOption));
+        if (icono.isEmpty())
+            return QString();
 
         // Buscar en rutas comunes de iconos del sistema (Pacman y Flatpak)
         static const QStringList iconSearchPaths = {
@@ -122,18 +133,20 @@ void LauncherBackend::loadApps()
         if (lower.contains(QStringLiteral("dev")) || lower.contains(QStringLiteral("build")) || execLower.contains(QStringLiteral("gcc")) || execLower.contains(QStringLiteral("clang")) || execLower.contains(QStringLiteral("cmake")))
             return QStringLiteral("qrc:/icons/developer.png");
 
-        return QStringLiteral("qrc:/icons/system.png");
+        return QString();
     };
 
+    // Las apps propias de Inti OS van primero: así ganan la deduplicación por
+    // nombre frente a las de GNOME (que también vienen en la ISO como respaldo).
     addApp(QStringLiteral("Finder"), QStringLiteral("titan-finder"), QStringLiteral("qrc:/icons/finder.png"));
     addApp(QStringLiteral("Firefox"), QStringLiteral("firefox"), QStringLiteral("qrc:/icons/firefox.png"));
     addApp(QStringLiteral("Fotos"), QStringLiteral("titan-fotos"), QStringLiteral("qrc:/icons/pictures.png"));
     addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music-app.png"));
     addApp(QStringLiteral("Terminal"), QStringLiteral("titan-terminal"), QStringLiteral("qrc:/icons/terminal.png"));
-    addApp(QStringLiteral("Calculadora"), QStringLiteral("gnome-calculator"), QStringLiteral("file:///usr/share/titan/icons/calculator.png"));
-    addApp(QStringLiteral("Calendario"), QStringLiteral("gnome-calendar"), QStringLiteral("file:///usr/share/titan/icons/calendar.png"));
-    addApp(QStringLiteral("Reloj"), QStringLiteral("gnome-clocks"), QStringLiteral("file:///usr/share/titan/icons/clock.png"));
-    addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("celluloid"), QStringLiteral("file:///usr/share/titan/icons/video.png"));
+    addApp(QStringLiteral("Calculadora"), QStringLiteral("titan-calc"), QStringLiteral("file:///usr/share/titan/icons/calculator.png"));
+    addApp(QStringLiteral("Calendario"), QStringLiteral("titan-calendar"), QStringLiteral("file:///usr/share/titan/icons/calendar.png"));
+    addApp(QStringLiteral("Reloj"), QStringLiteral("titan-clock"), QStringLiteral("file:///usr/share/titan/icons/clock.png"));
+    addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("titan-video"), QStringLiteral("file:///usr/share/titan/icons/video.png"));
     addApp(QStringLiteral("App Store"), QStringLiteral("gnome-software"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
     addApp(QStringLiteral("Ajustes del Sistema"), QStringLiteral("titan-settings"), QStringLiteral("qrc:/icons/system.png"));
     addApp(QStringLiteral("ONLYOFFICE"), QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("qrc:/icons/onlyoffice.png"));
@@ -161,20 +174,40 @@ void LauncherBackend::loadApps()
 
         const auto entradas = dir.entryInfoList(QStringList() << QStringLiteral("*.desktop"), QDir::Files);
         for (const auto &info : entradas) {
-            QSettings ini(info.absoluteFilePath(), QSettings::IniFormat);
-            ini.beginGroup(QStringLiteral("Desktop Entry"));
+            const QHash<QString, QString> ini = titan::leerDesktop(info.absoluteFilePath());
+            if (ini.isEmpty()) continue;
 
-            if (ini.value(QStringLiteral("NoDisplay"), false).toBool()) continue;
-            if (ini.value(QStringLiteral("Type"), QStringLiteral("Application")).toString() != QStringLiteral("Application")) continue;
-
-            QString nombre = ini.value(QStringLiteral("Name[es]")).toString();
-            if (nombre.isEmpty()) {
-                nombre = ini.value(QStringLiteral("Name")).toString();
+            if (titan::esVerdadero(ini.value(QStringLiteral("NoDisplay")))) continue;
+            if (titan::esVerdadero(ini.value(QStringLiteral("Hidden")))) continue;
+            if (ini.value(QStringLiteral("Type"), QStringLiteral("Application")) != QStringLiteral("Application")) continue;
+            if (ini.contains(QStringLiteral("OnlyShowIn")) && !titan::listaContieneEscritorio(ini.value(QStringLiteral("OnlyShowIn")))) continue;
+            if (ini.contains(QStringLiteral("NotShowIn")) && titan::listaContieneEscritorio(ini.value(QStringLiteral("NotShowIn")))) continue;
+            // TryExec: si el programa ya no está instalado, la entrada sobra
+            const QString tryExec = ini.value(QStringLiteral("TryExec"));
+            if (!tryExec.isEmpty()) {
+                const bool existe = QDir::isAbsolutePath(tryExec)
+                    ? QFileInfo(tryExec).isExecutable()
+                    : (!QStandardPaths::findExecutable(tryExec).isEmpty() ||
+                       QFileInfo(QStringLiteral("/usr/local/bin/") + tryExec).isExecutable());
+                if (!existe) continue;
             }
 
-            QString exec = ini.value(QStringLiteral("Exec")).toString();
-            QString icono = ini.value(QStringLiteral("Icon")).toString();
-            bool inTerminal = ini.value(QStringLiteral("Terminal"), false).toBool();
+            // Las versiones de GNOME de apps que Inti OS ya trae (Calculadora,
+            // Calendario, Reloj) saldrían repetidas con otro nombre ("Relojes").
+            static const QStringList cubiertas = {
+                QStringLiteral("org.gnome.Calculator.desktop"),
+                QStringLiteral("org.gnome.Calendar.desktop"),
+                QStringLiteral("org.gnome.clocks.desktop")
+            };
+            if (cubiertas.contains(info.fileName())) continue;
+
+            QString nombre = ini.value(QStringLiteral("Name[es]"));
+            if (nombre.isEmpty()) nombre = ini.value(QStringLiteral("Name[es_ES]"));
+            if (nombre.isEmpty()) nombre = ini.value(QStringLiteral("Name"));
+
+            QString exec = ini.value(QStringLiteral("Exec"));
+            QString icono = ini.value(QStringLiteral("Icon"));
+            bool inTerminal = titan::esVerdadero(ini.value(QStringLiteral("Terminal")));
 
             // Quitar parámetros de campo (%u, %F, %k, etc.)
             exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
@@ -224,7 +257,11 @@ void LauncherBackend::loadApps()
             QVariantMap app;
             app[QStringLiteral("name")] = nombre;
             app[QStringLiteral("exec")] = exec;
-            app[QStringLiteral("icon")] = resolverIcono(icono, exec);
+            QString iconoFinal = resolverIcono(icono, exec);
+            if (!titan::iconoExiste(iconoFinal))
+                iconoFinal = titan::iconoGenerado(nombre, exec + QLatin1Char(' ') + icono + QLatin1Char(' ') +
+                                                              ini.value(QStringLiteral("Categories")));
+            app[QStringLiteral("icon")] = iconoFinal;
             m_apps.append(app);
         }
     }

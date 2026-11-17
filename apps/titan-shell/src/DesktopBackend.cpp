@@ -1,5 +1,7 @@
 #include "TitanBinary.h"
 #include "DesktopBackend.h"
+#include "TitanIconoSvg.h"
+#include "TitanDesktopEntry.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -232,19 +234,20 @@ void DesktopBackend::loadItems()
         item[QStringLiteral("isDir")] = fi.isDir();
 
         if (fi.suffix().toLower() == QStringLiteral("desktop")) {
-            QSettings ini(path, QSettings::IniFormat);
-            ini.beginGroup(QStringLiteral("Desktop Entry"));
+            // QSettings no sirve para .desktop: con una coma el valor sale vacío.
+            const QHash<QString, QString> ini = titan::leerDesktop(path);
 
-            QString name = ini.value(QStringLiteral("Name[es]")).toString();
+            QString name = ini.value(QStringLiteral("Name[es]"));
+            if (name.isEmpty()) name = ini.value(QStringLiteral("Name[es_ES]"));
             if (name.isEmpty()) {
-                name = ini.value(QStringLiteral("Name")).toString();
+                name = ini.value(QStringLiteral("Name"));
             }
             if (name.isEmpty()) {
                 name = fi.completeBaseName();
             }
 
-            QString icon = ini.value(QStringLiteral("Icon")).toString();
-            QString exec = ini.value(QStringLiteral("Exec")).toString();
+            QString icon = ini.value(QStringLiteral("Icon"));
+            QString exec = ini.value(QStringLiteral("Exec"));
 
             item[QStringLiteral("name")] = name;
             item[QStringLiteral("icon")] = resolveAppIcon(icon, exec);
@@ -465,8 +468,8 @@ QString DesktopBackend::resolveAppIcon(const QString &iconName, const QString &e
         }
     }
 
-    // 3. Icono de fallback estilizado macOS
-    return QStringLiteral("qrc:/icons/apps-folder.png");
+    // 3. Sin icono en el sistema: SVG generado (categoria o iniciales).
+    return titan::iconoGenerado(iconBase.isEmpty() ? icon : iconBase, ex + QLatin1Char(' ') + icon);
 }
 
 QString DesktopBackend::resolveIcon(const QString &fileName, bool isDir) const
@@ -567,11 +570,10 @@ void DesktopBackend::openItem(const QString &path)
     if (!fi.exists()) return;
 
     if (fi.suffix().toLower() == QStringLiteral("desktop")) {
-        QSettings ini(path, QSettings::IniFormat);
-        ini.beginGroup(QStringLiteral("Desktop Entry"));
+        const QHash<QString, QString> ini = titan::leerDesktop(path);
 
-        QString type = ini.value(QStringLiteral("Type")).toString();
-        QString url = ini.value(QStringLiteral("URL")).toString();
+        QString type = ini.value(QStringLiteral("Type"));
+        QString url = ini.value(QStringLiteral("URL"));
         if (type == QLatin1String("Link") && !url.isEmpty()) {
             QUrl targetUrl(url);
             QString localPath = targetUrl.isLocalFile() ? targetUrl.toLocalFile() : url;
@@ -579,18 +581,19 @@ void DesktopBackend::openItem(const QString &path)
             return;
         }
 
-        QString exec = ini.value(QStringLiteral("Exec")).toString();
+        QString exec = ini.value(QStringLiteral("Exec"));
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
 
-        bool inTerminal = ini.value(QStringLiteral("Terminal"), false).toBool();
+        bool inTerminal = titan::esVerdadero(ini.value(QStringLiteral("Terminal")));
         if (inTerminal) {
             QString term = resolveDesktopBinary(QStringLiteral("titan-terminal"));
             if (QFile::exists(term)) {
                 QProcess::startDetached(term, {QStringLiteral("-e"), exec});
                 return;
             } else if (QFile::exists(QStringLiteral("/usr/bin/kitty"))) {
-                QProcess::startDetached(QStringLiteral("/usr/bin/kitty"), {exec});
+                // kitty espera el programa y sus argumentos por separado
+                QProcess::startDetached(QStringLiteral("/usr/bin/kitty"), QProcess::splitCommand(exec));
                 return;
             }
         }

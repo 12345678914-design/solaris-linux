@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Window 2.15
 
 Item {
     id: dockItem
@@ -36,7 +37,26 @@ Item {
             squashX = 1.0;
             squashY = 1.0;
         }
+        publicarDestino();
     }
+
+    // Le dice al compositor dónde está este icono para que la ventana se
+    // "aspire" hacia él al minimizar (squeezimize en Wayfire). Se usa la
+    // posición sin magnificar para que el destino no baile con el ratón.
+    function publicarDestino() {
+        if (!appId || !dockItem.Window.window) return;
+        var p = dockItem.mapToItem(null, 0, -targetY);
+        windowTracker.setMinimizeTarget(appId, dockItem.Window.window,
+                                        p.x, p.y, width, height);
+    }
+    Timer {
+        id: destinoTimer
+        interval: 250
+        onTriggered: dockItem.publicarDestino()
+    }
+    onXChanged: destinoTimer.restart()
+    onIsRunningChanged: destinoTimer.restart()
+    Component.onCompleted: destinoTimer.restart()
 
     property real dragOffsetX: 0
     readonly property bool isBeingDragged: dockContainer.draggedIndex === itemIndex

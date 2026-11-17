@@ -1,5 +1,7 @@
 #include "ShellBackend.h"
+#include "Usuarios.h"
 #include "WindowTracker.h"
+#include "WayfireIpc.h"
 #include "DockModel.h"
 #include "LauncherBackend.h"
 #include "DesktopBackend.h"
@@ -242,6 +244,17 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("dockModel"), &dockModel);
     engine.rootContext()->setContextProperty(QStringLiteral("launcherBackend"), &launcherBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopBackend"), &desktopBackend);
+    // Usuarios y grupos (panel compartido con titan-greeter, en la pantalla de bloqueo)
+    Usuarios usuarios;
+    engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
+    // Desenfoque real: Wayfire con el plugin blur (wayfire.ini lo aplica a las
+    // capas titan-*). Con labwc o sin GPU, GlassPanel sigue con el fondo falso.
+    // TITAN_BLUR=0 lo desactiva a mano.
+    const bool blurReal = qgetenv("TITAN_BLUR") != "0"
+        && qgetenv("QT_QUICK_BACKEND") != "software"
+        && WayfireIpc::instancia()->disponible()
+        && WayfireIpc::instancia()->pluginActivo(QStringLiteral("blur"));
+    engine.rootContext()->setContextProperty(QStringLiteral("compositorBlur"), blurReal);
     
     const QUrl url(QStringLiteral("qrc:/qml/Shell.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,

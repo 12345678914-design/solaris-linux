@@ -406,6 +406,21 @@ build_qt_app titan-calc || exit 1
 build_qt_app titan-calendar || exit 1
 build_qt_app titan-clock || exit 1
 build_qt_app titan-video || exit 1
+build_qt_app titan-greeter || exit 1
+
+# Servicio root de usuarios y grupos (lo usan titan-greeter y titan-shell).
+info "compilando titan-usuarios-helper"
+if ! (
+  cd "${DISTRO}/apps/titan-greeter/helper" &&
+  qmake6 titan-usuarios-helper.pro &&
+  make -j"$(nproc)"
+) >"${WORK_DIR}/titan-usuarios-helper-build.log" 2>&1; then
+  red "Fallo al compilar titan-usuarios-helper; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-usuarios-helper-build.log" >&2
+  exit 1
+fi
+install -m 0755 "${DISTRO}/apps/titan-greeter/helper/titan-usuarios-helper" \
+  "${PROFILE}/airootfs/usr/local/bin/titan-usuarios-helper"
 
 # ------------------------------------------- 2d. app 'titan-acerca' ----------
 
@@ -438,6 +453,13 @@ if [[ ! -f "${desktop_acerca}" ]]; then
   exit 1
 fi
 info "app Acerca y su entrada del catalogo en el perfil"
+
+# Plugins de Wayfire propios (sin gelatina al redimensionar). Si no se pueden
+# compilar por el entorno, el script avisa y la ISO sigue sin ellos.
+if ! "${DISTRO}/scripts/build-wayfire-plugins.sh" "${PROFILE}/airootfs/usr/lib/wayfire"; then
+  red "Fallo al compilar los plugins de Wayfire (apps/wayfire-titan)"
+  exit 1
+fi
 
 if [[ -x "${DISTRO}/verify/comprobar-acerca.sh" ]]; then
   info "comprobando app Acerca y su entrada en el catalogo"

@@ -599,7 +599,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: shellBackend.setControlCenterPage(0)
+                        onClicked: shellBackend.controlCenterPage = 0
                     }
                 }
 
@@ -956,7 +956,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: shellBackend.setControlCenterPage(0)
+                        onClicked: shellBackend.controlCenterPage = 0
                     }
                 }
 

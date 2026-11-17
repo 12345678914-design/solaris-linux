@@ -1,14 +1,28 @@
 # /etc/profile.d/15-titan-grafico.sh
 # shellcheck shell=bash
 #
-# Titan Linux - arranque del escritorio grafico con Labwc y Titan Shell (Qt Quick)
+# Titan Linux - arranque del escritorio grafico con Titan Shell (Qt Quick)
+#
+# Compositor:
+#   wayfire  sesion inmersiva (animaciones, desenfoque real). Por defecto si
+#            hay GPU con aceleracion 3D.
+#   labwc    respaldo ligero: VMs, sin 3D, nomodeset/titan.compat, o si
+#            Wayfire no arranca.
+# Forzar uno: TITAN_DESKTOP=wayfire|labwc|plasma, o en la linea del kernel
+# titan.wayfire / titan.labwc.
 
-case $- in
-  *i*) ;;
-  *) return 0 ;;
-esac
+# Sistema instalado: greetd inicia la sesion y llama a este fichero desde
+# /usr/lib/titan/titan-arranque-grafico con TITAN_DESDE_GREETD=1 (no es una
+# shell interactiva ni hace falta que sea tty1). En el live, tty1 con
+# entrada automatica, como siempre.
+if [ -z "${TITAN_DESDE_GREETD:-}" ]; then
+  case $- in
+    *i*) ;;
+    *) return 0 ;;
+  esac
 
-[ "$(tty 2>/dev/null)" = "/dev/tty1" ] || return 0
+  [ "$(tty 2>/dev/null)" = "/dev/tty1" ] || return 0
+fi
 [ -n "${TMUX:-}" ] && return 0
 [ -n "${TITAN_GRAFICO:-}" ] && return 0
 [ -e /etc/titan/modo-texto ] && return 0
@@ -214,6 +228,53 @@ case "${LANG:-}" in
   ""|C|POSIX) export LANG=C.UTF-8 ;;
 esac
 
+# 5. Compositor: Wayfire (inmersivo) solo con aceleracion 3D real; necesita
+#    OpenGL ES y no tiene renderizado por software como labwc (pixman).
+COMPOSITOR="labwc"
+if command -v wayfire >/dev/null 2>&1 && [ -f "${HOME}/.config/wayfire.ini" ]; then
+  if [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] && [ "${SIN_ACCEL_3D}" -eq 0 ]; then
+    COMPOSITOR="wayfire"
+  fi
+  # VM con GPU virtual 3D (virgl: virtio-vga-gl; vmwgfx con 3D): tiene nodo
+  # de render, asi que tambien puede. Si Wayfire no arranca, se cae a labwc.
+  if [ "${ES_COMPAT}" -eq 0 ] && [ -e /dev/dri/renderD128 ]; then
+    COMPOSITOR="wayfire"
+  fi
+  if grep -qw 'titan.wayfire' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-}" = "wayfire" ]; then
+    [ -e /dev/dri/renderD128 ] && COMPOSITOR="wayfire"
+  fi
+fi
+if grep -qw 'titan.labwc' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-}" = "labwc" ]; then
+  COMPOSITOR="labwc"
+fi
+
+codigo_salida=1
+if [ "${COMPOSITOR}" = "wayfire" ]; then
+  # labwc lee ~/.config/labwc/environment; Wayfire no, asi que se exporta aqui.
+  export XDG_CURRENT_DESKTOP=Titan:wayfire
+  # Si se forzo Wayfire en una VM con virgl, quitar la capa por software.
+  unset WLR_RENDERER LIBGL_ALWAYS_SOFTWARE QSG_RENDER_LOOP MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE
+  export QT_QUICK_BACKEND=rhi
+  export QSG_RHI_BACKEND=opengl
+  export QT_WAYLAND_DISABLE_WINDOWDECORATION=0
+  # Con preferred_decoration_mode=client, Firefox dibuja su barra redondeada.
+  export MOZ_GTK_TITLEBAR_DECORATION=client
+  export NO_AT_BRIDGE=1
+  echo "Iniciando Inti OS (sesión inmersiva con Wayfire)..."
+  dbus-run-session -- wayfire 2>&1 | tee /tmp/wayfire.log
+  codigo_salida=${PIPESTATUS[0]}
+  if [ $codigo_salida -ne 0 ]; then
+    echo "Aviso: Wayfire finalizó con código ${codigo_salida}; se usa labwc."
+    tail -n 15 /tmp/wayfire.log
+    export XDG_CURRENT_DESKTOP=Titan:labwc
+    export MOZ_GTK_TITLEBAR_DECORATION=system
+    unset QT_QUICK_BACKEND QSG_RHI_BACKEND
+    [ "${ES_VM}" -eq 1 ] && aplicar_capa_compatibilidad
+    COMPOSITOR="labwc"
+  fi
+fi
+
+if [ "${COMPOSITOR}" = "labwc" ]; then
 echo "Iniciando Titan Linux (interfaz gráfica estilo macOS con labwc)..."
 dbus-run-session -- labwc 2>&1 | tee /tmp/labwc.log
 codigo_salida=${PIPESTATUS[0]}
@@ -233,6 +294,7 @@ fi
 if [ $codigo_salida -ne 0 ] && [ -s /tmp/labwc.log ]; then
   echo "Aviso: labwc finalizó con código ${codigo_salida}. Registro de error:"
   tail -n 25 /tmp/labwc.log
+fi
 fi
 
 echo "El escritorio se ha cerrado. Volviendo a la consola de texto."

@@ -12,6 +12,8 @@
 #   ./scripts/run-qemu.sh --test-usb      # crea y conecta un pendrive virtual de prueba
 #   ./scripts/run-qemu.sh --resolution 1366x768  # fuerza la pantalla
 #   ./scripts/run-qemu.sh --serial-log r.log   # guarda la consola serie en r.log
+#   TITAN_QEMU_GL=1 ./scripts/run-qemu.sh      # GPU virtual con 3D (virgl): la ISO
+#                                          # arranca la sesion inmersiva (Wayfire)
 #                                          # (funciona con y sin ventana)
 #
 # La pantalla se detecta en el host (niri, wlr-randr, xrandr o DRM). No se
@@ -134,10 +136,17 @@ if [[ -n "${screenshot}" ]]; then
     --resolution "${ancho}x${alto}"
 fi
 
+# TITAN_QEMU_GL=1: GPU virtual con 3D (virgl) para la sesion Wayfire.
+if [[ "${TITAN_QEMU_GL:-0}" == "1" ]]; then
+  gpu_qemu="virtio-vga-gl,xres=${ancho},yres=${alto}"
+else
+  gpu_qemu="virtio-vga,xres=${ancho},yres=${alto}"
+fi
+
 args=(
   -m "${memory}M"
   -smp "${cpus}"
-  -device "virtio-vga,xres=${ancho},yres=${alto}"
+  -device "${gpu_qemu}"
 )
 
 if (( ! boot_installed )); then

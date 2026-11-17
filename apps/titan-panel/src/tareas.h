@@ -9,6 +9,7 @@
 struct wl_display;
 struct wl_registry;
 struct wl_seat;
+struct wl_surface;
 struct zwlr_foreign_toplevel_manager_v1;
 struct zwlr_foreign_toplevel_handle_v1;
 class QSocketNotifier;
@@ -36,13 +37,21 @@ public:
     explicit MonitorTareas(QObject *padre = nullptr);
     ~MonitorTareas() override;
 
-    bool iniciar(QString *error);
+    // Sin 'compartido' abre su propia conexion Wayland y la atiende con un
+    // QSocketNotifier. Con 'compartido' (la conexion de Qt) usa la cola por
+    // defecto, que Qt ya despacha: hace falta para set_rectangle, porque la
+    // superficie que se pasa debe pertenecer a la misma conexion.
+    bool iniciar(QString *error, wl_display *compartido = nullptr);
     QVector<Ventana> ventanas() const;
 
     void activar(quintptr id);
     void minimizar(quintptr id, bool minimizada);
     void maximizar(quintptr id, bool maximizada);
     void cerrar(quintptr id);
+    // Rectangulo (relativo a 'superficie') hacia el que el compositor anima
+    // la ventana al minimizarla: el icono del Dock. Ancho o alto 0 lo borra.
+    void ponerRectangulo(quintptr id, wl_surface *superficie, int x, int y,
+                         int ancho, int alto);
 
 signals:
     void cambiado();

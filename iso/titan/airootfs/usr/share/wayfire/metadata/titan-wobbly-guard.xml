@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="titan-wobbly-guard">
+		<_short>Titan: sin gelatina al redimensionar</_short>
+		<_long>Quita el efecto wobbly mientras se redimensiona una ventana; el siguiente movimiento parte de cero. Parte de Inti OS.</_long>
+		<category>Effects</category>
+	</plugin>
+</wayfire>

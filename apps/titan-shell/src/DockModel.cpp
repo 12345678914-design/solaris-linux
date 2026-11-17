@@ -1,5 +1,7 @@
 #include "TitanBinary.h"
 #include "DockModel.h"
+#include "TitanIconoSvg.h"
+#include "TitanDesktopEntry.h"
 #include "WindowTracker.h"
 #include "ShellBackend.h"
 #include <QProcess>
@@ -337,9 +339,7 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
             }
 
             if (match) {
-                QSettings ini(fi.absoluteFilePath(), QSettings::IniFormat);
-                ini.beginGroup(QStringLiteral("Desktop Entry"));
-                QString iconVal = ini.value(QStringLiteral("Icon")).toString();
+                QString iconVal = titan::leerDesktop(fi.absoluteFilePath()).value(QStringLiteral("Icon"));
                 if (!iconVal.isEmpty()) {
                     if (iconVal.startsWith(QLatin1Char('/')) && QFile::exists(iconVal)) {
                         return QUrl::fromLocalFile(iconVal).toString();
@@ -355,8 +355,8 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
         }
     }
 
-    // Fallback: icono de aplicación elegante estilo macOS, NUNCA el engranaje de ajustes
-    return QStringLiteral("qrc:/icons/apps-folder.png");
+    // Sin icono en el sistema: se genera uno en SVG con su categoria o iniciales.
+    return titan::iconoGenerado(title.isEmpty() ? appId : title, appId);
 }
 
 int DockModel::rowCount(const QModelIndex &parent) const

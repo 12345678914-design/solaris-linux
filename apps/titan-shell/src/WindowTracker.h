@@ -7,8 +7,11 @@
 #include <QVariantMap>
 #include <QHash>
 #include <QSet>
+#include <QRect>
+#include <QPointer>
 
 class MonitorTareas;
+class QWindow;
 
 class WindowTracker : public QObject
 {
@@ -43,6 +46,12 @@ public:
     Q_INVOKABLE QVariantList windowsForApp(const QString &appId) const;
     Q_INVOKABLE void activateWindowById(qulonglong windowId);
     Q_INVOKABLE void closeWindowById(qulonglong windowId);
+    // Icono del Dock hacia el que se anima la ventana al minimizar
+    // (wlr-foreign-toplevel set_rectangle). Coordenadas relativas a 'ventana'.
+    Q_INVOKABLE void setMinimizeTarget(const QString &appId, QObject *ventana,
+                                       qreal x, qreal y, qreal ancho, qreal alto);
+    // true si el compositor es Wayfire con IPC: los escritorios son reales.
+    Q_INVOKABLE bool nativeWorkspaces() const;
     
 signals:
     void windowsChanged();
@@ -66,6 +75,14 @@ private:
     bool m_hasMaximized = false;
     int m_currentWorkspace = 0;
     QHash<quintptr, int> m_windowWorkspaces;
+
+    struct DestinoMinimizado {
+        QPointer<QWindow> ventana;
+        QRect rect;
+    };
+    QHash<QString, DestinoMinimizado> m_destinos;
+    QSet<quintptr> m_conDestino;
+    void aplicarDestino(quintptr id, const QString &appId);
 };
 
 #endif

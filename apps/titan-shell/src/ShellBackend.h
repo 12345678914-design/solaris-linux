@@ -85,6 +85,8 @@ class ShellBackend : public QObject
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QString userDisplayName READ userDisplayName CONSTANT)
     Q_PROPERTY(bool isLiveSystem READ isLiveSystem CONSTANT)
+    // Sesion iniciada con greetd: se puede volver a la pantalla de inicio.
+    Q_PROPERTY(bool canSwitchUser READ canSwitchUser CONSTANT)
     
 public:
     explicit ShellBackend(QObject *parent = nullptr);
@@ -190,7 +192,8 @@ public:
     Q_INVOKABLE void toggleWorkspaces();
     Q_INVOKABLE void addWorkspace();
     Q_INVOKABLE void removeWorkspace(int index);
-    Q_INVOKABLE void switchToWorkspace(int index);
+    // cerrarVista=false: cambia de escritorio sin salir de la vista (estilo GNOME).
+    Q_INVOKABLE void switchToWorkspace(int index, bool cerrarVista = true);
     Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false);
     
     bool bootSplashActive() const { return m_bootSplashActive; }
@@ -199,6 +202,8 @@ public:
     QString userName() const { return m_userName; }
     QString userDisplayName() const { return m_userDisplayName; }
     bool isLiveSystem() const;
+    bool canSwitchUser() const;
+    Q_INVOKABLE void switchUser();
 
     Q_INVOKABLE void finishBootSplash();
     Q_INVOKABLE void lockScreen();
@@ -253,6 +258,8 @@ signals:
     void notificationCenterVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
+    // La vista de escritorios hace su animacion de salida y luego se oculta.
+    void workspacesCloseRequested();
     void workspacesChanged();
     void currentWorkspaceChanged();
     void bootSplashActiveChanged();

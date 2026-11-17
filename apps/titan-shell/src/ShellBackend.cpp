@@ -1,8 +1,10 @@
 #include "TitanBinary.h"
 #include "TitanUsuario.h"
 #include "ShellBackend.h"
+#include "TitanIconoSvg.h"
 #include "DockModel.h"
 #include "ThemeManager.h"
+#include "WayfireIpc.h"
 #include <QProcess>
 #include <QStandardPaths>
 #include <QCoreApplication>
@@ -90,6 +92,25 @@ ShellBackend::ShellBackend(QObject *parent)
         QStringLiteral("Escritorio 1")
     };
 
+    // En Wayfire el cambio de escritorio tambien puede venir del teclado
+    // (Ctrl+Super+flechas, Super+N) o de un gesto: se refleja aqui sin
+    // volver a pedirlo al compositor.
+    if (WayfireIpc::instancia()->disponible()) {
+        connect(WayfireIpc::instancia(), &WayfireIpc::escritorioCambiado, this, [this](int x) {
+            if (x < 0) return;
+            bool cambiaLista = false;
+            while (m_workspaces.size() <= x) {
+                m_workspaces.append(QStringLiteral("Escritorio ") + QString::number(m_workspaces.size() + 1));
+                cambiaLista = true;
+            }
+            if (cambiaLista) emit workspacesChanged();
+            if (m_currentWorkspace != x) {
+                m_currentWorkspace = x;
+                emit currentWorkspaceChanged();
+            }
+        });
+    }
+
     // Registrar servicio D-Bus org.freedesktop.Notifications
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected()) {
@@ -112,7 +133,9 @@ ShellBackend::ShellBackend(QObject *parent)
 
     m_bootSplashActive = true;
     m_bootSplashFinished = false;
-    m_lockScreenActive = !isLiveSystem();
+    // Con greetd la persona ya se ha identificado en la pantalla de inicio:
+    // no se le vuelve a pedir la contrasena al arrancar el escritorio.
+    m_lockScreenActive = !isLiveSystem() && !canSwitchUser();
 
     ThemeManager *tm = ThemeManager::instance();
     connect(tm, &ThemeManager::wallpapersChanged, this, &ShellBackend::wallpapersChanged);
@@ -1284,8 +1307,11 @@ void ShellBackend::notify(const QString &title, const QString &message, const QS
             }
         }
         if (!found) {
-            resolvedIcon = QStringLiteral("qrc:/icons/system.png");
+            resolvedIcon = titan::iconoGenerado(appName.isEmpty() ? resolvedIcon : appName, resolvedIcon);
         }
+    } else if (resolvedIcon.startsWith(QLatin1Char('/')) && !titan::iconoExiste(resolvedIcon)) {
+        resolvedIcon = titan::iconoGenerado(appName.isEmpty() ? QFileInfo(resolvedIcon).completeBaseName() : appName,
+                                            resolvedIcon);
     }
 
     n[QStringLiteral("icon")] = resolvedIcon;
@@ -1314,7 +1340,10 @@ void ShellBackend::setWorkspacesVisible(bool visible)
 
 void ShellBackend::toggleWorkspaces()
 {
-    setWorkspacesVisible(!m_workspacesVisible);
+    if (m_workspacesVisible)
+        emit workspacesCloseRequested();
+    else
+        setWorkspacesVisible(true);
 }
 
 void ShellBackend::addWorkspace()
@@ -1336,14 +1365,18 @@ void ShellBackend::removeWorkspace(int index)
     }
 }
 
-void ShellBackend::switchToWorkspace(int index)
+void ShellBackend::switchToWorkspace(int index, bool cerrarVista)
 {
     if (index >= 0 && index < m_workspaces.size()) {
         m_currentWorkspace = index;
         emit currentWorkspaceChanged();
-        QString cmd = QStringLiteral("wtype -M logo -k %1 -m logo 2>/dev/null || wtype -M win -k %1 -m win 2>/dev/null").arg(index + 1);
-        QProcess::startDetached(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
-        setWorkspacesVisible(false);
+        if (!WayfireIpc::instancia()->irAEscritorio(index)) {
+            // labwc: GoToDesktop va atado a Super+N en rc.xml.
+            QString cmd = QStringLiteral("wtype -M logo -k %1 -m logo 2>/dev/null || wtype -M win -k %1 -m win 2>/dev/null").arg(index + 1);
+            QProcess::startDetached(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
+        }
+        if (cerrarVista)
+            setWorkspacesVisible(false);
     }
 }
 
@@ -1369,6 +1402,24 @@ void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h
         }
     }
     win->setMask(region);
+}
+
+bool ShellBackend::canSwitchUser() const
+{
+    return !qEnvironmentVariableIsEmpty("TITAN_DESDE_GREETD");
+}
+
+void ShellBackend::switchUser()
+{
+    // Termina esta sesion (se cierran sus apps); greetd vuelve a mostrar la
+    // pantalla de inicio con todas las cuentas.
+    if (!canSwitchUser())
+        return;
+    const QString sesion = qEnvironmentVariable("XDG_SESSION_ID");
+    QStringList args{QStringLiteral("terminate-session")};
+    if (!sesion.isEmpty())
+        args << sesion;
+    QProcess::startDetached(QStringLiteral("loginctl"), args);
 }
 
 bool ShellBackend::isLiveSystem() const

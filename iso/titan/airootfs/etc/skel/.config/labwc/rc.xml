@@ -2,18 +2,18 @@
 <labwc_config>
   <theme>
     <name>Titan-macOS</name>
-    <cornerRadius>10</cornerRadius>
+    <cornerRadius>16</cornerRadius>
     <titlebar>
       <!-- Layout macOS: Cerrar, Minimizar, Maximizar a la izquierda; nada a la derecha -->
       <layout>close,iconify,max:</layout>
     </titlebar>
     <font place="ActiveWindow">
-      <name>DejaVu Sans</name>
+      <name>Inter</name>
       <size>10</size>
       <weight>bold</weight>
     </font>
     <font place="InactiveWindow">
-      <name>DejaVu Sans</name>
+      <name>Inter</name>
       <size>10</size>
       <weight>normal</weight>
     </font>

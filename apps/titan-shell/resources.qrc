@@ -18,8 +18,16 @@
         <file>qml/WindowDecorations.qml</file>
         <file>qml/TrafficLights.qml</file>
         <file>qml/ContextMenu.qml</file>
+        <file alias="qml/PanelUsuarios.qml">../titan-greeter/qml/PanelUsuarios.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file>icons/solaris-logo.png</file>
+        <file>icons/simbolos/apagar.svg</file>
+        <file>icons/simbolos/candado.svg</file>
+        <file>icons/simbolos/flecha.svg</file>
+        <file>icons/simbolos/reiniciar.svg</file>
+        <file>icons/simbolos/reposo.svg</file>
+        <file>icons/simbolos/usuario.svg</file>
+        <file>icons/simbolos/usuarios.svg</file>
         <file>icons/finder.png</file>
         <file>icons/launchpad.png</file>
         <file>icons/terminal.png</file>
