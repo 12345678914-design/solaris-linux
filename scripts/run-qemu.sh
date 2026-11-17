@@ -166,7 +166,9 @@ if (( no_ethernet )); then
 else
   # VirtIO network adapter con romfile="" para desactivar iPXE/PXE
   args+=(
-    -netdev "user,id=net0"
+    # SSH al invitado desde el anfitrion: ssh -p 2222 usuario@localhost
+    # (solo en 127.0.0.1; dentro hace falta openssh y sshd en marcha).
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${TITAN_QEMU_SSH:-2222}-:22"
     -device "virtio-net-pci,netdev=net0,romfile="
   )
   info "red: VirtIO activa (PXE boot ROM desactivada)"
