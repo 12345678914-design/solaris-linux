@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-greeter apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-greeter apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/wayfire-titan
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-installer apps/wayfire-titan
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."
@@ -104,6 +104,11 @@ apps/titan-acerca:
 	@echo "Compilando titan-acerca..."
 	mkdir -p $(APPS)/titan-acerca/build && cd $(APPS)/titan-acerca/build && qmake6 .. && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-acerca/build/titan-acerca iso/titan/airootfs/usr/local/bin/
+
+apps/titan-installer:
+	@echo "Compilando titan-installer..."
+	cd $(APPS)/titan-installer && qmake6 titan-installer.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-installer/titan-installer iso/titan/airootfs/usr/local/bin/
 
 apps/titan-settings:
 	@echo "Compilando titan-settings..."
