@@ -177,7 +177,7 @@ QtObject {
                         width: 110
                         height: 32
                         radius: 8
-                        color: "#0071e3"
+                        color: (typeof titanThemeManager !== "undefined" ? titanThemeManager.accent : "#0071e3")
 
                         Text {
                             anchors.centerIn: parent

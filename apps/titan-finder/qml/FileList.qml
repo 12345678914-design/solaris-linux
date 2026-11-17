@@ -298,7 +298,7 @@ Rectangle {
                     width: 86
                     height: 28
                     radius: 6
-                    color: okRenameMouse.pressed ? "#005bb5" : okRenameMouse.containsMouse ? "#0077ed" : "#0071e3"
+                    color: okRenameMouse.pressed ? Qt.darker(theme.accent, 1.25) : okRenameMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -440,7 +440,7 @@ Rectangle {
                     width: 86
                     height: 28
                     radius: 6
-                    color: okFolderMouse.pressed ? "#005bb5" : okFolderMouse.containsMouse ? "#0077ed" : "#0071e3"
+                    color: okFolderMouse.pressed ? Qt.darker(theme.accent, 1.25) : okFolderMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -598,7 +598,7 @@ Rectangle {
                 width: 90
                 height: 28
                 radius: 6
-                color: closePropsMouse.pressed ? "#005bb5" : closePropsMouse.containsMouse ? "#0077ed" : "#0071e3"
+                color: closePropsMouse.pressed ? Qt.darker(theme.accent, 1.25) : closePropsMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Text {

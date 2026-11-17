@@ -206,7 +206,8 @@ Item {
 
     Repeater {
         id: iconRepeater
-        model: desktopBackend.items
+        // Ajustes > Escritorio y Dock > Mostrar iconos en el escritorio
+        model: { prefs.version; return prefs.b("Escritorio/iconos") ? desktopBackend.items : [] }
 
         delegate: Item {
             id: iconWrapper

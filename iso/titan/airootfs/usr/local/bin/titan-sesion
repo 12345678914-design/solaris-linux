@@ -35,6 +35,12 @@ if [ -x /usr/local/bin/titan-inactividad ]; then
     /usr/local/bin/titan-inactividad &
 fi
 
+# 0.5 Pantallas (resolucion, escala, giro) y luz nocturna guardadas en Ajustes,
+#     y el color de acento para GTK, kitty y la pantalla de bloqueo.
+[ -x /usr/local/bin/titan-pantallas ] && /usr/local/bin/titan-pantallas >/tmp/titan-pantallas.log 2>&1 &
+[ -x /usr/local/bin/titan-luz-nocturna ] && ( sleep 2; /usr/local/bin/titan-luz-nocturna ) >/dev/null 2>&1 &
+[ -x /usr/local/bin/titan-acento ] && /usr/local/bin/titan-acento >/dev/null 2>&1 &
+
 # 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
 lanzar_titan_desktop() {
     if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then

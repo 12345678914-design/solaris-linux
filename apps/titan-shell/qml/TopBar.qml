@@ -14,7 +14,23 @@ Rectangle {
     // suave detrás. Sin fondo de pantalla, se usa el tema.
     readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
     property real wallLuma: -1          // 0..1, -1 = aún sin medir
-    readonly property bool wallBright: wallLuma >= 0 ? wallLuma > 0.62 : !titanTheme.isDark
+    // Preferencias (Ajustes > Barra de menús / Apariencia)
+    readonly property string estilo: { prefs.version; var e = prefs.s("Barra/estilo"); return (e === "vidrio" || e === "solido") ? e : "transparente" }
+    readonly property bool p24h: { prefs.version; return prefs.b("Barra/reloj24h") }
+    readonly property bool pSegundos: { prefs.version; return prefs.b("Barra/segundos") }
+    readonly property bool pFecha: { prefs.version; return prefs.b("Barra/fecha") }
+    readonly property bool pDia: { prefs.version; return prefs.b("Barra/diaSemana") }
+    readonly property bool pBateria: { prefs.version; return prefs.b("Barra/bateriaPorcentaje") }
+    readonly property bool pWifi: { prefs.version; return prefs.b("Barra/iconoWifi") }
+    readonly property bool pBluetooth: { prefs.version; return prefs.b("Barra/iconoBluetooth") }
+    readonly property bool pFondo: { prefs.version; return prefs.b("Barra/iconoFondo") }
+    readonly property string formatoReloj: (pDia ? "ddd " : "") + (pFecha ? "d MMM  " : "")
+                                           + (p24h ? "HH:mm" : "h:mm") + (pSegundos ? ":ss" : "") + (p24h ? "" : " AP")
+    property date ahora: new Date()
+
+    // Con barra de vidrio o sólida el texto sigue al tema; transparente, al fondo.
+    readonly property bool wallBright: estilo !== "transparente" ? !titanTheme.isDark
+                                       : (wallLuma >= 0 ? wallLuma > 0.62 : !titanTheme.isDark)
     readonly property color barText: wallBright ? "#1d1d1f" : "#ffffff"
     readonly property color barTextMuted: wallBright ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(1, 1, 1, 0.65)
     readonly property color barHover: wallBright ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.20)
@@ -28,8 +44,25 @@ Rectangle {
     color: "transparent"
     border.width: 0
 
+    // Barra de vidrio (translúcida) o sólida.
+    Rectangle {
+        anchors.fill: parent
+        visible: topBar.estilo !== "transparente"
+        color: topBar.estilo === "solido"
+               ? (titanTheme.isDark ? "#1c1d23" : "#f2f2f7")
+               : (titanTheme.isDark ? Qt.rgba(0.10, 0.11, 0.16, 0.58) : Qt.rgba(1, 1, 1, 0.58))
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
+        }
+    }
+
     // Sombra suave de arriba abajo: da contraste sin parecer una barra.
     Rectangle {
+        visible: topBar.estilo === "transparente"
         anchors.fill: parent
         gradient: Gradient {
             GradientStop { position: 0.0; color: topBar.wallBright ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.28) }
@@ -131,6 +164,7 @@ Rectangle {
         // Botón Selector de Fondo de Pantalla (Brocheta / Brocha de pintar - Ctrl + W)
         Item {
             id: wallpaperBtn
+            visible: topBar.pFondo
             width: 24
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -204,7 +238,7 @@ Rectangle {
         // Icono de Wi-Fi fiel al estado (encendido y conectado, oculto si hay cable Ethernet)
         Item {
             id: wifiItem
-            visible: !shellBackend.ethernetConnected
+            visible: !shellBackend.ethernetConnected && topBar.pWifi
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -261,6 +295,7 @@ Rectangle {
 
         // Icono de Bluetooth fiel al estado (encendido y conectado)
         Item {
+            visible: topBar.pBluetooth
             width: 20
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -430,6 +465,7 @@ Rectangle {
             readonly property color batTextColor: shellBackend.isCharging ? "#30d158" : topBar.barText
 
             Text {
+                visible: topBar.pBateria
                 text: (shellBackend.isCharging ? "⚡ " : "") + shellBackend.batteryPercent + "%"
                 color: batteryWidget.batTextColor
                 font.pixelSize: 11
@@ -475,7 +511,7 @@ Rectangle {
         // Fecha y Reloj digital
         Text {
             id: clockText
-            text: Qt.formatDateTime(new Date(), "ddd d MMM  hh:mm")
+            text: Qt.formatDateTime(topBar.ahora, topBar.formatoReloj)
             color: topBar.barText
             font.pixelSize: 11
             font.weight: Font.Medium
@@ -485,7 +521,7 @@ Rectangle {
                 interval: 1000
                 running: true
                 repeat: true
-                onTriggered: clockText.text = Qt.formatDateTime(new Date(), "ddd d MMM  hh:mm")
+                onTriggered: topBar.ahora = new Date()
             }
         }
 

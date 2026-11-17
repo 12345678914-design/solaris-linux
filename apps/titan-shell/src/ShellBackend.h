@@ -9,6 +9,7 @@
 #include <QDBusAbstractAdaptor>
 
 class DockModel;
+class TitanPrefs;
 class ShellBackend;
 
 class NotificationsAdaptor : public QDBusAbstractAdaptor
@@ -180,7 +181,10 @@ public:
     Q_INVOKABLE void removeNotification(int id);
     Q_INVOKABLE void dismissIsland();
     Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString(),
-                            const QStringList &actions = QStringList());
+                            const QStringList &actions = QStringList(), bool urgente = false);
+    // No molestar desde el Centro de control (lo mismo que en Ajustes).
+    Q_INVOKABLE void setNoMolestar(bool activo);
+    void setPrefs(TitanPrefs *p) { m_prefs = p; }
     Q_INVOKABLE void invokeNotificationAction(int id, const QString &key);
     void removeNotificationSilently(int id);
     void closeNotificationByApp(int id);
@@ -198,7 +202,8 @@ public:
     Q_INVOKABLE void removeWorkspace(int index);
     // cerrarVista=false: cambia de escritorio sin salir de la vista (estilo GNOME).
     Q_INVOKABLE void switchToWorkspace(int index, bool cerrarVista = true);
-    Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false);
+    Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false,
+                                    const QString &posicion = QStringLiteral("abajo"));
     
     bool bootSplashActive() const { return m_bootSplashActive; }
     bool bootSplashFinished() const { return m_bootSplashFinished; }
@@ -276,6 +281,8 @@ signals:
     
 private:
     bool usarBloqueoSeguro() const;
+    void registrarAppNotificadora(const QString &app, const QString &icono);
+    TitanPrefs *m_prefs = nullptr;
     bool takeNotification(int id);
 
     void updateBatteryStatus();

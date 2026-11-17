@@ -7,6 +7,7 @@
 #include "DesktopBackend.h"
 #include "ThemeManager.h"
 #include "Mpris.h"
+#include "TitanPrefs.h"
 #include <QQuickItem>
 #include <QRegion>
 
@@ -19,6 +20,8 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <iostream>
+#include <memory>
+#include <QScreen>
 
 #include <LayerShellQt/window.h>
 
@@ -128,6 +131,17 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-control-center")) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("toggle-control-center\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-notifications")) {
             const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
             QLocalSocket socket;
@@ -218,6 +232,8 @@ int main(int argc, char *argv[])
                         shellBackend.toggleTheme();
                     } else if (cmd == "toggle-notifications") {
                         shellBackend.toggleNotificationCenter();
+                    } else if (cmd == "toggle-control-center") {
+                        shellBackend.toggleControlCenter();
                     } else if (cmd == "lock") {
                         shellBackend.lockScreen();
                     } else if (cmd.startsWith("notify ")) {
@@ -243,8 +259,13 @@ int main(int argc, char *argv[])
     // Lo que suena ahora (MPRIS), para la Isla Dinamica. Antes que el motor
     // QML: se destruye despues de el.
     Mpris mpris;
+    // Preferencias del escritorio (Ajustes las cambia; aqui se aplican en vivo).
+    TitanPrefs prefs;
+    shellBackend.setPrefs(&prefs);
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
+    engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
     engine.rootContext()->setContextProperty(QStringLiteral("shellBackend"), &shellBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("windowTracker"), &windowTracker);
     engine.rootContext()->setContextProperty(QStringLiteral("dockModel"), &dockModel);
@@ -310,27 +331,77 @@ int main(int argc, char *argv[])
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive();
+            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                              && prefs.b(QStringLiteral("Barra/visible"));
             configurarCapa(win, LayerShellQt::Window::LayerTop, a, 28, QStringLiteral("titan-topbar"),
                            LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
-            auto updateTopBarVis = [win, &shellBackend]() {
-                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive());
+            // Oculta (Ajustes > Barra de menus), la barra deja de reservar sus 28 px.
+            auto updateTopBarVis = [win, &shellBackend, &prefs]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                                && prefs.b(QStringLiteral("Barra/visible")));
             };
             QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateTopBarVis);
             QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateTopBarVis);
+            QObject::connect(&prefs, &TitanPrefs::cambiado, win, updateTopBarVis);
         } else if (name == QStringLiteral("dockWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible();
+            auto dockDebeVerse = [&shellBackend, &prefs]() {
+                return shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                       && !shellBackend.launcherVisible() && prefs.b(QStringLiteral("Dock/visible"));
+            };
             configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dock"),
-                           LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
-            auto updateDockVis = [win, &shellBackend]() {
-                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible());
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            // Posicion del Dock (Ajustes > Escritorio y Dock): abajo, izquierda o
+            // derecha. La capa se ancla a ese borde; para cambiarla se oculta,
+            // se reancla y se vuelve a mostrar.
+            auto posicionActual = std::make_shared<QString>();
+            auto colocarDock = [win, &prefs, posicionActual, dockDebeVerse]() {
+                const QString pos = prefs.s(QStringLiteral("Dock/posicion"));
+                const bool cambia = pos != *posicionActual;
+                *posicionActual = pos;
+                if (cambia && QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))) {
+                    if (auto *ls = LayerShellQt::Window::get(win)) {
+                        LayerShellQt::Window::Anchors an;
+                        QSize tam;
+                        QScreen *pantalla = win->screen();
+                        const QSize sc = pantalla ? pantalla->size() : QSize(1280, 800);
+                        if (pos == QStringLiteral("izquierda") || pos == QStringLiteral("derecha")) {
+                            an = LayerShellQt::Window::AnchorTop;
+                            an |= LayerShellQt::Window::AnchorBottom;
+                            an |= pos == QStringLiteral("izquierda") ? LayerShellQt::Window::AnchorLeft
+                                                                     : LayerShellQt::Window::AnchorRight;
+                            ls->setDesiredSize(QSize(320, 0));
+                            tam = QSize(320, sc.height());
+                        } else {
+                            an = LayerShellQt::Window::AnchorBottom;
+                            an |= LayerShellQt::Window::AnchorLeft;
+                            an |= LayerShellQt::Window::AnchorRight;
+                            ls->setDesiredSize(QSize(0, 320));
+                            tam = QSize(sc.width(), 320);
+                        }
+                        const bool estabaVisible = win->isVisible();
+                        if (estabaVisible)
+                            win->setVisible(false);
+                        ls->setAnchors(an);
+                        win->resize(tam);
+                        if (estabaVisible)
+                            win->setVisible(true);
+                    }
+                }
+                const bool ver = dockDebeVerse();
+                if (win->isVisible() != ver)
+                    win->setVisible(ver);
+            };
+            colocarDock();
+            auto updateDockVis = [win, dockDebeVerse]() {
+                win->setVisible(dockDebeVerse());
             };
             QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateDockVis);
             QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateDockVis);
             QObject::connect(&shellBackend, &ShellBackend::launcherVisibleChanged, win, updateDockVis);
+            QObject::connect(&prefs, &TitanPrefs::cambiado, win, colocarDock);
         } else if (name == QStringLiteral("controlCenterWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;

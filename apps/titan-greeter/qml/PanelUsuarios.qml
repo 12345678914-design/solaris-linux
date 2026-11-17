@@ -17,6 +17,8 @@ Item {
     property string mensaje: ""
     property bool mensajeOk: true
     property int pestana: 0
+    // Acento de Ajustes en la pantalla de bloqueo; en la de inicio, azul.
+    readonly property color acento: (typeof titanThemeManager !== "undefined" && titanThemeManager.accent) ? titanThemeManager.accent : "#0a84ff"
     property string usuarioSel: ""
     property string grupoSel: ""
 
@@ -85,7 +87,7 @@ Item {
             radius: 9
             color: Qt.rgba(1, 1, 1, 0.10)
             border.width: parent.activeFocus ? 1.5 : 1
-            border.color: parent.activeFocus ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.20)
+            border.color: parent.activeFocus ? panel.acento : Qt.rgba(1, 1, 1, 0.20)
         }
     }
 
@@ -99,7 +101,7 @@ Item {
         width: Math.max(96, etiqueta.implicitWidth + 28)
         radius: 9
         opacity: activo ? 1 : 0.45
-        color: principal ? (zona.pressed ? "#0062cc" : "#0a84ff")
+        color: principal ? (zona.pressed ? Qt.darker(panel.acento, 1.2) : panel.acento)
                          : (zona.containsMouse ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.12))
         Text {
             id: etiqueta
@@ -236,7 +238,7 @@ Item {
                     model: ["Usuarios", "Grupos"]
                     Rectangle {
                         width: 110; height: 30; radius: 8
-                        color: panel.pestana === index ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.08)
+                        color: panel.pestana === index ? panel.acento : Qt.rgba(1, 1, 1, 0.08)
                         Text { anchors.centerIn: parent; text: modelData; color: "#ffffff"; font.pixelSize: 13 }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.pestana = index }
                     }
@@ -346,8 +348,8 @@ Item {
                             x: nuevoAdmin.leftPadding
                             anchors.verticalCenter: parent.verticalCenter
                             width: 18; height: 18; radius: 5
-                            color: nuevoAdmin.checked ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.10)
-                            border.color: nuevoAdmin.checked ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.35)
+                            color: nuevoAdmin.checked ? panel.acento : Qt.rgba(1, 1, 1, 0.10)
+                            border.color: nuevoAdmin.checked ? panel.acento : Qt.rgba(1, 1, 1, 0.35)
                             Text {
                                 anchors.centerIn: parent
                                 visible: nuevoAdmin.checked

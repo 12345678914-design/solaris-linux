@@ -4,8 +4,12 @@ import QtQuick.Window 2.15
 
 Item {
     id: dockItem
-    width: 44
-    height: 44
+    width: dockContainer.slot
+    height: dockContainer.slot
+
+    // Borde del Dock: abajo, izquierda o derecha (Ajustes > Escritorio y Dock)
+    readonly property string borde: dockContainer.posicion
+    readonly property bool lateral: borde !== "abajo"
 
     property int itemIndex: 0
     property string appId: ""
@@ -45,7 +49,8 @@ Item {
     // posición sin magnificar para que el destino no baile con el ratón.
     function publicarDestino() {
         if (!appId || !dockItem.Window.window) return;
-        var p = dockItem.mapToItem(null, 0, -targetY);
+        // Posicion sin ampliar: la del hueco en la fila/columna del Dock.
+        var p = dockRow.mapToItem(null, dockItem.x, dockItem.y);
         windowTracker.setMinimizeTarget(appId, dockItem.Window.window,
                                         p.x, p.y, width, height);
     }
@@ -55,6 +60,7 @@ Item {
         onTriggered: dockItem.publicarDestino()
     }
     onXChanged: destinoTimer.restart()
+    onYChanged: destinoTimer.restart()
     onIsRunningChanged: destinoTimer.restart()
     Component.onCompleted: destinoTimer.restart()
 
@@ -68,20 +74,32 @@ Item {
         if (toIdx < 0 || fromIdx === toIdx) return 0;
 
         if (fromIdx < toIdx) {
-            if (itemIndex > fromIdx && itemIndex <= toIdx) return -47;
+            if (itemIndex > fromIdx && itemIndex <= toIdx) return -dockContainer.paso;
         } else if (fromIdx > toIdx) {
-            if (itemIndex >= toIdx && itemIndex < fromIdx) return 47;
+            if (itemIndex >= toIdx && itemIndex < fromIdx) return dockContainer.paso;
         }
         return 0;
     }
 
-    transform: Translate {
-        x: dockItem.isBeingDragged ? dockItem.dragOffsetX : dockItem.shiftX
-        Behavior on x {
-            enabled: !dockItem.isBeingDragged
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+    // Desplazamiento a lo largo del Dock (arrastrar) y hacia fuera del borde
+    // (ampliacion). El Grid coloca x/y, asi que todo va en transformaciones.
+    readonly property real alongOffset: isBeingDragged ? dragOffsetX : shiftX
+    readonly property real normalOffset: borde === "izquierda" ? -targetY : targetY
+
+    transform: [
+        Translate {
+            x: dockItem.lateral ? 0 : dockItem.alongOffset
+            y: dockItem.lateral ? dockItem.alongOffset : 0
+            Behavior on x { enabled: !dockItem.isBeingDragged; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: !dockItem.isBeingDragged; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        },
+        Translate {
+            x: dockItem.lateral ? dockItem.normalOffset : 0
+            y: dockItem.lateral ? 0 : dockItem.normalOffset
+            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
-    }
+    ]
 
     // Efecto de magnificación macOS:
     // La app apuntada es la más alta (1.34x, y: -9), y sus dos vecinas contiguas se agrandan un poco (1.16x, y: -4)
@@ -90,6 +108,7 @@ Item {
 
     readonly property real targetScale: {
         if (isBeingDragged) return 1.22;
+        if (!dockContainer.ampliacion) return 1.0;
         if (distanceToHovered === 0) return 1.34;
         if (distanceToHovered === 1) return 1.16;
         return 1.0;
@@ -97,19 +116,16 @@ Item {
 
     readonly property real targetY: {
         if (isBeingDragged) return -14;
+        if (!dockContainer.ampliacion) return 0;
         if (distanceToHovered === 0) return -9;
         if (distanceToHovered === 1) return -4;
         return 0;
     }
 
     scale: targetScale
-    y: targetY
     z: isBeingDragged ? 9999 : (mouseArea.containsMouse ? 1000 : (isRunning || hasWindow ? 10 : 1))
 
     Behavior on scale {
-        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-    }
-    Behavior on y {
         NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
     }
 
@@ -122,17 +138,16 @@ Item {
         height: 3
         radius: 1.5
         color: Qt.rgba(0, 0, 0, Math.max(0.06, 0.28 - Math.abs(dockItem.bounceOffset) / 80.0))
-        visible: dockItem.isLaunching && !dockItem.hasWindow
+        visible: dockItem.isLaunching && !dockItem.hasWindow && !dockItem.lateral
     }
 
     // Separador vertical macOS entre apps ancladas y en ejecución, y antes de papelera
     Rectangle {
         visible: dockItem.showSeparator
-        anchors.left: parent.left
-        anchors.leftMargin: -2
-        anchors.verticalCenter: parent.verticalCenter
-        width: 1
-        height: 28
+        x: dockItem.lateral ? (parent.width - width) / 2 : -2
+        y: dockItem.lateral ? -2 : (parent.height - height) / 2
+        width: dockItem.lateral ? 28 : 1
+        height: dockItem.lateral ? 1 : 28
         color: Qt.rgba(1, 1, 1, 0.22)
     }
 
@@ -140,15 +155,18 @@ Item {
         id: iconContainer
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        anchors.verticalCenterOffset: dockItem.bounceOffset
-        width: 36
-        height: 36
+        // El rebote se aleja del borde del Dock
+        anchors.verticalCenterOffset: dockItem.lateral ? 0 : dockItem.bounceOffset
+        anchors.horizontalCenterOffset: dockItem.borde === "izquierda" ? -dockItem.bounceOffset
+                                        : dockItem.borde === "derecha" ? dockItem.bounceOffset : 0
+        width: dockContainer.iconSize
+        height: dockContainer.iconSize
 
         transform: Scale {
-            origin.x: 18
-            origin.y: 36
-            xScale: dockItem.squashX
-            yScale: dockItem.squashY
+            origin.x: dockItem.borde === "izquierda" ? 0 : dockItem.borde === "derecha" ? iconContainer.width : iconContainer.width / 2
+            origin.y: dockItem.lateral ? iconContainer.height / 2 : iconContainer.height
+            xScale: dockItem.lateral ? dockItem.squashY : dockItem.squashX
+            yScale: dockItem.lateral ? dockItem.squashX : dockItem.squashY
         }
 
         Image {
@@ -187,14 +205,15 @@ Item {
     // Indicador de app en ejecución estilo macOS (punto luminoso centrado debajo)
     Rectangle {
         visible: isRunning || hasWindow
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 1
-        width: active ? 10 : 4
-        height: 4
+        // Pegado al borde de la pantalla, como en macOS
+        width: dockItem.lateral ? 4 : (active ? 10 : 4)
+        height: dockItem.lateral ? (active ? 10 : 4) : 4
+        x: dockItem.borde === "izquierda" ? 1 : dockItem.borde === "derecha" ? parent.width - width - 1 : (parent.width - width) / 2
+        y: dockItem.lateral ? (parent.height - height) / 2 : parent.height - height - 1
         radius: 2
-        color: active ? "#0071e3" : (typeof titanThemeManager !== "undefined" && !titanThemeManager.isDark ? "#444444" : "#D0D6E2")
+        color: active ? (typeof titanThemeManager !== "undefined" ? titanThemeManager.accent : "#0071e3") : (typeof titanThemeManager !== "undefined" && !titanThemeManager.isDark ? "#444444" : "#D0D6E2")
         Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: 180 } }
     }
 
@@ -297,14 +316,14 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 return
             }
-            globalPressX = mouse.x
+            globalPressX = dockItem.lateral ? mouse.y : mouse.x
             isDraggingApp = false
             dockItem.dragOffsetX = 0
         }
 
         onPositionChanged: (mouse) => {
             if (pressed && mouse.buttons & Qt.LeftButton) {
-                var delta = mouse.x - globalPressX
+                var delta = (dockItem.lateral ? mouse.y : mouse.x) - globalPressX
                 dockItem.dragOffsetX += delta
                 if (!isDraggingApp && Math.abs(dockItem.dragOffsetX) > 8) {
                     isDraggingApp = true
@@ -313,7 +332,9 @@ Item {
                 }
                 if (isDraggingApp) {
                     var ptInRow = mouseArea.mapToItem(dockRow, mouse.x, mouse.y)
-                    var targetSlot = Math.max(0, Math.min(dockModel.rowCount() - 1, Math.round((ptInRow.x - 22) / 47)))
+                    var along = dockItem.lateral ? ptInRow.y : ptInRow.x
+                    var targetSlot = Math.max(0, Math.min(dockModel.rowCount() - 1,
+                                                          Math.round((along - dockContainer.slot / 2) / dockContainer.paso)))
                     if (targetSlot !== dockContainer.targetDropIndex) {
                         dockContainer.targetDropIndex = targetSlot
                     }
@@ -361,9 +382,11 @@ Item {
         id: tooltip
         visible: mouseArea.containsMouse && !mouseArea.pressed && !mouseArea.drag.active
         opacity: visible ? 1.0 : 0.0
-        anchors.bottom: parent.top
-        anchors.bottomMargin: 10
-        anchors.horizontalCenter: parent.horizontalCenter
+        // Encima del icono, o a su lado si el Dock esta en un lateral
+        x: dockItem.borde === "izquierda" ? parent.width + 10
+           : dockItem.borde === "derecha" ? -width - 10
+           : (parent.width - width) / 2
+        y: dockItem.lateral ? (parent.height - height) / 2 : -height - 10
         width: Math.max(48, tooltipText.implicitWidth + 20)
         height: 24
         radius: 7

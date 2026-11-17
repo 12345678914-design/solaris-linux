@@ -26,6 +26,7 @@ SOURCES += \
     src/WayfireIpc.cpp \
     src/Mpris.cpp \
     ../titan-common/ThemeManager.cpp \
+    ../titan-common/TitanPrefs.cpp \
     ../titan-panel/src/tareas.cpp \
     ../titan-panel/src/wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
@@ -39,6 +40,7 @@ HEADERS += \
     src/WayfireIpc.h \
     src/Mpris.h \
     ../titan-common/ThemeManager.h \
+    ../titan-common/TitanPrefs.h \
     ../titan-common/TitanBinary.h \
     ../titan-common/TitanDesktopEntry.h \
     ../titan-panel/src/tareas.h

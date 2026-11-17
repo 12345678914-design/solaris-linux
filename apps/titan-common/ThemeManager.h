@@ -46,6 +46,7 @@ private:
     void load();
     void save();
     void syncLabwcTheme();
+    void aplicarPaleta();
     void scanWallpapers();
 
     bool m_isDark = false;

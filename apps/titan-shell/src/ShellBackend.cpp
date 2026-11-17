@@ -1,6 +1,7 @@
 #include "TitanBinary.h"
 #include "TitanUsuario.h"
 #include "ShellBackend.h"
+#include "TitanPrefs.h"
 #include "TitanIconoSvg.h"
 #include "DockModel.h"
 #include "ThemeManager.h"
@@ -9,6 +10,7 @@
 #include <QStandardPaths>
 #include <QCoreApplication>
 #include <QDir>
+#include <QSettings>
 #include <QFile>
 #include <QFileInfo>
 #include <QTimer>
@@ -43,7 +45,9 @@ uint NotificationsAdaptor::Notify(const QString &app_name, uint replaces_id, con
         icono = hints.value(QStringLiteral("image-path")).toString();
     if (icono.startsWith(QStringLiteral("file://")))
         icono = QUrl(icono).toLocalFile();
-    m_backend->notify(summary, body, icono, app_name, actions);
+    // Urgencia critica (bateria agotandose...): se ensena aunque haya No molestar.
+    const bool urgente = hints.value(QStringLiteral("urgency")).toInt() >= 2;
+    m_backend->notify(summary, body, icono, app_name, actions, urgente);
     return static_cast<uint>(m_backend->lastNotificationId());
 }
 
@@ -1317,10 +1321,46 @@ void ShellBackend::dismissIsland()
     }
 }
 
+// Clave de una app en las preferencias ('/' separaria grupos en QSettings).
+static QString claveApp(const QString &app)
+{
+    QString k = app.isEmpty() ? QStringLiteral("Sistema") : app;
+    k.replace(QLatin1Char('/'), QLatin1Char('_'));
+    k.replace(QLatin1Char('\\'), QLatin1Char('_'));
+    return k;
+}
+
+void ShellBackend::registrarAppNotificadora(const QString &app, const QString &icono)
+{
+    // Ajustes > Notificaciones ensena las apps que han avisado alguna vez.
+    // Fichero aparte: shell.conf solo lo escribe Ajustes.
+    QSettings s(QDir::homePath() + QStringLiteral("/.config/titan/notificaciones-apps.conf"), QSettings::IniFormat);
+    const QString k = QStringLiteral("apps/") + claveApp(app);
+    if (s.value(k + QStringLiteral("/nombre")).toString() == app && s.value(k + QStringLiteral("/icono")).toString() == icono)
+        return;
+    s.setValue(k + QStringLiteral("/nombre"), app.isEmpty() ? QStringLiteral("Sistema") : app);
+    s.setValue(k + QStringLiteral("/icono"), icono);
+}
+
+void ShellBackend::setNoMolestar(bool activo)
+{
+    if (m_prefs)
+        m_prefs->poner(QStringLiteral("Notificaciones/noMolestar"), activo);
+}
+
 void ShellBackend::notify(const QString &title, const QString &message, const QString &icon, const QString &appName,
-                          const QStringList &actions)
+                          const QStringList &actions, bool urgente)
 {
     m_lastNotificationId++;
+    // Notificaciones desactivadas para esta app en Ajustes: no se ensena nada.
+    const QString clave = claveApp(appName);
+    if (m_prefs && !urgente) {
+        const QVariant permitir = m_prefs->v(QStringLiteral("Notificaciones/apps/") + clave);
+        if (permitir.isValid() && (permitir.toString() == QStringLiteral("false") || permitir == QVariant(false))) {
+            registrarAppNotificadora(appName, icon);
+            return;
+        }
+    }
     QVariantMap n;
     n[QStringLiteral("id")] = m_lastNotificationId;
     // Acciones: lista plana [clave, texto, clave, texto...]. "default" es el
@@ -1379,13 +1419,27 @@ void ShellBackend::notify(const QString &title, const QString &message, const QS
 
     m_notifications.prepend(n);
     emit notificationsChanged();
+    registrarAppNotificadora(appName, icon);
 
-    m_currentIslandNotification = n;
+    // No molestar / Concentracion: se guarda en el centro, sin aviso ni sonido.
+    if (m_prefs && m_prefs->noMolestarActivo() && !urgente)
+        return;
+
+    QVariantMap aviso = n;
+    if (m_prefs && !m_prefs->b(QStringLiteral("Notificaciones/vistaPrevia")))
+        aviso[QStringLiteral("message")] = QString();
+    m_currentIslandNotification = aviso;
     m_islandActive = true;
     emit islandChanged();
 
     if (m_islandTimer) {
         m_islandTimer->start(5000);
+    }
+
+    if (m_prefs && m_prefs->b(QStringLiteral("Notificaciones/sonido"))) {
+        const QString sonido = QStringLiteral("/usr/share/sounds/freedesktop/stereo/message.oga");
+        if (QFile::exists(sonido))
+            QProcess::startDetached(QStringLiteral("pw-play"), {sonido});
     }
 }
 
@@ -1439,7 +1493,8 @@ void ShellBackend::switchToWorkspace(int index, bool cerrarVista)
     }
 }
 
-void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup)
+void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup,
+                                  const QString &posicion)
 {
     auto *win = qobject_cast<QQuickWindow*>(windowObj);
     if (!win) return;
@@ -1450,10 +1505,16 @@ void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h
         // para interactuar con las opciones o cerrarlo al hacer clic fuera
         region = QRegion(0, 0, win->width(), win->height());
     } else if (isMaximized && !isRevealed) {
-        // Tira de activación ultrafina (3 px) en el centro inferior
-        int trigW = qMin(win->width(), 600);
-        int trigX = (win->width() - trigW) / 2;
-        region = QRegion(trigX, win->height() - 3, trigW, 3);
+        // Tira de activación ultrafina (3 px) en el centro del borde del Dock
+        if (posicion == QStringLiteral("izquierda") || posicion == QStringLiteral("derecha")) {
+            int trigH = qMin(win->height(), 600);
+            int trigY = (win->height() - trigH) / 2;
+            region = QRegion(posicion == QStringLiteral("izquierda") ? 0 : win->width() - 3, trigY, 3, trigH);
+        } else {
+            int trigW = qMin(win->width(), 600);
+            int trigX = (win->width() - trigW) / 2;
+            region = QRegion(trigX, win->height() - 3, trigW, 3);
+        }
     } else {
         // Solo el área física del Dock y su margen inmediato (para que las ventanas detrás reciban clics normalmente)
         if (w > 0 && h > 0) {

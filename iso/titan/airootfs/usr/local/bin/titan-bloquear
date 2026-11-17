@@ -40,12 +40,21 @@ if grep -qs '^isDark=false' "$HOME/.config/titan/theme.conf"; then
     velo="0.22"
 fi
 
+# Color de acento de Ajustes para el campo y el boton de desbloquear.
+acento="$(sed -n 's/^accent=//p' "$HOME/.config/titan/theme.conf" 2>/dev/null | tail -n1 | tr -d '"')"
+printf '%s' "$acento" | grep -Eq '^#[0-9a-fA-F]{6}$' || acento=""
+
 umask 077
 {
     cat "$base/estilo.css"
     printf '\nwindow {\n'
     printf '  background-image: linear-gradient(rgba(8, 10, 16, %s), rgba(8, 10, 16, %s)), url("%s");\n' "$velo" "$velo" "$fondo"
     printf '}\n'
+    if [ -n "$acento" ]; then
+        printf 'entry:focus { border-color: %s; }\n' "$acento"
+        printf 'button#unlock-button { background-color: %s; color: #ffffff; }\n' "$acento"
+        printf 'button#unlock-button:hover { background-color: shade(%s, 1.12); }\n' "$acento"
+    fi
 } > "$estilo"
 
 gtklock --daemonize \

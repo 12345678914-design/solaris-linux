@@ -55,6 +55,9 @@ iso/titan/airootfs/usr/local/bin/*
 !iso/titan/airootfs/usr/local/bin/titan-huella
 !iso/titan/airootfs/usr/local/bin/titan-instantaneas
 !iso/titan/airootfs/usr/local/bin/titan-lector
+!iso/titan/airootfs/usr/local/bin/titan-pantallas
+!iso/titan/airootfs/usr/local/bin/titan-luz-nocturna
+!iso/titan/airootfs/usr/local/bin/titan-acento
 !iso/titan/airootfs/usr/local/bin/titan-audio-setup
 !iso/titan/airootfs/usr/local/bin/titan-battery-sync
 !iso/titan/airootfs/usr/local/bin/prime-run

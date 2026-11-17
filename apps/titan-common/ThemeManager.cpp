@@ -8,6 +8,9 @@
 #include <QUrl>
 #include <QDateTime>
 #include <QDebug>
+#include <QGuiApplication>
+#include <QPalette>
+#include <QColor>
 
 ThemeManager *ThemeManager::instance()
 {
@@ -25,6 +28,7 @@ ThemeManager::ThemeManager(QObject *parent)
     QDir().mkpath(m_configDir);
 
     load();
+    aplicarPaleta();
     scanWallpapers();
 
     m_watcher->addPath(m_configDir);
@@ -88,6 +92,7 @@ void ThemeManager::onConfigFileChanged()
     load();
 
     if (oldDark != m_isDark || oldAccent != m_accent) {
+        aplicarPaleta();
         emit themeChanged();
     }
     if (oldWp != m_wallpaper) {
@@ -104,6 +109,7 @@ void ThemeManager::setIsDark(bool dark)
     if (m_isDark != dark) {
         m_isDark = dark;
         save();
+        aplicarPaleta();
         syncLabwcTheme();
         emit themeChanged();
     }
@@ -111,9 +117,11 @@ void ThemeManager::setIsDark(bool dark)
 
 void ThemeManager::setAccent(const QString &accent)
 {
-    if (m_accent != accent && !accent.isEmpty()) {
-        m_accent = accent;
+    if (m_accent != accent && QColor::isValidColorName(accent)) {
+        m_accent = QColor(accent).name();
         save();
+        aplicarPaleta();
+        syncLabwcTheme();
         emit themeChanged();
     }
 }
@@ -125,6 +133,26 @@ void ThemeManager::setWallpaper(const QString &wallpaper)
         save();
         emit wallpaperChanged();
     }
+}
+
+// Seleccion de texto, enlaces y controles de Qt Quick Controls con el acento.
+void ThemeManager::aplicarPaleta()
+{
+    auto *app = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    if (!app)
+        return;
+    const QColor acento(m_accent);
+    if (!acento.isValid())
+        return;
+    QPalette pal = QGuiApplication::palette();
+    const QColor sobre = acento.lightnessF() > 0.70 ? QColor(QStringLiteral("#1d1d1f")) : QColor(Qt::white);
+    for (auto grupo : {QPalette::Active, QPalette::Inactive}) {
+        pal.setColor(grupo, QPalette::Highlight, acento);
+        pal.setColor(grupo, QPalette::HighlightedText, sobre);
+        pal.setColor(grupo, QPalette::Link, acento);
+        pal.setColor(grupo, QPalette::Accent, acento);
+    }
+    QGuiApplication::setPalette(pal);
 }
 
 void ThemeManager::toggleTheme()
@@ -232,6 +260,9 @@ void ThemeManager::syncLabwcTheme()
                 << "window.active.label.text.color: #1d1d1f\n"
                 << "window.inactive.label.text.color: #8e8e93\n";
         }
+        // Menus de labwc con el color de acento.
+        out << "menu.items.active.bg.color: " << m_accent << "\n"
+            << "menu.items.active.text.color: #ffffff\n";
         out << "window.label.text.justify: center\n"
             << "window.active.button.close.unpressed.image.color: #ff5f56\n"
             << "window.active.button.close.hover.image.color: #e0443e\n"
@@ -270,6 +301,10 @@ void ThemeManager::syncLabwcTheme()
         QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"), QStringLiteral("button-layout"),
         QStringLiteral("close,minimize,maximize:")
     });
+
+    // GTK, libadwaita, kitty y la pantalla de bloqueo siguen el acento.
+    if (QFile::exists(QStringLiteral("/usr/local/bin/titan-acento")))
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-acento"), {});
 
     for (const QString &ver : {QStringLiteral("gtk-3.0"), QStringLiteral("gtk-4.0")}) {
         QString p = QDir::homePath() + QStringLiteral("/.config/") + ver;
