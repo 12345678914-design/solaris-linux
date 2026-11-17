@@ -355,6 +355,18 @@ if [[ -x "${DISTRO}/verify/comprobar-resolucion.sh" ]]; then
   fi
 fi
 
+# Arranque grafico: cuando se entra al escritorio, cuando no, y el cursor
+# por hardware en VMs (sin el, dos flechas tras la pantalla de inicio).
+if [[ -x "${DISTRO}/verify/comprobar-arranque-grafico.sh" ]]; then
+  info "comprobando el arranque grafico (15-titan-grafico.sh)"
+  if ! "${DISTRO}/verify/comprobar-arranque-grafico.sh" \
+       >"${WORK_DIR}/titan-arranque-grafico-test.log" 2>&1; then
+    red "Fallo la prueba del arranque grafico; ultimas lineas del log:"
+    tail -n 30 "${WORK_DIR}/titan-arranque-grafico-test.log" >&2
+    exit 1
+  fi
+fi
+
 # ------------------------------------- 2e. TITAN Shell y aplicaciones -------
 
 build_qt_app() {
