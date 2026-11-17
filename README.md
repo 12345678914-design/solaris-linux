@@ -193,12 +193,14 @@ También puedes verificar los componentes del escritorio y aplicaciones de la IS
 ./verify/comprobar-escritorio.sh
 ```
 
-## Resolución de problemas: Error "CPU ISA level is lower than required"
+## Resolución técnica de problemas y compatibilidad NVIDIA / Multi-GPU
 
-### Causa técnica
-Al iniciar aplicaciones como `titan-acerca`, `titan-desktop`, `titan-calc`, `titan-calendar`,
+### 1. Error «CPU ISA level is lower than required»
+
+#### Causa técnica
+Al iniciar aplicaciones gráficas como `titan-acerca`, `titan-desktop`, `titan-calc`, `titan-calendar`,
 `titan-clock`, `titan-video` o `titan-installer` (o al correr `./verify/comprobar-escritorio.sh`),
-el cargador dinámico de `glibc` (`ld.so`) puede abortar la ejecución con:
+el cargador dinámico de `glibc` (`ld.so`) abortaba la ejecución con:
 
 ```text
 CPU ISA level is lower than required
@@ -214,22 +216,49 @@ Si la máquina anfitriona cuenta con procesadores que soportan hasta `x86-64-v3`
 núcleos E deshabilitan AVX-512, o CPUs AMD anteriores a Zen 4), el procesador no
 cumple el requerimiento de la cabecera ELF y la aplicación no puede arrancar.
 
-### Cómo se solucionó
-1. **Recompilación en nivel ISA estándar/compatible:** Se recompilaron todas las aplicaciones
-   afectadas en `apps/` utilizando el juego de instrucciones base compatible (`x86-64-v3` o genérico)
-   sin exigir extensiones AVX-512:
-   ```bash
-   make clean
-   make apps
-   ```
-2. **Sincronización de binarios en el perfil airootfs:** Los ejecutables generados se copiaron
-   a `iso/titan/airootfs/usr/local/bin/` para que la imagen ISO contenga binarios universales
-   compatibles con cualquier CPU x86_64 moderna.
-3. **Automatización en el Makefile:** Se añadió `apps/titan-installer` a la lista de compilación
-   general y se ajustaron las reglas de limpieza y copia en el `Makefile` para evitar binarios
-   huérfanos de compilaciones anteriores.
-4. **Verificación completa:** Con `./verify/comprobar-escritorio.sh` se validaron los 28 componentes
-   del sistema y aplicaciones offscreen obteniendo 0 fallos.
+#### Archivos y líneas modificadas para la solución
+- **`Makefile`**:
+  - Línea 61: adición de `apps/titan-installer` a la lista de dependencias del objetivo `apps`.
+  - Líneas 96 y 107: copia directa de los binarios compatibles compilados en `build/` hacia `apps/titan-desktop` y `apps/titan-acerca`.
+  - Líneas 135–139: regla de compilación nativa de `titan-installer` mediante `qmake6` e instalación en `iso/titan/airootfs/usr/local/bin/`.
+  - Líneas 181–187: ampliación de la regla `clean` para limpiar ejecutables obsoletos de todas las apps (`titan-calc`, `titan-calendar`, `titan-clock`, `titan-video`, `titan-installer`, etc.).
+- **`verify/comprobar-escritorio.sh`**:
+  - Líneas 76–79 y 85–88: detección automática y priorización del binario compatible recién generado en `build/` si está más actualizado.
+- **`iso/titan/airootfs/usr/local/bin/`**:
+  - Reemplazo y actualización de los binarios compilados bajo baseline x86-64 compatible sin dependencias de AVX-512.
+
+---
+
+### 2. Soporte universal para tarjetas NVIDIA (RTX 20/30/40/50 Series) y Multi-GPU
+
+Para garantizar arranque fluido tanto en tarjetas dedicadas NVIDIA modernas como en laptops híbridas (Intel/AMD + NVIDIA) bajo Wayland (`labwc`):
+
+#### Archivos y líneas modificadas para la solución
+- **`iso/titan/airootfs/etc/modprobe.d/nvidia.conf`**:
+  - Líneas 1–6: configuración de `options nvidia-drm modeset=1 fbdev=1` (obligatorio para framebuffer DRM en Wayland) y `options nvidia NVreg_PreserveVideoMemoryAllocations=1` (gestión de memoria de video y suspensión).
+- **`iso/titan/grub/grub.cfg`**:
+  - Líneas 60 y 72: inclusión de los parámetros `nvidia-drm.modeset=1 nvidia-drm.fbdev=1` en los comandos de arranque del kernel en UEFI.
+- **`iso/titan/syslinux/syslinux-linux.cfg`**:
+  - Líneas 13 y 25: inclusión de `nvidia-drm.modeset=1 nvidia-drm.fbdev=1` en los comandos de arranque BIOS.
+- **`iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh`**:
+  - Líneas 122–125: comprobación proactiva y carga de `nvidia-drm` vía `modprobe` al detectar hardware NVIDIA.
+  - Líneas 190–204: detección dinámica de múltiples tarjetas de video (`/sys/class/drm/card*`) y configuración automática de `WLR_DRM_DEVICES="/dev/dri/cardX:/dev/dri/cardY"` para soporte multi-GPU transparente en Wayland.
+  - Líneas 210–221: aceleración de hardware para decodificación de video directa con `NVD_BACKEND=direct` y `LIBVA_DRIVER_NAME=nvidia`.
+
+---
+
+### 3. Aislamiento y solución a errores de E/S en la construcción de la ISO (`make iso`)
+
+Durante `mkarchiso`, el kernel del sistema anfitrión podía reportar errores de Entrada/Salida en controladores de red virtuales de sysfs (`/sys/module/realtek/drivers`), o dejar montajes ocupados que colgaban el empaquetado:
+
+#### Archivos y líneas modificadas para la solución
+- **`iso/titan/airootfs/root/customize_airootfs.sh`**:
+  - Líneas 805–809: desmontaje perezoso (`umount -l`) de `/sys/firmware/efi/efivars` y `/sys` antes de salir del chroot.
+- **`scripts/build-iso.sh`**:
+  - Líneas 632–652: creación de wrapper defensivo para `find` que descarta fallos espurios de sysfs del host.
+  - Líneas 654–674: monitor en segundo plano para liberar montajes virtuales retenidos por el sistema.
+  - Líneas 676–686: ejecución de `mkarchiso` dentro de un espacio de nombres privado (`unshare -m --propagation private`) evitando conflictos con los demonios del host.
+
 
 
 ## Personalización de recursos visuales
