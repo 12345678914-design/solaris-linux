@@ -14,6 +14,7 @@ INCLUDEPATH += \
 SOURCES += \
     src/main.cpp \
     src/InstallerBackend.cpp \
+    src/Particionado.cpp \
     ../titan-common/ThemeManager.cpp
 
 HEADERS += \

@@ -114,7 +114,7 @@ public:
     QString keymap;
     bool isUefi{true};
     bool manualPartitioning{false};
-    QVariantList manualPartitions;
+    QVariantList asignaciones;   // manual: {nodo, montaje, formatear, fs} de particiones que ya existen
     QString modoDisco{QStringLiteral("borrar")};   // borrar | junto | manual
     bool cifrar{false};
     QString claveCifrado;
@@ -206,49 +206,25 @@ public slots:
 
         emit progress(10, QStringLiteral("Preparando tabla de particiones del disco..."));
 
-        if (manualPartitioning && !manualPartitions.isEmpty()) {
+        if (manualPartitioning) {
             // ==========================================
-            // MODO PARTICIONAMIENTO MANUAL
+            // MODO MANUAL: la tabla ya está como la persona la dejó (los
+            // cambios se aplicaron antes, tras confirmar). Aquí solo se usan
+            // las particiones asignadas.
             // ==========================================
-            QString labelType = isUefi ? QStringLiteral("gpt") : QStringLiteral("msdos");
-            if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mklabel"), labelType}))
-                return fail(QStringLiteral("No se pudo inicializar la tabla ") + labelType + QStringLiteral(" en ") + diskPath);
-
-            int startMb = 1;
-            for (int i = 0; i < manualPartitions.size(); ++i) {
-                const auto pMap = manualPartitions[i].toMap();
-                QString mPoint = pMap[QStringLiteral("mount")].toString();
-                int sizeMb = pMap[QStringLiteral("size")].toInt();
-                QString pFs = pMap[QStringLiteral("fs")].toString().toLower();
-                if (pFs.isEmpty()) pFs = QStringLiteral("ext4");
-
-                QString partNum = QString::number(i + 1);
-                QString partDev = diskPath + sep + partNum;
-
-                QString pType = (isUefi || i == 0) ? QStringLiteral("primary") : QStringLiteral("primary");
-                QString pPartedFs = (pFs == QStringLiteral("fat32")) ? QStringLiteral("fat32") : ((pFs == QStringLiteral("swap")) ? QStringLiteral("linux-swap") : QStringLiteral("ext4"));
-
-                // 0 significa espacio restante hasta el 100%
-                const QString endPos = (sizeMb > 0) ? QString::number(startMb + sizeMb) + QStringLiteral("MiB")
-                                                    : QStringLiteral("100%");
-                if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("mkpart"), pType, pPartedFs, QString::number(startMb) + QStringLiteral("MiB"), endPos}))
-                    return fail(QStringLiteral("No se pudo crear la partición ") + partNum + QStringLiteral(" (") + mPoint + QStringLiteral(")"));
-                if (sizeMb > 0)
-                    startMb += sizeMb;
-
-                if (mPoint == QStringLiteral("/boot/efi") && isUefi) {
-                    if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("esp"), QStringLiteral("on")}))
-                        return fail(QStringLiteral("No se pudo marcar la partición EFI"));
-                    efiDev = partDev;
-                } else if (mPoint == QStringLiteral("/")) {
-                    rootDev = partDev;
-                    if (!isUefi) {
-                        if (!runCmd(QStringLiteral("parted"), {QStringLiteral("-s"), diskPath, QStringLiteral("set"), partNum, QStringLiteral("boot"), QStringLiteral("on")}))
-                            return fail(QStringLiteral("No se pudo marcar la partición de arranque"));
-                    }
+            for (const QVariant &v : std::as_const(asignaciones)) {
+                const QVariantMap a = v.toMap();
+                const QString m = a.value(QStringLiteral("montaje")).toString();
+                const QString dev = a.value(QStringLiteral("nodo")).toString();
+                if (m.isEmpty() || dev.isEmpty())
+                    continue;
+                mountToDev[m] = dev;
+                if (m == QStringLiteral("/"))
+                    rootDev = dev;
+                else if (m == QStringLiteral("/boot/efi")) {
+                    efiDev = dev;
+                    formatearEsp = a.value(QStringLiteral("formatear")).toBool();
                 }
-
-                mountToDev[mPoint] = partDev;
             }
         } else if (modoDisco == QStringLiteral("junto")) {
             // ==========================================
@@ -384,18 +360,20 @@ public slots:
         emit progress(20, QStringLiteral("Formateando sistemas de archivos..."));
 
         if (manualPartitioning) {
-            for (int i = 0; i < manualPartitions.size(); ++i) {
-                const auto pMap = manualPartitions[i].toMap();
-                QString mPoint = pMap[QStringLiteral("mount")].toString();
-                QString pFs = pMap[QStringLiteral("fs")].toString().toLower();
-                QString pDev = mountToDev.value(mPoint);
-                if (pDev.isEmpty()) continue;
-
+            for (const QVariant &v : std::as_const(asignaciones)) {
+                const QVariantMap a = v.toMap();
+                if (!a.value(QStringLiteral("formatear")).toBool())
+                    continue; // se usa tal cual (p. ej. la EFI de Windows o un /home)
+                const QString mPoint = a.value(QStringLiteral("montaje")).toString();
+                const QString pFs = a.value(QStringLiteral("fs")).toString().toLower();
+                const QString pDev = a.value(QStringLiteral("nodo")).toString();
                 bool ok;
                 if (pFs == QStringLiteral("fat32")) {
-                    ok = runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), pDev});
+                    ok = runCmd(QStringLiteral("mkfs.fat"), {QStringLiteral("-F32"), QStringLiteral("-n"), QStringLiteral("EFI"), pDev});
                 } else if (pFs == QStringLiteral("btrfs")) {
-                    ok = runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), QStringLiteral("INTI"), pDev});
+                    ok = runCmd(QStringLiteral("mkfs.btrfs"), {QStringLiteral("-f"), QStringLiteral("-L"), mPoint == QStringLiteral("/") ? QStringLiteral("INTI") : QStringLiteral("DATA"), pDev});
+                } else if (pFs == QStringLiteral("xfs")) {
+                    ok = runCmd(QStringLiteral("mkfs.xfs"), {QStringLiteral("-f"), pDev});
                 } else if (pFs == QStringLiteral("swap")) {
                     ok = runCmd(QStringLiteral("mkswap"), {QStringLiteral("-L"), QStringLiteral("SWAP"), pDev});
                 } else {
@@ -1365,7 +1343,11 @@ InstallerBackend::InstallerBackend(QObject *parent)
 {
     checkSystemRequirements();
     refreshDisks();
-    resetDefaultPartitions();
+    // Otro disco elegido: en modo manual se lee su tabla.
+    connect(this, &InstallerBackend::selectedDiskChanged, this, [this]() {
+        if (m_manualPartitioning)
+            leerTablaManual();
+    });
 }
 
 InstallerBackend::~InstallerBackend()
@@ -1605,61 +1587,9 @@ void InstallerBackend::setManualPartitioning(bool manual)
     }
     if (m_manualPartitioning != manual) {
         m_manualPartitioning = manual;
-        if (m_manualPartitioning && m_manualPartitions.isEmpty()) {
-            resetDefaultPartitions();
-        }
+        if (m_manualPartitioning)
+            leerTablaManual();
         emit manualPartitioningChanged();
-    }
-}
-
-void InstallerBackend::resetDefaultPartitions()
-{
-    m_manualPartitions.clear();
-
-    if (m_isUefi) {
-        QVariantMap pEfi;
-        pEfi[QStringLiteral("mount")] = QStringLiteral("/boot/efi");
-        pEfi[QStringLiteral("size")] = 512;
-        pEfi[QStringLiteral("fs")] = QStringLiteral("fat32");
-        m_manualPartitions.append(pEfi);
-    }
-
-    QVariantMap pRoot;
-    pRoot[QStringLiteral("mount")] = QStringLiteral("/");
-    pRoot[QStringLiteral("size")] = 0; // 0 = 100% restante
-    pRoot[QStringLiteral("fs")] = QStringLiteral("ext4");
-    m_manualPartitions.append(pRoot);
-
-    emit manualPartitionsChanged();
-}
-
-void InstallerBackend::addManualPartition(const QString &mountPoint, int sizeMb, const QString &fsType)
-{
-    QVariantMap p;
-    p[QStringLiteral("mount")] = mountPoint;
-    p[QStringLiteral("size")] = sizeMb;
-    p[QStringLiteral("fs")] = fsType;
-    m_manualPartitions.append(p);
-    emit manualPartitionsChanged();
-}
-
-void InstallerBackend::updateManualPartition(int index, const QString &mountPoint, int sizeMb, const QString &fsType)
-{
-    if (index >= 0 && index < m_manualPartitions.size()) {
-        QVariantMap p = m_manualPartitions[index].toMap();
-        p[QStringLiteral("mount")] = mountPoint;
-        p[QStringLiteral("size")] = sizeMb;
-        p[QStringLiteral("fs")] = fsType;
-        m_manualPartitions[index] = p;
-        emit manualPartitionsChanged();
-    }
-}
-
-void InstallerBackend::removeManualPartition(int index)
-{
-    if (index >= 0 && index < m_manualPartitions.size()) {
-        m_manualPartitions.removeAt(index);
-        emit manualPartitionsChanged();
     }
 }
 
@@ -1677,21 +1607,30 @@ QString InstallerBackend::validatePartitionPlan() const
     }
     if (!m_manualPartitioning) return QString();
 
-    bool hasRoot = false;
-    bool hasEfi = false;
-
-    for (const auto &item : m_manualPartitions) {
-        const auto map = item.toMap();
-        QString m = map[QStringLiteral("mount")].toString();
-        if (m == QStringLiteral("/")) hasRoot = true;
-        if (m == QStringLiteral("/boot/efi") || m == QStringLiteral("/boot")) hasEfi = true;
+    if (!cambiosPendientes().isEmpty())
+        return QStringLiteral("Hay cambios en la tabla sin aplicar: pulsa «Aplicar cambios…» o «Descartar».");
+    QVariantMap raiz, efi;
+    for (const QVariant &v : m_tabla) {
+        const QVariantMap f = v.toMap();
+        const QString m = f.value(QStringLiteral("montaje")).toString();
+        if (m == QStringLiteral("/")) raiz = f;
+        if (m == QStringLiteral("/boot/efi")) efi = f;
     }
-
-    if (!hasRoot) {
-        return QStringLiteral("Se requiere definir una partición con punto de montaje '/' (Raíz).");
-    }
-    if (m_isUefi && !hasEfi) {
-        return QStringLiteral("En sistemas UEFI se requiere una partición EFI (/boot/efi) de al menos 512 MB.");
+    if (raiz.isEmpty())
+        return QStringLiteral("Elige la partición donde irá Inti OS: selecciónala y ponle el punto de montaje «/».");
+    if (raiz.value(QStringLiteral("tamano")).toDouble() < 12 * 1024)
+        return QStringLiteral("La partición «/» es muy pequeña: hacen falta al menos 12 GB.");
+    if (m_isUefi && efi.isEmpty())
+        return QStringLiteral("Este equipo arranca en UEFI: asigna «/boot/efi» a una partición EFI (puede ser la de Windows, sin formatear) o crea una de 512 MB.");
+    if (m_isUefi && efi.value(QStringLiteral("tamano")).toDouble() < 100)
+        return QStringLiteral("La partición EFI debe tener al menos 100 MB.");
+    if (!m_isUefi && tipoTablaManual() == QStringLiteral("gpt")) {
+        bool biosGrub = false;
+        for (const QVariantMap &p : m_partes)
+            if (p.value(QStringLiteral("flags")).toString().contains(QStringLiteral("bios_grub")))
+                biosGrub = true;
+        if (!biosGrub)
+            return QStringLiteral("Arranque BIOS con tabla GPT: falta una partición bios_grub. Usa «Tabla nueva…» (MBR) o crea esa partición en GParted.");
     }
     return QString();
 }
@@ -1779,7 +1718,7 @@ void InstallerBackend::startInstallation(const QString &fsType,
     m_worker->keymap = keymap.isEmpty() ? QStringLiteral("es") : keymap;
     m_worker->isUefi = m_isUefi;
     m_worker->manualPartitioning = m_manualPartitioning;
-    m_worker->manualPartitions = m_manualPartitions;
+    m_worker->asignaciones = asignacionesManual();
     m_worker->modoDisco = m_modoDisco;
     m_worker->cifrar = m_cifrar && !m_manualPartitioning;
     m_worker->claveCifrado = m_claveCifrado;

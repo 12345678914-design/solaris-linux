@@ -33,7 +33,7 @@ TitanWindow {
     // validatePartitionPlan() es una función: se nombran aquí sus datos para
     // que el aviso y el botón Siguiente se recalculen al cambiar el plan.
     readonly property string planError: {
-        installerBackend.manualPartitions
+        installerBackend.tablaManual
         installerBackend.selectedDiskPath
         installerBackend.modoDisco
         installerBackend.disks
@@ -966,66 +966,286 @@ TitanWindow {
                 Opcion {
                     width: parent.width
                     titulo: "Particionado manual"
-                    detalle: "Para usuarios avanzados: elige tú los puntos de montaje (/boot/efi, /, /home…), sus tamaños y formatos."
+                    detalle: "Para usuarios avanzados: elige qué particiones usar (/, /boot/efi, /home…), si se formatean, y crea o borra particiones."
                     seleccionado: installerBackend.modoDisco === "manual"
                     onElegido: installerBackend.modoDisco = "manual"
 
                     Column {
+                        id: manualCol
                         visible: installerBackend.manualPartitioning
                         width: parent.width
-                        spacing: 6
+                        spacing: 10
+                        property int sel: -1
+                        property string errorAplicar: ""
+                        readonly property var tabla: installerBackend.tablaManual
+                        readonly property var fila: sel >= 0 && sel < tabla.length ? tabla[sel] : null
+                        readonly property string tipoFila: fila ? fila.tipo : ""
+                        onTablaChanged: if (sel >= tabla.length) sel = -1
 
-                        Row {
-                            spacing: 8
-                            Text { width: 136; text: "Punto de montaje"; color: window.txt2; font.pixelSize: window.theme.fontCaption; font.weight: Font.DemiBold }
-                            Text { width: 112; text: "Tamaño (MiB)"; color: window.txt2; font.pixelSize: window.theme.fontCaption; font.weight: Font.DemiBold }
-                            Text { width: 104; text: "Formato"; color: window.txt2; font.pixelSize: window.theme.fontCaption; font.weight: Font.DemiBold }
+                        function corto(n) { return n && n.indexOf("/dev/") === 0 ? n.substring(5) : n }
+                        function colorDe(f) {
+                            if (f.tipo === "libre") return window.veil(0.10)
+                            if (f.tipo === "nueva") return window.accent
+                            if (f.borrar) return window.errColor
+                            var fl = f.flags || "", fs = f.fsActual || ""
+                            if (fl.indexOf("esp") !== -1) return "#ff9f0a"
+                            if (fs === "ntfs" || fl.indexOf("msftres") !== -1) return "#5e5ce6"
+                            if (fs === "swap") return "#bf5af2"
+                            if (fs === "ext4" || fs === "btrfs" || fs === "xfs" || fs === "ext3") return "#30d158"
+                            return "#8e8e93"
+                        }
+                        function descripcion(f) {
+                            if (f.tipo === "libre") return "Espacio libre"
+                            if (f.tipo === "nueva") return "Nueva (pendiente) · " + f.fsTexto
+                            var d = f.fsTexto
+                            if (f.uso) d += " · " + f.uso
+                            if (f.etiqueta) d += " · «" + f.etiqueta + "»"
+                            return d
+                        }
+                        function destino(f) {
+                            if (f.tipo === "libre") return ""
+                            if (f.borrar) return "Se borrará"
+                            if (f.montada) return "En uso (" + f.montada + ")"
+                            if (!f.montaje) return "—"
+                            if (f.tipo === "nueva") return f.montaje
+                            return f.montaje + (f.formatear ? " · formatear" : " · sin formatear")
+                        }
+                        // Los selectores del editor siguen a la fila elegida
+                        function sincronizar() {
+                            if (!fila) return
+                            selMontaje.currentIndex = Math.max(0, selMontaje.model.indexOf(fila.montaje ? fila.montaje : "(no usar)"))
+                            selFs.currentIndex = Math.max(0, selFs.model.indexOf(fila.fs ? fila.fs : "ext4"))
+                        }
+                        onFilaChanged: sincronizar()
+
+                        Text {
+                            width: parent.width
+                            text: installerBackend.selectedDiskName + (installerBackend.tipoTablaManual === "unknown" ? " · sin tabla de particiones"
+                                  : " · tabla " + (installerBackend.tipoTablaManual === "gpt" ? "GPT" : "MBR"))
+                            color: window.txt2
+                            font.pixelSize: window.theme.fontCaption
                         }
 
-                        Repeater {
-                            model: installerBackend.manualPartitions
-                            delegate: Row {
-                                id: partFila
-                                required property int index
-                                required property var modelData
-                                spacing: 8
-
-                                Selector {
-                                    width: 136
-                                    model: ["/", "/boot/efi", "/home", "swap", "/boot", "/var", "/tmp"]
-                                    currentIndex: Math.max(0, model.indexOf(partFila.modelData.mount))
-                                    onActivated: installerBackend.updateManualPartition(partFila.index, currentText, partFila.modelData.size, partFila.modelData.fs)
-                                }
-                                Campo {
-                                    width: 112
-                                    text: partFila.modelData.size === 0 ? "" : partFila.modelData.size.toString()
-                                    placeholderText: "Resto"
-                                    validator: IntValidator { bottom: 0 }
-                                    onEditingFinished: installerBackend.updateManualPartition(partFila.index, partFila.modelData.mount, parseInt(text) || 0, partFila.modelData.fs)
-                                }
-                                Selector {
-                                    width: 104
-                                    model: ["ext4", "btrfs", "fat32", "swap"]
-                                    currentIndex: Math.max(0, model.indexOf(partFila.modelData.fs))
-                                    onActivated: installerBackend.updateManualPartition(partFila.index, partFila.modelData.mount, partFila.modelData.size, currentText)
-                                }
-                                Boton {
-                                    text: "Quitar"
-                                    onClicked: installerBackend.removeManualPartition(partFila.index)
+                        // Barra del disco (proporcional)
+                        Row {
+                            id: barraDisco
+                            width: parent.width
+                            height: 30
+                            spacing: 2
+                            Repeater {
+                                model: manualCol.tabla
+                                Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    width: Math.max(5, (barraDisco.width - 2 * Math.max(0, manualCol.tabla.length - 1)) * modelData.proporcion)
+                                    height: barraDisco.height
+                                    radius: 5
+                                    color: manualCol.colorDe(modelData)
+                                    opacity: modelData.borrar ? 0.45 : 1
+                                    border.width: manualCol.sel === index ? 2 : 0
+                                    border.color: window.txt
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: parent.width > 54
+                                        text: modelData.tipo === "libre" ? "libre" : manualCol.corto(modelData.nodo)
+                                        color: modelData.tipo === "libre" ? window.txt2 : "#ffffff"
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                    }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: manualCol.sel = index }
                                 }
                             }
+                        }
+
+                        // Lista
+                        Column {
+                            width: parent.width
+                            spacing: 2
+                            Repeater {
+                                model: manualCol.tabla
+                                Rectangle {
+                                    id: filaRect
+                                    required property var modelData
+                                    required property int index
+                                    width: parent.width
+                                    height: 38
+                                    radius: 8
+                                    color: manualCol.sel === index ? window.tintOf(window.accent, 0.16)
+                                           : filaZona.containsMouse ? window.veil(0.05) : "transparent"
+                                    Row {
+                                        x: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 10
+                                        Rectangle { width: 12; height: 12; radius: 3; anchors.verticalCenter: parent.verticalCenter; color: manualCol.colorDe(filaRect.modelData); opacity: filaRect.modelData.borrar ? 0.45 : 1 }
+                                        Text {
+                                            width: 92
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: filaRect.modelData.tipo === "parte" ? manualCol.corto(filaRect.modelData.nodo) : (filaRect.modelData.tipo === "nueva" ? "Nueva" : "Libre")
+                                            color: window.txt
+                                            font.pixelSize: window.theme.fontBody
+                                            font.weight: Font.DemiBold
+                                            font.strikeout: !!filaRect.modelData.borrar
+                                        }
+                                        Text { width: 70; anchors.verticalCenter: parent.verticalCenter; text: filaRect.modelData.tamanoTexto; color: window.txt2; font.pixelSize: window.theme.fontCaption + 1 }
+                                        Text {
+                                            width: filaRect.width - 92 - 70 - 170 - 70
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: manualCol.descripcion(filaRect.modelData)
+                                            color: window.txt2
+                                            font.pixelSize: window.theme.fontCaption + 1
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: 170
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: manualCol.destino(filaRect.modelData)
+                                            color: filaRect.modelData.borrar ? window.errColor : (filaRect.modelData.montaje ? window.accent : window.txt2)
+                                            font.pixelSize: window.theme.fontCaption + 1
+                                            font.weight: filaRect.modelData.montaje ? Font.DemiBold : Font.Normal
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    MouseArea { id: filaZona; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: manualCol.sel = filaRect.index }
+                                }
+                            }
+                        }
+
+                        // Editor de la fila elegida
+                        Tarjeta {
+                            visible: manualCol.fila !== null
+                            width: parent.width
+                            height: editorCol.implicitHeight + 24
+                            Column {
+                                id: editorCol
+                                x: 12
+                                y: 12
+                                width: parent.width - 24
+                                spacing: 10
+
+                                Text {
+                                    text: !manualCol.fila ? "" : manualCol.tipoFila === "libre" ? "Crear una partición en este espacio libre (" + manualCol.fila.tamanoTexto + ")"
+                                          : manualCol.tipoFila === "nueva" ? "Partición nueva de " + manualCol.fila.tamanoTexto + " (pendiente de aplicar)"
+                                          : "Partición " + manualCol.corto(manualCol.fila.nodo) + " · " + manualCol.fila.tamanoTexto
+                                    color: window.txt
+                                    font.pixelSize: window.theme.fontBody
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Ayuda {
+                                    width: parent.width
+                                    visible: manualCol.fila !== null && manualCol.tipoFila === "parte" && (manualCol.fila.borrar || manualCol.fila.montada !== "")
+                                    text: !manualCol.fila ? "" : manualCol.fila.montada ? "Está en uso ahora mismo (" + manualCol.fila.montada + "): no se puede cambiar."
+                                          : "Marcada para borrar. Pulsa «No borrar» para conservarla."
+                                }
+
+                                Row {
+                                    spacing: 12
+                                    visible: manualCol.fila !== null && (manualCol.tipoFila === "nueva" || manualCol.tipoFila === "libre"
+                                             || (manualCol.tipoFila === "parte" && !manualCol.fila.borrar && manualCol.fila.montada === ""))
+                                    Column {
+                                        spacing: 4
+                                        visible: manualCol.tipoFila === "libre"
+                                        Etiqueta { text: "Tamaño (MB)" }
+                                        Campo { id: tamNueva; width: 120; placeholderText: "Todo"; validator: IntValidator { bottom: 1 } }
+                                    }
+                                    Column {
+                                        spacing: 4
+                                        Etiqueta { text: "Punto de montaje" }
+                                        Selector {
+                                            id: selMontaje
+                                            width: 150
+                                            model: ["(no usar)", "/", "/boot/efi", "/home", "/boot", "/var", "swap"]
+                                            onActivated: if (manualCol.tipoFila !== "libre")
+                                                             installerBackend.editarParticion(manualCol.sel, currentText, manualCol.fila.formatear, selFs.currentText)
+                                        }
+                                    }
+                                    Column {
+                                        spacing: 4
+                                        visible: manualCol.tipoFila === "parte"
+                                        Etiqueta { text: "Formatear" }
+                                        Interruptor {
+                                            text: checked ? "Sí (se borra su contenido)" : "No (se conserva)"
+                                            checked: manualCol.fila ? manualCol.fila.formatear : false
+                                            enabled: manualCol.fila !== null && !!manualCol.fila.montaje && manualCol.fila.montaje !== "/"
+                                            onToggled: installerBackend.editarParticion(manualCol.sel, manualCol.fila.montaje, checked, selFs.currentText)
+                                        }
+                                    }
+                                    Column {
+                                        spacing: 4
+                                        Etiqueta { text: "Formato" }
+                                        Selector {
+                                            id: selFs
+                                            width: 104
+                                            model: ["ext4", "btrfs", "xfs", "fat32", "swap"]
+                                            enabled: manualCol.tipoFila !== "parte" || (manualCol.fila !== null && manualCol.fila.formatear)
+                                            onActivated: if (manualCol.tipoFila !== "libre")
+                                                             installerBackend.editarParticion(manualCol.sel, manualCol.fila.montaje ? manualCol.fila.montaje : "(no usar)",
+                                                                                              manualCol.fila.formatear, currentText)
+                                        }
+                                    }
+                                }
+
+                                Ayuda {
+                                    width: parent.width
+                                    visible: manualCol.tipoFila === "parte" && manualCol.fila !== null && !manualCol.fila.borrar && manualCol.fila.montada === ""
+                                    text: "Esto solo cambia la información: el disco no se toca ahora. Al instalar se formatea (si lo pides) y se monta donde digas."
+                                }
+
+                                Flow {
+                                    width: parent.width
+                                    spacing: 8
+                                    Boton {
+                                        visible: manualCol.tipoFila === "libre"
+                                        text: "Añadir partición"
+                                        highlighted: true
+                                        onClicked: {
+                                            installerBackend.crearEnHueco(manualCol.sel, parseInt(tamNueva.text) || 0, selMontaje.currentText, selFs.currentText)
+                                            tamNueva.text = ""
+                                        }
+                                    }
+                                    Boton {
+                                        visible: manualCol.tipoFila === "nueva"
+                                        text: "Quitar"
+                                        onClicked: installerBackend.quitarNueva(manualCol.sel)
+                                    }
+                                    Boton {
+                                        visible: manualCol.tipoFila === "parte" && manualCol.fila !== null && manualCol.fila.montada === ""
+                                        text: manualCol.fila && manualCol.fila.borrar ? "No borrar" : "Borrar partición"
+                                        onClicked: installerBackend.marcarBorrar(manualCol.sel, !manualCol.fila.borrar)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Cambios pendientes en la tabla
+                        Aviso {
+                            width: parent.width
+                            visible: installerBackend.cambiosPendientes.length > 0
+                            tono: "aviso"
+                            texto: "Cambios pendientes (todavía no se ha tocado el disco):\n• " + installerBackend.cambiosPendientes.join("\n• ")
                         }
 
                         Flow {
                             width: parent.width
                             spacing: 8
                             Boton {
-                                text: "Añadir partición"
-                                onClicked: installerBackend.addManualPartition("/home", 10240, "ext4")
+                                text: "Aplicar cambios…"
+                                highlighted: true
+                                enabled: installerBackend.cambiosPendientes.length > 0
+                                onClicked: dlgAplicar.open()
                             }
                             Boton {
-                                text: "Volver al esquema recomendado"
-                                onClicked: installerBackend.resetDefaultPartitions()
+                                text: "Descartar"
+                                enabled: installerBackend.cambiosPendientes.length > 0
+                                onClicked: { installerBackend.descartarCambios(); manualCol.errorAplicar = "" }
+                            }
+                            Boton {
+                                text: "Tabla nueva…"
+                                onClicked: { installerBackend.tablaNueva(); manualCol.sel = -1 }
+                            }
+                            Boton {
+                                text: "Volver a leer el disco"
+                                onClicked: { installerBackend.leerTablaManual(); manualCol.errorAplicar = "" }
                             }
                             Boton {
                                 text: "Abrir GParted"
@@ -1036,7 +1256,7 @@ TitanWindow {
                         Ayuda {
                             width: parent.width
                             error: true
-                            text: window.planError
+                            text: manualCol.errorAplicar !== "" ? manualCol.errorAplicar : window.planError
                             visible: text !== ""
                         }
                     }
@@ -1095,7 +1315,9 @@ TitanWindow {
                     visible: installerBackend.disks.length > 0 && installerBackend.modoDisco !== "junto"
                     width: parent.width
                     tono: "aviso"
-                    texto: "Se borrará todo lo que haya en " + installerBackend.selectedDiskName + ". Haz una copia de seguridad de lo que quieras conservar."
+                    texto: installerBackend.modoDisco === "manual"
+                           ? "Solo se toca lo que elijas: los cambios de la tabla piden confirmación al aplicarlos y lo que marques para formatear se borra al instalar. Haz una copia de seguridad antes."
+                           : "Se borrará todo lo que haya en " + installerBackend.selectedDiskName + ". Haz una copia de seguridad de lo que quieras conservar."
                 }
                 Aviso {
                     visible: installerBackend.modoDisco === "junto"
@@ -1356,7 +1578,7 @@ TitanWindow {
                             width: parent.width
                             etiqueta: "Particionado"
                             valor: installerBackend.modoDisco === "manual"
-                                   ? ("Manual (" + installerBackend.manualPartitions.length + " particiones)")
+                                   ? ("Manual: " + installerBackend.resumenManual.length + (installerBackend.resumenManual.length === 1 ? " partición" : " particiones"))
                                    : installerBackend.modoDisco === "junto"
                                      ? ("Junto a " + window.nombreOtro + " · " + window.selectedFs)
                                      : ("Borrar el disco · " + window.selectedFs)
@@ -1395,7 +1617,9 @@ TitanWindow {
                     tono: installerBackend.modoDisco === "junto" ? "info" : "peligro"
                     texto: installerBackend.modoDisco === "junto"
                            ? "Al pulsar «Instalar ahora» se crearán las particiones de Inti OS en el espacio libre de " + installerBackend.selectedDiskName + ". " + window.nombreOtro + " no se toca."
-                           : "Al pulsar «Instalar ahora» se borrará " + installerBackend.selectedDiskName + ". No se puede deshacer."
+                           : installerBackend.modoDisco === "manual"
+                             ? "Al pulsar «Instalar ahora»:\n• " + installerBackend.resumenManual.join("\n• ") + "\nEl resto del disco no se toca."
+                             : "Al pulsar «Instalar ahora» se borrará " + installerBackend.selectedDiskName + ". No se puede deshacer."
                 }
             }
 
@@ -1614,6 +1838,59 @@ TitanWindow {
                         )
                     } else {
                         installerBackend.currentStep++
+                    }
+                }
+            }
+        }
+    }
+
+    // Confirmación antes de escribir la tabla de particiones (modo manual)
+    Popup {
+        id: dlgAplicar
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(520, window.width - 60)
+        modal: true
+        padding: 22
+        closePolicy: Popup.CloseOnEscape
+        background: Rectangle {
+            radius: 16
+            color: window.dark ? "#26272c" : "#ffffff"
+            border.color: window.tarjetaBorde
+        }
+        contentItem: Column {
+            spacing: 12
+            Text {
+                width: parent.width
+                text: "¿Aplicar estos cambios en " + installerBackend.selectedDiskName + "?"
+                color: window.txt
+                font.pixelSize: window.theme.fontBody + 2
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "• " + installerBackend.cambiosPendientes.join("\n• ")
+                color: window.txt
+                font.pixelSize: window.theme.fontBody
+                wrapMode: Text.WordWrap
+                lineHeight: 1.25
+            }
+            Aviso {
+                width: parent.width
+                tono: "peligro"
+                texto: "Se escribirá ahora en el disco y no se puede deshacer. Lo que haya en las particiones borradas se perderá."
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 10
+                Boton { text: "Cancelar"; onClicked: dlgAplicar.close() }
+                Boton {
+                    text: "Aplicar"
+                    highlighted: true
+                    onClicked: {
+                        dlgAplicar.close()
+                        manualCol.errorAplicar = installerBackend.aplicarCambios()
                     }
                 }
             }
