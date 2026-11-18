@@ -4,6 +4,7 @@
 #include <QIcon>
 #include <iostream>
 #include "FotosBackend.h"
+#include "Proveedores.h"
 #include "ThemeManager.h"
 
 int main(int argc, char *argv[])
@@ -35,6 +36,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    engine.addImageProvider(QStringLiteral("miniatura"), new ProveedorMiniaturas(&backend));
+    engine.addImageProvider(QStringLiteral("edicion"), new ProveedorEdicion(&backend));
     engine.rootContext()->setContextProperty(QStringLiteral("fotosBackend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
 
