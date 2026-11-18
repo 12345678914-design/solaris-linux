@@ -425,6 +425,15 @@ build_qt_app titan-polkit || exit 1
 # ISO podia llevar uno viejo (sin activar greetd, por ejemplo).
 build_qt_app titan-installer || exit 1
 
+# Pruebas de funcionamiento con los binarios recién compilados (EXIF de Fotos,
+# particionado manual del instalador sobre un disco simulado, reglas).
+info "pruebas de funcionamiento de las aplicaciones"
+if ! "${DISTRO}/verify/pruebas-funcionamiento.sh" >"${WORK_DIR}/pruebas-funcionamiento.log" 2>&1; then
+  red "Fallaron las pruebas de funcionamiento; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/pruebas-funcionamiento.log" >&2
+  exit 1
+fi
+
 # Barra Titan de Wayfire (titan-decor): opciones del codigo = XML, y la sesion
 # la usa en lugar de la de Wayfire. Si falla, Wayfire no cargaria el plugin.
 if ! "${DISTRO}/verify/comprobar-titan-decor.sh" >"${WORK_DIR}/titan-decor-test.log" 2>&1; then
