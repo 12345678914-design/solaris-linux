@@ -366,3 +366,4 @@ fprintd
 bolt
 # Aviso de actualizaciones (checkupdates)
 pacman-contrib
+fakeroot

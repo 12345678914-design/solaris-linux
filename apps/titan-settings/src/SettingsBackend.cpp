@@ -256,94 +256,140 @@ void SettingsBackend::loadSystemInfo()
     }
 }
 
+namespace {
+// Base de datos temporal de checkupdates (la sincroniza sin tocar la del
+// sistema); con ella se calcula el tamaño real de la descarga.
+QString baseActualizaciones()
+{
+    return QDir::tempPath() + QStringLiteral("/titan-checkup-db-") + QString::fromLocal8Bit(qgetenv("USER")) + QLatin1Char('/');
+}
+
+QString tamanoLegible(qint64 b)
+{
+    if (b >= 1024LL * 1024 * 1024)
+        return QStringLiteral("%1 GiB").arg(b / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
+    if (b >= 1024 * 1024)
+        return QStringLiteral("%1 MiB").arg(b / (1024.0 * 1024.0), 0, 'f', 1);
+    return QStringLiteral("%1 KiB").arg(qMax<qint64>(1, b / 1024));
+}
+} // namespace
+
 void SettingsBackend::checkUpdates()
 {
     if (m_updateChecking) return;
 
-    m_updateChecking = true;
-    m_updatePromptVisible = false;
-    m_updateStatus = QStringLiteral("Buscando actualizaciones en los repositorios de Arch Linux...");
-    emit updateCheckingChanged();
-    emit updatePromptVisibleChanged();
-    emit updateStatusChanged();
-
-    // Ejecutar comprobación en hilo con QTimer para no bloquear la interfaz
-    QTimer::singleShot(500, this, [this]() {
-        // Ejecutamos checkupdates o pacman -Qu
-        QProcess proc;
-        proc.start(QStringLiteral("checkupdates"));
-        if (!proc.waitForStarted(2000)) {
-            // Si checkupdates no inicia, intentar con pacman -Qu
-            proc.start(QStringLiteral("pacman"), QStringList() << QStringLiteral("-Qu"));
-        }
-
-        bool finished = proc.waitForFinished(15000);
-        QString out;
-        if (finished) {
-            out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-        }
-
-        QStringList lines = out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        int count = lines.size();
-
-        if (count > 0) {
-            // Intentar calcular el tamaño de descarga
-            qint64 totalBytes = 0;
-            QStringList pkgs;
-            for (const QString &line : lines) {
-                QString p = line.section(QLatin1Char(' '), 0, 0).trimmed();
-                if (!p.isEmpty()) pkgs << p;
-            }
-
-            if (!pkgs.isEmpty()) {
-                QProcess sizeProc;
-                QStringList sizeArgs;
-                sizeArgs << QStringLiteral("-Sp") << QStringLiteral("--print-format") << QStringLiteral("%s") << pkgs;
-                sizeProc.start(QStringLiteral("pacman"), sizeArgs);
-                if (sizeProc.waitForFinished(5000)) {
-                    QString sizeOut = QString::fromUtf8(sizeProc.readAllStandardOutput());
-                    const QStringList sizeLines = sizeOut.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-                    for (const QString &sl : sizeLines) {
-                        bool ok = false;
-                        qint64 b = sl.trimmed().toLongLong(&ok);
-                        if (ok && b > 0) totalBytes += b;
-                    }
-                }
-            }
-
-            QString sizeText;
-            if (totalBytes > 1024 * 1024 * 1024) {
-                double gib = totalBytes / (1024.0 * 1024.0 * 1024.0);
-                sizeText = QStringLiteral("%1 GiB").arg(gib, 0, 'f', 2);
-            } else if (totalBytes > 0) {
-                double mib = totalBytes / (1024.0 * 1024.0);
-                sizeText = QStringLiteral("%1 MiB").arg(mib, 0, 'f', 1);
-            } else {
-                // Estimación aproximada si pacman no devolvió bytes
-                double estMib = count * 14.5;
-                sizeText = QStringLiteral("~%1 MiB").arg(estMib, 0, 'f', 0);
-            }
-
-            m_updateCount = count;
-            m_updateSize = sizeText;
-            m_updateStatus = QStringLiteral("Hay %1 actualizaciones disponibles de Arch Linux (Total: %2)")
-                                .arg(count)
-                                .arg(sizeText);
-            m_updatePromptVisible = true;
-        } else {
-            m_updateCount = 0;
-            m_updateSize = QStringLiteral("0 MB");
-            m_updateStatus = QStringLiteral("El sistema está al día con los repositorios de Arch Linux.");
-            m_updatePromptVisible = false;
-        }
-
+    auto fin = [this](const QString &estado, int cuantas, const QString &tamano) {
         m_updateChecking = false;
+        m_updateCount = cuantas;
+        m_updateSize = tamano;
+        m_updateStatus = estado;
+        m_updatePromptVisible = cuantas > 0;
         emit updateCheckingChanged();
         emit updatePromptVisibleChanged();
         emit updateCountChanged();
         emit updateSizeChanged();
         emit updateStatusChanged();
+    };
+
+    m_updateChecking = true;
+    m_updatePromptVisible = false;
+    m_updateStatus = QStringLiteral("Buscando actualizaciones…");
+    emit updateCheckingChanged();
+    emit updatePromptVisibleChanged();
+    emit updateStatusChanged();
+
+    if (QStandardPaths::findExecutable(QStringLiteral("checkupdates")).isEmpty()) {
+        fin(QStringLiteral("No se puede comprobar: falta el paquete pacman-contrib."), 0, QStringLiteral("0 MB"));
+        return;
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("fakeroot")).isEmpty()) {
+        fin(QStringLiteral("No se puede comprobar: falta el paquete fakeroot."), 0, QStringLiteral("0 MB"));
+        return;
+    }
+
+    // En segundo plano: sincronizar la base temporal puede tardar un rato y
+    // antes se cortaba a los 15 s y daba "al día" sin haber comprobado nada.
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("CHECKUPDATES_DB"), baseActualizaciones());
+    env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    proc->setProcessEnvironment(env);
+    auto *limite = new QTimer(proc);
+    limite->setSingleShot(true);
+    connect(limite, &QTimer::timeout, proc, [proc]() { proc->kill(); });
+    limite->start(180000);
+
+    connect(proc, &QProcess::finished, this, [this, proc, fin](int codigo, QProcess::ExitStatus estado) {
+        proc->deleteLater();
+        const QString salida = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+        const QString error = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+        // checkupdates: 0 = hay, 2 = no hay, 1 u otro = no se pudo comprobar
+        if (estado != QProcess::NormalExit || (codigo != 0 && codigo != 2)) {
+            QString motivo = error.section(QLatin1Char('\n'), -1).remove(QStringLiteral("==> ERROR: ")).trimmed();
+            if (estado != QProcess::NormalExit)
+                motivo = QStringLiteral("tardó demasiado");
+            if (motivo.contains(QStringLiteral("database"), Qt::CaseInsensitive) || motivo.isEmpty())
+                motivo = QStringLiteral("¿hay conexión a Internet?");
+            fin(QStringLiteral("No se pudo comprobar: %1").arg(motivo), 0, QStringLiteral("0 MB"));
+            return;
+        }
+
+        QStringList paquetes;
+        for (const QString &l : salida.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const QString p = l.section(QLatin1Char(' '), 0, 0).trimmed();
+            if (!p.isEmpty())
+                paquetes << p;
+        }
+
+        // Flatpak (Tienda) también cuenta, si está.
+        int flatpaks = 0;
+        if (!QStandardPaths::findExecutable(QStringLiteral("flatpak")).isEmpty()) {
+            QProcess fp;
+            fp.start(QStringLiteral("flatpak"), {QStringLiteral("remote-ls"), QStringLiteral("--updates"), QStringLiteral("--columns=application")});
+            if (fp.waitForFinished(20000) && fp.exitCode() == 0)
+                flatpaks = QString::fromUtf8(fp.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
+        }
+
+        const int total = paquetes.size() + flatpaks;
+        if (total == 0) {
+            fin(QStringLiteral("El sistema está al día."), 0, QStringLiteral("0 MB"));
+            return;
+        }
+
+        // Tamaño real de lo que hay que descargar (paquetes aún no en caché)
+        qint64 bytes = 0;
+        bool tamanoOk = false;
+        auto medir = [](const QStringList &pk, qint64 *suma) {
+            QProcess tam;
+            tam.start(QStringLiteral("pacman"), QStringList{QStringLiteral("-Sp"), QStringLiteral("--dbpath"), baseActualizaciones(),
+                                                            QStringLiteral("--print-format"), QStringLiteral("%s")} + pk);
+            if (!tam.waitForFinished(10000) || tam.exitCode() != 0)
+                return false;
+            for (const QString &l : QString::fromUtf8(tam.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+                *suma += l.trimmed().toLongLong();
+            return true;
+        };
+        if (!paquetes.isEmpty()) {
+            tamanoOk = medir(paquetes, &bytes);
+            if (!tamanoOk) {
+                // Algún paquete cambió de nombre en el repositorio: uno a uno.
+                bytes = 0;
+                for (const QString &pk : std::as_const(paquetes))
+                    tamanoOk = medir({pk}, &bytes) || tamanoOk;
+            }
+        }
+        QString partes;
+        if (!paquetes.isEmpty())
+            partes = paquetes.size() == 1 ? QStringLiteral("1 paquete") : QStringLiteral("%1 paquetes").arg(paquetes.size());
+        if (flatpaks > 0)
+            partes += (partes.isEmpty() ? QString() : QStringLiteral(" y ")) +
+                      (flatpaks == 1 ? QStringLiteral("1 app de la Tienda") : QStringLiteral("%1 apps de la Tienda").arg(flatpaks));
+        const QString tamano = tamanoOk && bytes > 0 ? tamanoLegible(bytes) : QStringLiteral("—");
+        fin(tamanoOk && bytes > 0 ? QStringLiteral("Hay actualizaciones: %1 (%2 de descarga)").arg(partes, tamano)
+                                  : QStringLiteral("Hay actualizaciones: %1").arg(partes),
+            total, tamano);
     });
+    proc->start(QStringLiteral("checkupdates"), {QStringLiteral("--nocolor")});
 }
 
 void SettingsBackend::cancelUpdates()
@@ -371,11 +417,12 @@ void SettingsBackend::installUpdates()
         term = QStringLiteral("foot");
     }
 
-    QString script = QStringLiteral("echo '=== Inti OS - Actualización de Paquetes de Arch Linux ==='; "
-                                    "echo 'Ejecutando: sudo pacman -Syu'; "
-                                    "sudo pacman -Syu; "
-                                    "echo ''; "
-                                    "read -p 'Proceso terminado. Presiona Enter para cerrar...'");
+    QString script = QStringLiteral("echo '=== Inti OS - Actualizar el sistema ==='; echo; "
+                                    "sudo pacman -Syu; r=$?; "
+                                    "if command -v flatpak >/dev/null; then echo; echo '=== Apps de la Tienda (Flatpak) ==='; flatpak update -y; fi; "
+                                    "echo; if [ $r -eq 0 ]; then echo 'Listo: el sistema está actualizado.'; "
+                                    "else echo 'La actualización no terminó (código '$r'). Revisa los mensajes de arriba.'; fi; "
+                                    "read -p 'Pulsa Intro para cerrar...'");
 
     QProcess::startDetached(term, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << script);
 }
