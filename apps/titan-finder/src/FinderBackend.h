@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileSystemWatcher>
 #include <QTimer>
+#include <QFutureWatcher>
 
 class FinderBackend : public QObject
 {
@@ -32,6 +33,15 @@ class FinderBackend : public QObject
     Q_PROPERTY(QString freeSpaceText READ freeSpaceText NOTIFY freeSpaceTextChanged)
     Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
     Q_PROPERTY(QString clipboardPath READ clipboardPath NOTIFY clipboardChanged)
+    // Papelera, avisos y operaciones en segundo plano
+    Q_PROPERTY(bool enPapelera READ enPapelera NOTIFY currentPathChanged)
+    Q_PROPERTY(bool papeleraVacia READ papeleraVacia NOTIFY entriesChanged)
+    Q_PROPERTY(bool dentroDeCasaActual READ dentroDeCasaActual NOTIFY currentPathChanged)
+    Q_PROPERTY(bool puedeEscribir READ puedeEscribir NOTIFY currentPathChanged)
+    Q_PROPERTY(bool portapapelesCortado READ portapapelesCortado NOTIFY clipboardChanged)
+    Q_PROPERTY(int portapapelesCantidad READ portapapelesCantidad NOTIFY clipboardChanged)
+    Q_PROPERTY(bool ocupado READ ocupado NOTIFY ocupadoChanged)
+    Q_PROPERTY(QString aviso READ aviso NOTIFY avisoChanged)
 
 public:
     explicit FinderBackend(QObject *parent = nullptr);
@@ -64,8 +74,30 @@ public:
 
     QString totalItemsText() const;
     QString freeSpaceText() const { return m_freeSpaceText; }
-    bool hasClipboard() const { return !m_clipboardPath.isEmpty() && (QFile::exists(m_clipboardPath) || QDir(m_clipboardPath).exists()); }
+    bool hasClipboard() const { return portapapelesCantidad() > 0; }
     QString clipboardPath() const { return m_clipboardPath; }
+
+    bool enPapelera() const;
+    bool papeleraVacia() const;
+    bool dentroDeCasaActual() const { return dentroDeCasa(m_currentPath); }
+    bool puedeEscribir() const;
+    bool portapapelesCortado() const;
+    int portapapelesCantidad() const;
+    bool ocupado() const { return m_ocupado; }
+    QString aviso() const { return m_aviso; }
+
+    // Reglas: mover solo dentro de la carpeta personal (y nunca sus carpetas
+    // principales); lo demás se copia. Ver Operaciones.cpp.
+    Q_INVOKABLE bool dentroDeCasa(const QString &path) const;
+    Q_INVOKABLE bool esProtegida(const QString &path) const;
+    Q_INVOKABLE void arrastrar(const QStringList &paths);
+    Q_INVOKABLE void soltar(const QVariantList &urls, const QString &destino, bool copiar);
+    Q_INVOKABLE void cortar(const QStringList &paths);
+    Q_INVOKABLE bool eliminarDefinitivamente(const QStringList &paths);
+    Q_INVOKABLE bool vaciarPapelera();
+    Q_INVOKABLE bool restaurar(const QStringList &paths);
+    Q_INVOKABLE void cerrarAviso();
+    Q_INVOKABLE QString escritorio() const { return QDir::homePath() + QStringLiteral("/Escritorio"); }
 
     Q_INVOKABLE void goTo(const QString &path);
     Q_INVOKABLE void goBack();
@@ -104,6 +136,8 @@ signals:
     void sortChanged();
     void freeSpaceTextChanged();
     void clipboardChanged();
+    void ocupadoChanged();
+    void avisoChanged();
 
 private slots:
     void onDirectoryChanged(const QString &path);
@@ -134,5 +168,12 @@ private:
     QFileSystemWatcher *m_watcher;
     QTimer *m_deviceTimer;
     QString m_clipboardPath;
+
+    void ponerAviso(const QString &t);
+    void lanzar(const QVariantList &trabajos, bool limpiarPortapapeles);
+    QString rutaPapelera() const;
+    bool m_ocupado = false;
+    QString m_aviso;
+    QFutureWatcher<QString> m_operacion;
 };
 

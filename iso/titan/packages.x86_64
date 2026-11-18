@@ -212,6 +212,7 @@ xdg-utils
 qt6-declarative
 qt6-multimedia
 qt6-multimedia-ffmpeg
+taglib
 qmltermwidget
 
 # --- Soporte de AppImages y aplicaciones adicionales ---

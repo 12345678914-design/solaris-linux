@@ -4,6 +4,12 @@
 #include <QIcon>
 #include <iostream>
 #include "MusicaBackend.h"
+#include "Mpris.h"
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusInterface>
+#include <QFileInfo>
+#include <QUrl>
 #include "ThemeManager.h"
 
 int main(int argc, char *argv[])
@@ -24,7 +30,29 @@ int main(int argc, char *argv[])
     app.setOrganizationName(QStringLiteral("Titan"));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/music.png")));
 
+    // Ya abierta: le pasa los archivos a esa ventana y la trae al frente.
+    QStringList archivos;
+    for (const QString &arg : app.arguments().mid(1)) {
+        if (!arg.startsWith(QLatin1Char('-')))
+            archivos << (arg.contains(QStringLiteral("://")) ? arg : QUrl::fromLocalFile(QFileInfo(arg).absoluteFilePath()).toString());
+    }
+    if (!modoComprobar) {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (bus.isConnected() && bus.interface()->isServiceRegistered(Mpris::servicio)) {
+            QDBusInterface rep(Mpris::servicio, Mpris::ruta, QStringLiteral("org.mpris.MediaPlayer2.Player"), bus);
+            QDBusInterface raiz(Mpris::servicio, Mpris::ruta, QStringLiteral("org.mpris.MediaPlayer2"), bus);
+            if (rep.isValid()) {
+                if (!archivos.isEmpty())
+                    rep.call(QStringLiteral("OpenUri"), archivos.first());
+                raiz.call(QStringLiteral("Raise"));
+                return 0;
+            }
+        }
+    }
+
     MusicaBackend backend;
+    if (!modoComprobar)
+        Mpris::registrar(&backend);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("musicaBackend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
@@ -54,17 +82,9 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // "titan-musica cancion.mp3" (o doble clic en Finder): reproducir ese archivo.
-    // Si llegan varios, suena el primero y el resto queda en la lista.
-    {
-        QStringList archivos;
-        for (const QString &arg : app.arguments().mid(1)) {
-            if (!arg.startsWith(QLatin1Char('-')))
-                archivos << arg;
-        }
-        for (int i = archivos.size() - 1; i >= 0; --i)
-            backend.openFile(archivos.at(i));
-    }
+    // "titan-musica cancion.mp3" (o doble clic en Finder): suenan esos archivos.
+    if (!archivos.isEmpty())
+        backend.abrirArchivos(archivos);
 
     return app.exec();
 }
