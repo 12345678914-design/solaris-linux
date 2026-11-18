@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Teclado en pantalla
+Comment=Escribe con el ratón o tocando la pantalla. Ábrelo otra vez para cerrarlo
+Exec=titan-teclado
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=teclado;táctil;accesibilidad;osk;

@@ -98,6 +98,10 @@ lanzar_titan_shell() {
     if grep -qs '^LECTOR=1' "$HOME/.config/titan/accesibilidad.conf" && command -v orca >/dev/null 2>&1; then
         pgrep -u "$(id -u)" -x orca >/dev/null || (orca --replace >/dev/null 2>&1 &)
     fi
+    # Teclado en pantalla: Ajustes > Accesibilidad.
+    if grep -qs '^TECLADO=1' "$HOME/.config/titan/accesibilidad.conf" && [ -x /usr/local/bin/titan-teclado ]; then
+        pgrep -u "$(id -u)" -x titan-teclado >/dev/null || (/usr/local/bin/titan-teclado >/dev/null 2>&1 &)
+    fi
 
     # Portapapeles compartido con el anfitrion en una VM (QEMU qemu-vdagent,
     # virt-manager/SPICE). El agente es de X11: va por Xwayland, y el

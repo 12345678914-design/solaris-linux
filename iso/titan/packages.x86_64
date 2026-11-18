@@ -184,7 +184,14 @@ vulkan-nouveau
 vulkan-swrast
 
 # --- Controladores Gráficos Modernos: NVIDIA, Intel y AMD ---
-nvidia-open
+# nvidia-open-dkms (no nvidia-open): el paquete precompilado solo vale para el
+# kernel de Arch. Con DKMS el modulo se compila tambien para linux-titanlinux
+# (sus cabeceras las anade build-iso.sh) y se recompila solo al actualizar.
+# Sin esto, con una NVIDIA sola el kernel por defecto se quedaba sin grafica:
+# nvidia-utils pone nouveau en lista negra.
+nvidia-open-dkms
+dkms
+linux-headers
 nvidia-utils
 nvidia-settings
 nvidia-prime
@@ -367,3 +374,23 @@ bolt
 # Aviso de actualizaciones (checkupdates)
 pacman-contrib
 fakeroot
+# --- Lo que Ubuntu y Fedora traen de serie y faltaba (comparacion 2026-11) ---
+# Editor de texto grafico (los .txt se abrian en vim dentro de una terminal)
+gnome-text-editor
+# Comprimir y extraer: el Finder lo hace con bsdtar/7z; File Roller abre los
+# .zip/.7z/.rar para ver lo que hay dentro, como en Ubuntu
+zip
+7zip
+unrar
+file-roller
+# Monitor del sistema (procesos, CPU, memoria, discos)
+gnome-system-monitor
+# Particionar a mano (boton "Abrir GParted" del instalador). Corre como root
+# por XWayland: necesita xhost para dar permiso a root en la pantalla
+gparted
+xorg-xhost
+# Grabar la pantalla (titan-grabar, Super+Shift+5) y teclado en pantalla
+# (titan-teclado escribe con wtype por el protocolo de teclado virtual)
+wf-recorder
+# AppArmor (como Ubuntu): el kernel lo trae; se activa con lsm= en el arranque
+apparmor

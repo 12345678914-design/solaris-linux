@@ -773,6 +773,10 @@ Rectangle {
     }
 
     // ------------------------------------------------------------ menú contextual
+    function nombreCorto(ruta) {
+        var n = ruta.substring(ruta.lastIndexOf("/") + 1)
+        return n.length > 18 ? n.substring(0, 16) + "…" : n
+    }
     function opcionesMenu() {
         var n = selectedPaths.length
         var cuantos = n > 1 ? " (" + n + ")" : ""
@@ -798,6 +802,12 @@ Rectangle {
                 o.push({ t: "Pegar dentro" + (finderBackend.portapapelesCantidad > 1 ? " (" + finderBackend.portapapelesCantidad + ")" : ""), i: "📥", a: fileListRoot.pegarDentro })
             if (finderBackend.puedeEscribir)
                 o.push({ t: "Duplicar" + cuantos, i: "⊕", a: function () { finderBackend.soltar(fileListRoot.objetivo(), finderBackend.currentPath, true) } })
+            if (finderBackend.puedeEscribir) {
+                if (n === 1 && finderBackend.esComprimido(selectedPaths[0]))
+                    o.push({ t: "Extraer aquí", i: "⇲", a: function () { finderBackend.extraer(fileListRoot.selectedPaths[0]) } })
+                o.push({ t: (n === 1 ? "Comprimir «" + fileListRoot.nombreCorto(selectedPaths[0]) + "»" : "Comprimir " + n + " elementos"), i: "⊞",
+                         a: function () { finderBackend.comprimir(fileListRoot.objetivo()) } })
+            }
             o.push({ t: (movibles ? "Mover al Escritorio" : "Copiar al Escritorio") + cuantos, i: "🖥",
                      a: function () { finderBackend.soltar(fileListRoot.objetivo(), finderBackend.escritorio(), !movibles); fileListRoot.limpiarSeleccion() } })
             o.push({ sep: true })
@@ -912,7 +922,9 @@ Rectangle {
                             hoverEnabled: true
                             enabled: !modelData.sep
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { fileListRoot.ctxVisible = false; modelData.a() }
+                            // La acción se guarda ANTES de cerrar: al cerrar, el modelo del
+                            // Repeater pasa a [] y este delegado (y su modelData) desaparece.
+                            onClicked: { var accion = modelData.a; fileListRoot.ctxVisible = false; accion() }
                         }
                     }
                 }

@@ -34,6 +34,7 @@ class Sistema : public QObject
     Q_PROPERTY(QString mensajeHuella READ mensajeHuella NOTIFY cambiado)
     // Accesibilidad y teclado
     Q_PROPERTY(bool lector READ lector NOTIFY cambiado)
+    Q_PROPERTY(bool tecladoPantalla READ tecladoPantalla NOTIFY cambiado)
     Q_PROPERTY(bool metodosEntrada READ metodosEntrada NOTIFY cambiado)
     Q_PROPERTY(QString distribucionTeclado READ distribucionTeclado NOTIFY cambiado)
     // Impresoras, instantaneas, VPN, discos
@@ -63,6 +64,7 @@ public:
     bool registrandoHuella() const { return m_registro != nullptr; }
     QString mensajeHuella() const { return m_mensajeHuella; }
     bool lector() const { return m_lector; }
+    bool tecladoPantalla() const { return m_tecladoPantalla; }
     bool metodosEntrada() const { return m_entrada; }
     QString distribucionTeclado() const { return m_teclado; }
     QVariantList impresoras() const { return m_impresoras; }
@@ -89,6 +91,7 @@ public:
     Q_INVOKABLE void setHuellaActiva(bool activa);
 
     Q_INVOKABLE void setLector(bool activo);
+    Q_INVOKABLE void setTecladoPantalla(bool activo);
     Q_INVOKABLE void setMetodosEntrada(bool activo);
 
     Q_INVOKABLE void crearInstantanea(const QString &descripcion);
@@ -138,6 +141,7 @@ private:
     QProcess *m_registro = nullptr;
     QString m_mensajeHuella;
     bool m_lector = false;
+    bool m_tecladoPantalla = false;
     bool m_entrada = false;
     QString m_teclado;
     QVariantList m_impresoras;

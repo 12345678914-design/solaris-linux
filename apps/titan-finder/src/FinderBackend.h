@@ -11,6 +11,7 @@
 #include <QFileSystemWatcher>
 #include <QTimer>
 #include <QFutureWatcher>
+#include <functional>
 
 class FinderBackend : public QObject
 {
@@ -97,6 +98,10 @@ public:
     Q_INVOKABLE bool vaciarPapelera();
     Q_INVOKABLE bool restaurar(const QStringList &paths);
     Q_INVOKABLE void cerrarAviso();
+    // Comprimir en .zip (como Ubuntu) y "Extraer aquí" (zip, tar.*, 7z, rar)
+    Q_INVOKABLE bool esComprimido(const QString &path) const;
+    Q_INVOKABLE void comprimir(const QStringList &paths);
+    Q_INVOKABLE void extraer(const QString &path);
     Q_INVOKABLE QString escritorio() const { return QDir::homePath() + QStringLiteral("/Escritorio"); }
 
     Q_INVOKABLE void goTo(const QString &path);
@@ -171,6 +176,7 @@ private:
 
     void ponerAviso(const QString &t);
     void lanzar(const QVariantList &trabajos, bool limpiarPortapapeles);
+    void enFondo(const QString &mensaje, const std::function<QString()> &trabajo);
     QString rutaPapelera() const;
     bool m_ocupado = false;
     QString m_aviso;

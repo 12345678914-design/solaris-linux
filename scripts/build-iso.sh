@@ -421,6 +421,7 @@ build_qt_app titan-clock || exit 1
 build_qt_app titan-video || exit 1
 build_qt_app titan-greeter || exit 1
 build_qt_app titan-polkit || exit 1
+build_qt_app titan-teclado || exit 1
 # El instalador tambien se compila en cada ISO: antes se copiaba a mano y la
 # ISO podia llevar uno viejo (sin activar greetd, por ejemplo).
 build_qt_app titan-installer || exit 1
@@ -567,10 +568,23 @@ if (( use_kernel )); then
     # Un repositorio file:// necesita su base de datos (titan.db); sin ella
     # pacman aborta con "failed retrieving file 'titan.db' from disk".
     command -v repo-add >/dev/null || { red "Falta 'repo-add' (viene con pacman)"; exit 1; }
+    # Las cabeceras de la misma version: sin ellas DKMS no puede compilar el
+    # controlador de NVIDIA (nvidia-open-dkms) para este kernel, y con una
+    # tarjeta NVIDIA sola el sistema se quedaria sin grafica (nvidia-utils
+    # pone nouveau en lista negra).
+    kver="$(basename "${kernel_pkg}")"; kver="${kver#linux-titanlinux-}"
+    headers_pkg="${DISTRO}/kernel/linux-titanlinux/linux-titanlinux-headers-${kver}"
+    if [[ -f "${headers_pkg}" ]]; then
+      install -m 0644 "${headers_pkg}" "${REPO_DIR}/$(basename "${headers_pkg}")"
+    else
+      yel "Faltan las cabeceras del kernel propio (${headers_pkg##*/}):"
+      yel "el controlador NVIDIA solo funcionara con el kernel de Arch."
+    fi
     repo-add --quiet "${REPO_DIR}/titan.db.tar.gz" \
       "${REPO_DIR}"/linux-titanlinux-*.pkg.tar.zst
     # Sin el '-p' aqui: lo antepone la linea que llama a mkarchiso.
     extra_packages+=(linux-titanlinux)
+    [[ -f "${headers_pkg}" ]] && extra_packages+=(linux-titanlinux-headers)
     info "kernel propio: $(basename "${kernel_pkg}") (repo local 'titan' actualizado)"
 
     # El paquete tambien viaja DENTRO de la ISO, en /titan-repo. Motivo: el
@@ -587,6 +601,15 @@ if (( use_kernel )); then
       # El .PKGINFO basta para que el instalador sepa de que version se trata
       # sin tener que abrir el paquete entero.
       printf '%s\n' "$(basename "${kernel_pkg}")" >"${PROFILE}/airootfs/titan-repo/LEEME"
+      # Las cabeceras en una subcarpeta: el instalador busca el kernel con
+      # 'linux-titanlinux-*.pkg.tar.zst' y si estuvieran al lado podria coger
+      # las cabeceras por el kernel. Las usa el instalador de consola para que
+      # DKMS compile el controlador de NVIDIA (el grafico copia el live, que
+      # ya las lleva instaladas).
+      if [[ -f "${headers_pkg}" ]]; then
+        install -D -m 0644 "${headers_pkg}" \
+          "${PROFILE}/airootfs/titan-repo/cabeceras/$(basename "${headers_pkg}")"
+      fi
       info "paquete del kernel copiado al perfil (/titan-repo en el live)"
     else
       rm -rf -- "${PROFILE}/airootfs/titan-repo"
@@ -708,7 +731,10 @@ args=(-C "${generated_conf}"
       -L "TITAN_$(date +%Y%m)"
       -P "Inti OS Project"
       -A "Inti OS ${TITAN_VERSION} (${TITAN_CODENAME})")
-(( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[@]}")
+# Una sola cadena con todos los paquetes separados por espacios: mkarchiso
+# lee un unico argumento tras '-p'; un segundo paquete suelto se tomaria por
+# el perfil.
+(( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[*]}")
 args+=("${PROFILE}")
 [[ -n "$verbose" ]] && args+=(-v)
 

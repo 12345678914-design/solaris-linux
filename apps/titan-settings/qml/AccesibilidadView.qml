@@ -4,9 +4,23 @@ import QtQuick
 PaginaAjustes {
     id: vista
     titulo: "Accesibilidad"
-    descripcion: "Herramientas para usar el equipo sin ver la pantalla o con dificultades de visión."
+    descripcion: "Herramientas para usar el equipo sin ver la pantalla, con dificultades de visión o sin teclado."
 
     Component.onCompleted: sistema.refrescar("Accesibilidad")
+
+    Grupo {
+        etiqueta: "Movilidad y pantallas táctiles"
+        nota: "El teclado se queda abajo y escribe en la ventana donde estabas. Se recuerda para la próxima sesión."
+        Fila {
+            separador: false
+            titulo: "Teclado en pantalla"
+            detalle: "Escribir con el ratón o tocando la pantalla, sin teclado físico."
+            Interruptor {
+                activo: sistema.tecladoPantalla
+                onAlternado: function(v) { sistema.setTecladoPantalla(v) }
+            }
+        }
+    }
 
     Grupo {
         etiqueta: "Visión"

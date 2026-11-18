@@ -75,6 +75,7 @@ file_permissions=(
   ["/usr/local/bin/titan-luz-nocturna"]="0:0:755"
   ["/usr/local/bin/titan-acento"]="0:0:755"
   ["/usr/local/bin/titan-captura"]="0:0:755"
+  ["/usr/local/bin/titan-grabar"]="0:0:755"
   ["/usr/local/bin/titan-elegir-pantalla"]="0:0:755"
   ["/usr/local/bin/titan-cortafuegos"]="0:0:755"
   ["/usr/local/bin/titan-actualizaciones"]="0:0:755"
@@ -82,6 +83,7 @@ file_permissions=(
   ["/usr/local/bin/titan-huella"]="0:0:755"
   ["/usr/local/bin/titan-instantaneas"]="0:0:755"
   ["/usr/local/bin/titan-polkit"]="0:0:755"
+  ["/usr/local/bin/titan-teclado"]="0:0:755"
   ["/usr/local/bin/titan-lector"]="0:0:755"
   ["/etc/sudoers.d/20-calamares"]="0:0:0440"
 )

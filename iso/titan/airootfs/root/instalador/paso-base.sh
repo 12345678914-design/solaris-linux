@@ -243,10 +243,10 @@ paquetes_instalar() {
   if command -v lspci >/dev/null 2>&1; then
     if lspci 2>/dev/null | grep -qiE "(vga|3d).*nvidia"; then
       drivers_gpu+=(vulkan-nouveau xf86-video-nouveau)
-      # Si se instala el kernel estándar de Arch (no el propio), añadir soporte privativo
-      if ! paquete_kernel_propio >/dev/null 2>&1; then
-        drivers_gpu+=(nvidia-open nvidia-utils egl-wayland libva-nvidia-driver)
-      fi
+      # Controlador de NVIDIA por DKMS: se compila para cada kernel que tenga
+      # sus cabeceras (el de Arch y, si se instala, el propio). nvidia-open a
+      # secas solo vale para el de Arch.
+      drivers_gpu+=(nvidia-open-dkms dkms linux-headers nvidia-utils egl-wayland libva-nvidia-driver)
     fi
     if lspci 2>/dev/null | grep -qiE "(vga|display).*intel"; then
       drivers_gpu+=(vulkan-intel intel-media-driver libva-intel-driver)
@@ -723,6 +723,18 @@ paso_kernel() {
       "/var/cache/pacman/pkg/${nombre_pkg}" \
       || { error "no se ha podido instalar linux-titanlinux"; return 1; }
     rm -f "${destino_pkg}/${nombre_pkg}"
+    # Sus cabeceras, si la ISO las trae: con ellas DKMS compila el controlador
+    # de NVIDIA para este kernel (sin ellas, con una NVIDIA sola no habria
+    # grafica, porque nvidia-utils pone nouveau en lista negra).
+    local cab
+    for cab in "$(dirname "${pkg}")"/cabeceras/linux-titanlinux-headers-*.pkg.tar.zst; do
+      [[ -f "${cab}" ]] || continue
+      install -m 0644 "${cab}" "${destino_pkg}/$(basename "${cab}")"
+      arch-chroot "${raiz}" pacman -U --noconfirm --needed \
+        "/var/cache/pacman/pkg/$(basename "${cab}")" \
+        || aviso "no se han podido instalar las cabeceras del kernel propio"
+      rm -f "${destino_pkg}/$(basename "${cab}")"
+    done
     E[kernel]="linux-titanlinux"
     return 0
   fi
@@ -761,7 +773,7 @@ GRUB_DEFAULT=0
 GRUB_TIMEOUT=5
 GRUB_DISTRIBUTOR="Titan Linux"
 GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3"
-GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8"
+GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8 lsm=landlock,lockdown,yama,integrity,apparmor,bpf"
 GRUB_DISABLE_SUBMENU=y
 GRUB_TERMINAL_OUTPUT="gfxterm console"
 GRUB_GFXMODE=auto

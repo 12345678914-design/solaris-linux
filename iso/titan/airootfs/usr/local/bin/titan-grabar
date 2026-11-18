@@ -1,0 +1,75 @@
+#!/bin/sh
+# Inti OS - grabar la pantalla (wf-recorder), como Super+Shift+5 en macOS o
+# Ctrl+Alt+Mayús+R en Ubuntu.
+#
+#   titan-grabar             empieza a grabar toda la pantalla; si ya se está
+#                            grabando, para y guarda           Super+Shift+5
+#   titan-grabar area        igual, pero de una zona que se marca con el ratón
+#   titan-grabar sonido      toda la pantalla con el sonido del sistema
+#   titan-grabar parar       para la grabación en curso
+#
+# El vídeo va a Vídeos/Grabaciones de pantalla y avisa con una notificación.
+# Con varias pantallas, se marca con un clic cuál se graba. Esc cancela.
+
+modo="${1:-pantalla}"
+aviso() { notify-send -a "Grabar pantalla" "$@" 2>/dev/null; }
+
+estado="${XDG_RUNTIME_DIR:-/tmp}/titan-grabar"
+pid="$(cat "$estado.pid" 2>/dev/null)"
+
+# Si ya se está grabando, esta pulsación es para parar.
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill -INT "$pid"
+    # wf-recorder cierra el fichero al recibir SIGINT: se espera a que acabe
+    i=0
+    while kill -0 "$pid" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    fichero="$(cat "$estado.fichero" 2>/dev/null)"
+    rm -f "$estado.pid" "$estado.fichero"
+    if [ -s "$fichero" ]; then
+        aviso -i video-x-generic "Grabación guardada" "$(basename "$fichero")"
+    else
+        aviso "No se ha guardado la grabación"
+    fi
+    exit 0
+fi
+[ "$modo" = "parar" ] && exit 0
+
+command -v wf-recorder >/dev/null 2>&1 || { aviso "Falta wf-recorder"; exit 1; }
+
+videos="$(xdg-user-dir VIDEOS 2>/dev/null)"
+[ -n "$videos" ] && [ "$videos" != "$HOME" ] || videos="$HOME/Vídeos"
+dir="$videos/Grabaciones de pantalla"
+mkdir -p "$dir"
+fichero="$dir/Grabación de pantalla $(date '+%Y-%m-%d a las %H.%M.%S').mp4"
+
+set --
+case "$modo" in
+    area)
+        zona="$(slurp -d -b 10121a66 -c ff3b30cc -s ff3b3011 -w 2 2>/dev/null)" || exit 0
+        [ -n "$zona" ] || exit 0
+        set -- -g "$zona"
+        ;;
+    *)
+        # wf-recorder pregunta por la terminal qué pantalla grabar si hay
+        # varias: aquí no hay terminal, así que se elige con un clic.
+        if [ "$(wlr-randr 2>/dev/null | grep -c '^[^ ]')" -gt 1 ]; then
+            salida="$(slurp -o -f '%o' -b 10121a66 -c ff3b30cc 2>/dev/null)" || exit 0
+            [ -n "$salida" ] || exit 0
+            set -- -o "$salida"
+        fi
+        ;;
+esac
+[ "$modo" = "sonido" ] && set -- "$@" --audio
+
+# -y: no preguntar si el fichero existe (no existe: lleva la hora)
+wf-recorder -y "$@" -f "$fichero" </dev/null >/dev/null 2>&1 &
+echo $! >"$estado.pid"
+echo "$fichero" >"$estado.fichero"
+sleep 0.5
+if ! kill -0 "$(cat "$estado.pid")" 2>/dev/null; then
+    rm -f "$estado.pid" "$estado.fichero" "$fichero"
+    aviso "No se ha podido empezar a grabar"
+    exit 1
+fi
+aviso -i media-record "Grabando la pantalla" "Pulsa Super+Mayús+5 otra vez para parar y guardar"
+exit 0

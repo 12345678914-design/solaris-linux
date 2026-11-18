@@ -229,6 +229,9 @@
     <keybind key="W-S-4"><action name="Execute" command="titan-captura area"/></keybind>
     <keybind key="W-S-s"><action name="Execute" command="titan-captura area"/></keybind>
     <keybind key="W-S-S"><action name="Execute" command="titan-captura area"/></keybind>
+    <!-- Grabar la pantalla (titan-grabar): el mismo atajo para parar y guardar -->
+    <keybind key="W-S-5"><action name="Execute" command="titan-grabar"/></keybind>
+    <keybind key="W-S-6"><action name="Execute" command="titan-grabar area"/></keybind>
 
     <!-- Lector de pantalla (Orca), como en GNOME -->
     <keybind key="W-A-s"><action name="Execute" command="titan-lector"/></keybind>

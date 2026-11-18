@@ -22,6 +22,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QSettings>
 #include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
@@ -512,4 +514,170 @@ bool FinderBackend::restaurar(const QStringList &paths)
     else
         ponerAviso(n == 1 ? QStringLiteral("1 elemento recuperado") : QStringLiteral("%1 elementos recuperados").arg(n));
     return n > 0;
+}
+
+// ---------------------------------------------------------------- comprimir / extraer
+//
+// Como "Comprimir" y "Extraer aquí" de Ubuntu. bsdtar (libarchive, siempre
+// está: lo usa pacman) hace el .zip y abre zip, tar.*, 7z e iso; los .rar van
+// con unrar y los .7z con 7z si están. bsdtar no escribe fuera de la carpeta
+// de destino (quita las rutas absolutas y rechaza las que suben con "..").
+
+namespace {
+
+// Extensión de archivo comprimido, con las dobles (tar.gz) primero.
+QString extComprimido(const QString &nombre)
+{
+    static const QStringList exts = {
+        QStringLiteral("tar.gz"), QStringLiteral("tar.xz"), QStringLiteral("tar.zst"), QStringLiteral("tar.bz2"),
+        QStringLiteral("tgz"), QStringLiteral("txz"), QStringLiteral("tbz2"), QStringLiteral("tar"),
+        QStringLiteral("zip"), QStringLiteral("7z"), QStringLiteral("rar")};
+    const QString l = nombre.toLower();
+    for (const QString &e : exts)
+        if (l.endsWith(QLatin1Char('.') + e) && l.size() > e.size() + 1)
+            return e;
+    return {};
+}
+
+bool correr(const QString &prog, const QStringList &args, const QString &dir = QString())
+{
+    QProcess p;
+    if (!dir.isEmpty())
+        p.setWorkingDirectory(dir);
+    p.setProcessChannelMode(QProcess::MergedChannels);
+    p.start(prog, args);
+    if (!p.waitForStarted(5000))
+        return false;
+    p.closeWriteChannel();
+    p.waitForFinished(-1);
+    return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+}
+
+} // namespace
+
+bool FinderBackend::esComprimido(const QString &path) const
+{
+    const QFileInfo fi(aLocal(path));
+    return fi.isFile() && !extComprimido(fi.fileName()).isEmpty();
+}
+
+void FinderBackend::enFondo(const QString &mensaje, const std::function<QString()> &trabajo)
+{
+    m_ocupado = true;
+    emit ocupadoChanged();
+    ponerAviso(mensaje);
+    if (!m_operacion.isRunning()) {
+        disconnect(&m_operacion, nullptr, this, nullptr);
+        connect(&m_operacion, &QFutureWatcher<QString>::finished, this, [this] {
+            m_ocupado = false;
+            emit ocupadoChanged();
+            refresh();
+            ponerAviso(m_operacion.result());
+        });
+    }
+    m_operacion.setFuture(QtConcurrent::run(trabajo));
+}
+
+void FinderBackend::comprimir(const QStringList &paths0)
+{
+    if (m_ocupado) {
+        ponerAviso(QStringLiteral("Espera a que termine la operación anterior"));
+        return;
+    }
+    QStringList nombres;
+    QString dir;
+    for (const QString &p0 : paths0) {
+        const QFileInfo fi(aLocal(p0));
+        if (!fi.exists() && !fi.isSymLink())
+            continue;
+        if (dir.isEmpty())
+            dir = fi.absolutePath();
+        if (fi.absolutePath() != dir)
+            continue; // la selección siempre es de una misma carpeta
+        nombres << fi.fileName();
+    }
+    if (nombres.isEmpty())
+        return;
+    if (!QFileInfo(dir).isWritable() || dir.startsWith(rutaPapelera())) {
+        ponerAviso(QStringLiteral("No tienes permiso para guardar aquí"));
+        return;
+    }
+    // "Informe.pdf" -> "Informe.zip"; varios -> "Archivo.zip" (como Ubuntu)
+    QString base = QStringLiteral("Archivo");
+    if (nombres.size() == 1) {
+        const QFileInfo fi(dir + QLatin1Char('/') + nombres.first());
+        base = fi.isDir() || fi.completeBaseName().isEmpty() ? fi.fileName() : fi.completeBaseName();
+    }
+    const QString destino = nombreLibre(dir, QFileInfo(dir + QLatin1Char('/') + base + QStringLiteral(".zip")), false);
+    if (destino.isEmpty())
+        return;
+    enFondo(QStringLiteral("Comprimiendo…"), [dir, nombres, destino] {
+        // Primero a un nombre oculto: si falla a medias no queda un .zip roto
+        const QString tmp = dir + QStringLiteral("/.") + QFileInfo(destino).fileName() + QStringLiteral(".parte");
+        QStringList args = {QStringLiteral("--format"), QStringLiteral("zip"), QStringLiteral("-cf"), tmp, QStringLiteral("--")};
+        args += nombres;
+        if (!correr(QStringLiteral("bsdtar"), args, dir) || !QFile::rename(tmp, destino)) {
+            QFile::remove(tmp);
+            return QStringLiteral("No se ha podido comprimir");
+        }
+        return QStringLiteral("Creado «%1»").arg(QFileInfo(destino).fileName());
+    });
+}
+
+void FinderBackend::extraer(const QString &path0)
+{
+    if (m_ocupado) {
+        ponerAviso(QStringLiteral("Espera a que termine la operación anterior"));
+        return;
+    }
+    const QFileInfo fi(aLocal(path0));
+    const QString ext = extComprimido(fi.fileName());
+    if (!fi.isFile() || ext.isEmpty())
+        return;
+    const QString dir = fi.absolutePath();
+    if (!QFileInfo(dir).isWritable() || dir.startsWith(rutaPapelera())) {
+        ponerAviso(QStringLiteral("No tienes permiso para extraer aquí"));
+        return;
+    }
+    const QString archivo = fi.absoluteFilePath();
+    const QString base = fi.fileName().left(fi.fileName().size() - ext.size() - 1);
+    enFondo(QStringLiteral("Extrayendo «%1»…").arg(fi.fileName()), [dir, archivo, base, ext] {
+        // A una carpeta oculta y luego a su sitio: así un fallo no deja nada
+        // a medias a la vista.
+        const QString tmp = dir + QStringLiteral("/.extrayendo-") + base;
+        QDir(tmp).removeRecursively();
+        if (!QDir().mkpath(tmp))
+            return QStringLiteral("No se ha podido extraer");
+        bool ok;
+        if (ext == QStringLiteral("rar") && !QStandardPaths::findExecutable(QStringLiteral("unrar")).isEmpty())
+            ok = correr(QStringLiteral("unrar"), {QStringLiteral("x"), QStringLiteral("-o-"), QStringLiteral("-idq"), QStringLiteral("-p-"), archivo, tmp + QLatin1Char('/')});
+        else if (ext == QStringLiteral("7z") && !QStandardPaths::findExecutable(QStringLiteral("7z")).isEmpty())
+            ok = correr(QStringLiteral("7z"), {QStringLiteral("x"), QStringLiteral("-y"), QStringLiteral("-p"), QStringLiteral("-o") + tmp, archivo});
+        else
+            ok = correr(QStringLiteral("bsdtar"), {QStringLiteral("-xf"), archivo, QStringLiteral("-C"), tmp});
+        const QStringList dentro = QDir(tmp).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        if (!ok || dentro.isEmpty()) {
+            QDir(tmp).removeRecursively();
+            return QStringLiteral("No se ha podido extraer «%1» (¿está dañado o tiene contraseña?)").arg(QFileInfo(archivo).fileName());
+        }
+        // Si dentro hay una sola cosa, se saca tal cual (sin carpeta de más);
+        // si hay varias, van en una carpeta con el nombre del archivo.
+        QString final;
+        if (dentro.size() == 1) {
+            const QFileInfo unico(tmp + QLatin1Char('/') + dentro.first());
+            final = nombreLibre(dir, unico, false);
+            if (final.isEmpty() || !QFile::rename(unico.absoluteFilePath(), final)) {
+                QDir(tmp).removeRecursively();
+                return QStringLiteral("No se ha podido extraer");
+            }
+            QDir(tmp).removeRecursively();
+        } else {
+            final = nombreLibre(dir, QFileInfo(dir + QLatin1Char('/') + base), false);
+            if (final.isEmpty() || !QDir().rename(tmp, final)) {
+                QDir(tmp).removeRecursively();
+                return QStringLiteral("No se ha podido extraer");
+            }
+        }
+        return QStringLiteral("Extraído en «%1»").arg(QFileInfo(final).fileName());
+    });
 }

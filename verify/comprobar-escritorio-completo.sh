@@ -45,7 +45,9 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           plymouth orca speech-dispatcher espeak-ng fcitx5 fcitx5-qt fcitx5-gtk
           fcitx5-configtool fcitx5-chinese-addons fcitx5-mozc fcitx5-hangul hunspell
           hunspell-es_any hunspell-en_us fprintd bolt pacman-contrib cryptsetup os-prober
-          efibootmgr parted wlsunset sound-theme-freedesktop wlr-randr brightnessctl)
+          efibootmgr parted wlsunset sound-theme-freedesktop wlr-randr brightnessctl
+          nvidia-open-dkms dkms linux-headers gnome-text-editor zip 7zip unrar file-roller
+          gnome-system-monitor gparted xorg-xhost wf-recorder wtype apparmor)
 faltan=()
 for p in "${paquetes[@]}"; do
     grep -qxF "$p" iso/titan/packages.x86_64 || faltan+=("$p")
@@ -69,7 +71,7 @@ echo -e "${AZUL}--- Scripts de usr/local/bin${SC}"
 scripts=(titan-bloquear titan-bloquear-avisar titan-inactividad titan-captura
          titan-elegir-pantalla titan-cortafuegos titan-actualizaciones titan-arranque-seguro
          titan-huella titan-instantaneas titan-lector titan-sesion
-         titan-pantallas titan-luz-nocturna titan-acento)
+         titan-pantallas titan-luz-nocturna titan-acento titan-grabar)
 for s in "${scripts[@]}"; do
     f="${BIN}/${s}"
     if [[ ! -f "$f" ]]; then fallo "${s}: no existe"; continue; fi
@@ -266,6 +268,41 @@ contiene "$IB" 'formatearEsp' "junto a Windows no se formatea la ESP"
 contiene "$IB" 'snapper' "snapper en btrfs"
 contiene "$IB" 'grub-btrfs-overlayfs' "arrancar instantaneas (overlayfs)"
 no_contiene "$IB" 'EFI/BOOT/" \+ e.kernel' "los kernels ya no se copian a la ESP"
+
+# ------------------------------------------------------------------ comparacion 2026-11-18
+echo -e "${AZUL}--- Lo que faltaba frente a Ubuntu/Fedora (2026-11-18)${SC}"
+P=iso/titan/packages.x86_64
+no_contiene "$P" '^nvidia-open$' "NVIDIA por DKMS (nvidia-open a secas solo vale para el kernel de Arch)"
+contiene scripts/build-iso.sh 'extra_packages\+=\(linux-titanlinux-headers\)' "cabeceras del kernel propio en la ISO (DKMS)"
+contiene scripts/build-iso.sh 'args\+=\(-p "\$\{extra_packages\[\*\]\}"\)' "mkarchiso -p recibe todos los paquetes en un argumento"
+contiene "${RAIZ}/root/instalador/paso-base.sh" 'nvidia-open-dkms' "instalador de consola: NVIDIA por DKMS"
+contiene "${RAIZ}/root/instalador/paso-base.sh" 'cabeceras/linux-titanlinux-headers' "instalador de consola: instala las cabeceras del kernel propio"
+M="${RAIZ}/etc/xdg/mimeapps.list"
+contiene "$M" '^text/plain=org.gnome.TextEditor.desktop' "los .txt se abren en el Editor de texto (no en vim)"
+contiene "$M" '^application/zip=org.gnome.FileRoller.desktop' "los .zip se abren en File Roller"
+F=apps/titan-finder
+contiene "$F/src/Operaciones.cpp" 'void FinderBackend::comprimir' "Finder: Comprimir"
+contiene "$F/src/Operaciones.cpp" 'void FinderBackend::extraer' "Finder: Extraer aquí"
+contiene "$F/qml/FileList.qml" 'var accion = modelData.a; fileListRoot.ctxVisible = false; accion\(\)' "Finder: las opciones del menú se ejecutan (antes se perdían al cerrarlo)"
+contiene "${RAIZ}/etc/skel/.config/wayfire.ini" 'command_grabar = titan-grabar' "Super+Mayús+5 graba la pantalla (Wayfire)"
+contiene "${RAIZ}/etc/skel/.config/labwc/rc.xml" 'titan-grabar' "Super+Mayús+5 graba la pantalla (labwc)"
+[[ -f "${RAIZ}/usr/share/applications/titan-grabar.desktop" ]] && ok "lanzador Grabar pantalla" || fallo "falta titan-grabar.desktop"
+T=apps/titan-teclado
+[[ -f "$T/titan-teclado.pro" && -f "$T/qml/Teclado.qml" ]] && ok "titan-teclado (teclado en pantalla)" || fallo "falta apps/titan-teclado"
+contiene "$T/src/main.cpp" 'KeyboardInteractivityNone' "el teclado en pantalla no quita el foco a la app"
+contiene scripts/build-iso.sh 'build_qt_app titan-teclado' "build-iso compila titan-teclado"
+grep -qE '\["/usr/local/bin/titan-teclado"\]="0:0:755"' iso/titan/profiledef.sh && ok "titan-teclado en profiledef.sh" || fallo "titan-teclado no esta en profiledef.sh"
+contiene apps/titan-settings/qml/AccesibilidadView.qml 'setTecladoPantalla' "Ajustes > Accesibilidad: interruptor del teclado en pantalla"
+contiene "${BIN}/titan-sesion" 'TECLADO=1' "el teclado en pantalla se recuerda al iniciar sesión"
+LSM='lsm=landlock,lockdown,yama,integrity,apparmor,bpf'
+contiene apps/titan-installer/src/InstallerBackend.cpp "GRUB_CMDLINE_LINUX=.*${LSM}" "AppArmor activo en el sistema instalado (GRUB)"
+contiene iso/titan/grub/grub.cfg "$LSM" "AppArmor activo en el live (GRUB)"
+contiene iso/titan/syslinux/syslinux-linux.cfg "$LSM" "AppArmor activo en el live (syslinux)"
+contiene kernel/linux-titanlinux/config.x86_64 '^CONFIG_SECURITY_APPARMOR=y' "el kernel propio trae AppArmor"
+contiene "${RAIZ}/root/customize_airootfs.sh" 'apparmor.service systemd-oomd.service' "servicios apparmor y systemd-oomd activados"
+contiene "${RAIZ}/etc/systemd/system/user@.service.d/10-titan-oomd.conf" 'ManagedOOMMemoryPressure=kill' "systemd-oomd vigila la sesión del usuario"
+no_contiene iso/titan/grub/grub.cfg 'Titan Linux' "menú de arranque con el nombre Inti OS (GRUB)"
+no_contiene iso/titan/syslinux/syslinux-linux.cfg 'Titan Linux' "menú de arranque con el nombre Inti OS (syslinux)"
 
 # ------------------------------------------------------------------ binarios ISA
 if [[ -x scripts/fijar-isa-baseline.py ]] || [[ -f scripts/fijar-isa-baseline.py ]]; then

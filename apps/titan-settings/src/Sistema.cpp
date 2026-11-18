@@ -14,6 +14,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <unistd.h>
+
 namespace {
 const QString kBin = QStringLiteral("/usr/local/bin/");
 
@@ -428,6 +430,39 @@ void Sistema::leerAccesibilidad()
         m_lector = o.trimmed() == QStringLiteral("on");
         emit cambiado();
     }, 5000);
+    correr(QStringLiteral("pgrep"), {QStringLiteral("-u"), QString::number(getuid()), QStringLiteral("-x"), QStringLiteral("titan-teclado")},
+           [this](int codigo, const QString &, const QString &) {
+        m_tecladoPantalla = codigo == 0;
+        emit cambiado();
+    }, 3000);
+}
+
+// Teclado en pantalla (titan-teclado): abrirlo lo cierra si ya estaba
+// abierto, así que solo se lanza cuando hace falta cambiar. Se recuerda en
+// accesibilidad.conf (TECLADO=1) y titan-sesion lo abre al entrar.
+void Sistema::setTecladoPantalla(bool activo)
+{
+    const QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                         + QStringLiteral("/titan/accesibilidad.conf");
+    QStringList lineas;
+    QFile f(conf);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        for (const QString &l : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+            if (!l.startsWith(QStringLiteral("TECLADO=")))
+                lineas << l;
+        f.close();
+    }
+    lineas << (activo ? QStringLiteral("TECLADO=1") : QStringLiteral("TECLADO=0"));
+    QDir().mkpath(QFileInfo(conf).absolutePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        f.write((lineas.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+
+    const bool antes = m_tecladoPantalla;
+    m_tecladoPantalla = activo;
+    emit cambiado();
+    if (antes != activo)
+        QProcess::startDetached(kBin + QStringLiteral("titan-teclado"), {});
+    QTimer::singleShot(800, this, [this] { leerAccesibilidad(); });
 }
 
 void Sistema::setLector(bool activo)

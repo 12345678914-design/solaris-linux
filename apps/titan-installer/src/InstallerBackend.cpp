@@ -812,6 +812,8 @@ public slots:
         // - splash: pantalla de arranque de Plymouth; tty0 va la ULTIMA en
         //   console= porque /dev/console es la ultima, y ahi pinta Plymouth.
         // - os-prober: Windows y otros sistemas aparecen en el menu de GRUB.
+        // - lsm=...apparmor...: AppArmor activo, como en Ubuntu (el kernel lo
+        //   trae compilado pero no lo enciende si no se pide).
         {
             QFile gDef(QStringLiteral("/mnt/etc/default/grub"));
             if (gDef.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
@@ -820,7 +822,7 @@ public slots:
                            "GRUB_TIMEOUT=5\n"
                            "GRUB_DISTRIBUTOR=\"Inti OS\"\n"
                            "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet splash\"\n"
-                           "GRUB_CMDLINE_LINUX=\"%1console=ttyS0,115200n8 console=tty0\"\n"
+                           "GRUB_CMDLINE_LINUX=\"%1console=ttyS0,115200n8 console=tty0 lsm=landlock,lockdown,yama,integrity,apparmor,bpf\"\n"
                            "GRUB_DISABLE_SUBMENU=y\n"
                            "GRUB_TERMINAL_OUTPUT=\"gfxterm console\"\n"
                            "GRUB_GFXMODE=auto\n"
@@ -1035,7 +1037,7 @@ public slots:
                 "    insmod btrfs\n"
                 "    insmod xfs\n"
                 "    %5\n"
-                "    linux %6/%2 %3 rw loglevel=3 quiet splash console=ttyS0,115200n8 console=tty0\n"
+                "    linux %6/%2 %3 rw loglevel=3 quiet splash console=ttyS0,115200n8 console=tty0 lsm=landlock,lockdown,yama,integrity,apparmor,bpf\n"
                 "    initrd %6/%4\n"
                 "}\n\n"
             ).arg(e.title, e.kernel, rootParam, e.initrd, buscarArranque, prefijoBoot);
