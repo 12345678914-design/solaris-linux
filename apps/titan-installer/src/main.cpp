@@ -83,6 +83,36 @@ int main(int argc, char *argv[])
         // que el USB del live no sale y que el resto si.
         for (const QVariant &d : backend.disks())
             std::cout << "disco=" << d.toMap().value(QStringLiteral("name")).toString().toStdString() << std::endl;
+        // TITAN_COMPROBAR_MANUAL=1: lee la tabla del disco elegido en modo
+        // manual y planea «/boot/efi» (la EFI que haya, sin formatear) + «/»
+        // en el primer hueco libre. Solo planea: no escribe nada en el disco.
+        if (qEnvironmentVariableIsSet("TITAN_COMPROBAR_MANUAL")) {
+            backend.setManualPartitioning(true);
+            auto filas = [&]() { return backend.tablaManual(); };
+            for (const QVariant &v : filas()) {
+                const QVariantMap f = v.toMap();
+                std::cout << "fila=" << f.value(QStringLiteral("tipo")).toString().toStdString() << "|"
+                          << f.value(QStringLiteral("nodo")).toString().toStdString() << "|"
+                          << f.value(QStringLiteral("uso")).toString().toStdString() << "|"
+                          << f.value(QStringLiteral("tamanoTexto")).toString().toStdString() << std::endl;
+            }
+            std::cout << "plan-vacio=" << backend.validatePartitionPlan().toStdString() << std::endl;
+            for (int i = 0; i < filas().size(); ++i)
+                if (filas().at(i).toMap().value(QStringLiteral("flags")).toString().contains(QStringLiteral("esp"))) {
+                    backend.editarParticion(i, QStringLiteral("/boot/efi"), false, QStringLiteral("fat32"));
+                    break;
+                }
+            for (int i = 0; i < filas().size(); ++i)
+                if (filas().at(i).toMap().value(QStringLiteral("tipo")).toString() == QStringLiteral("libre")) {
+                    backend.crearEnHueco(i, 0, QStringLiteral("/"), QStringLiteral("ext4"));
+                    break;
+                }
+            for (const QString &c : backend.cambiosPendientes())
+                std::cout << "pendiente=" << c.toStdString() << std::endl;
+            for (const QString &r : backend.resumenManual())
+                std::cout << "resumen=" << r.toStdString() << std::endl;
+            std::cout << "plan-con-pendientes=" << backend.validatePartitionPlan().toStdString() << std::endl;
+        }
         return 0;
     }
 
