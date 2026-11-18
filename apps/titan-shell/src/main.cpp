@@ -1,3 +1,5 @@
+#include "TitanTinte.h"
+#include <QTimer>
 #include "ShellBackend.h"
 #include "Usuarios.h"
 #include "WindowTracker.h"
@@ -46,6 +48,22 @@ void configurarCapa(QQuickWindow *win, LayerShellQt::Window::Layer capa,
         if (hacerVisible) win->setVisible(true);
         return;
     }
+
+    // Qt 6 pierde la zona de clics (mascara) al ocultar y volver a mostrar
+    // una ventana: la superficie nueva nace sin ella y Qt no la reenvia
+    // porque "no ha cambiado". Sin esto, el Dock movido a un lado (se oculta
+    // para reanclarlo) se comia el raton en toda su franja de 320 px.
+    QObject::connect(win, &QWindow::visibleChanged, win, [win](bool visible) {
+        if (!visible)
+            return;
+        QTimer::singleShot(0, win, [win]() {
+            const QRegion m = win->mask();
+            if (m.isEmpty())
+                return;
+            win->setMask(QRegion());
+            win->setMask(m);
+        });
+    });
 
     ls->setLayer(capa);
     ls->setAnchors(anclas);
@@ -263,7 +281,13 @@ int main(int argc, char *argv[])
     TitanPrefs prefs;
     shellBackend.setPrefs(&prefs);
 
+    // El shell mantiene claro/oscuro de GTK y del portal igual que theme.conf
+    // (Firefox y OnlyOffice en modo "sistema" lo leen de ahí).
+    if (!modoComprobar)
+        ThemeManager::instance()->setSincronizaSistema(true);
+
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("tinte"), new TitanTinte); // carpetas con el acento
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
     engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
     engine.rootContext()->setContextProperty(QStringLiteral("shellBackend"), &shellBackend);
@@ -466,29 +490,18 @@ int main(int argc, char *argv[])
                 win->setVisible(shellBackend.notificationCenterVisible());
             });
         } else if (name == QStringLiteral("dynamicIslandWindow")) {
-            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
-            a |= LayerShellQt::Window::AnchorLeft;
-            a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dynamic-island"),
+            // Anclada solo arriba: el compositor la centra y la ventana mide lo
+            // que la isla (Shell.qml), sin ocupar el resto de la franja.
+            // Zona exclusiva -1: arriba del todo, encima de la barra superior.
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, LayerShellQt::Window::AnchorTop, -1,
+                           QStringLiteral("titan-dynamic-island"),
                            LayerShellQt::Window::KeyboardInteractivityNone, false);
-            // Visible con una notificacion o con musica sonando. La ventana
-            // ocupa todo el ancho de arriba, asi que su zona de clics (mascara)
-            // se limita a la isla: el resto deja pasar el raton a lo de debajo.
+            // Visible con una notificacion o con musica sonando.
             auto actualizarIsla = [win, &shellBackend, &mpris]() {
                 win->setVisible(shellBackend.islandActive() || mpris.disponible());
             };
             QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, actualizarIsla);
             QObject::connect(&mpris, &Mpris::cambiado, win, actualizarIsla);
-            if (auto *tarjeta = win->contentItem()->findChild<QQuickItem *>(QStringLiteral("islandCard"))) {
-                auto mascara = [win, tarjeta]() {
-                    const QPointF p = tarjeta->mapToScene(QPointF(0, 0));
-                    win->setMask(QRegion(QRect(int(p.x()) - 6, 0, int(tarjeta->width()) + 12,
-                                               int(p.y() + tarjeta->height()) + 8)));
-                };
-                for (auto senal : {&QQuickItem::widthChanged, &QQuickItem::heightChanged, &QQuickItem::xChanged})
-                    QObject::connect(tarjeta, senal, win, mascara);
-                mascara();
-            }
             actualizarIsla();
         } else if (name == QStringLiteral("workspacesWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;

@@ -25,6 +25,7 @@ public slots:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void removeItem(const QString &path);
     Q_INVOKABLE void moveItem(const QString &path, qreal x, qreal y);
+    Q_INVOKABLE void moveItemToSlot(const QString &path, int col, int row);
     Q_INVOKABLE QVariantMap iconPosition(const QString &path);
     Q_INVOKABLE bool importFile(const QString &urlOrPath, qreal x = -1, qreal y = -1, bool isMove = false);
     Q_INVOKABLE void copyItems(const QStringList &paths);
@@ -38,6 +39,9 @@ signals:
     void positionsChanged();
 
 private:
+    static int anchoEscritorio();
+    static int filasEscritorio();
+    static QPair<int, int> casillaDe(const QVariantMap &pos);
     void loadItems();
     void ensureSampleDesktop();
     void syncStoreAppsToDesktop();

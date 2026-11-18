@@ -324,6 +324,7 @@ private:
     class QTimer *m_batteryTimer = nullptr;
     int m_batteryPercent = 100;
     bool m_isCharging = true;
+    int m_cargaPrevia = -1; // -1 sin lectura aún / sin batería, 0 descargando, 1 cargando
     bool m_hasBattery = false;
     bool m_lowBatteryAlert = false;
     bool m_batteryAlertDismissed = false;

@@ -178,7 +178,9 @@ Item {
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
-            source: {
+            source: tinteDock.tinte(iconoBase)
+            TitanTheme { id: tinteDock }
+            readonly property string iconoBase: {
                 if (appIcon && appIcon.indexOf("/") !== -1) return appIcon;
                 if (appIcon === "folder" || appIcon === "titan-finder") return "qrc:/icons/finder.png";
                 if (appIcon === "view-app-grid" || appIcon === "launchpad") return "qrc:/icons/launchpad.png";

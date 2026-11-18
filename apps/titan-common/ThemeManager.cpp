@@ -93,6 +93,10 @@ void ThemeManager::onConfigFileChanged()
 
     if (oldDark != m_isDark || oldAccent != m_accent) {
         aplicarPaleta();
+        // Si lo cambió otro programa (p. ej. "titan tema oscuro"), el shell
+        // lleva el modo a GTK/portal para que Firefox y OnlyOffice acierten.
+        if (m_sincronizaSistema && oldDark != m_isDark)
+            sincronizarGtk();
         emit themeChanged();
     }
     if (oldWp != m_wallpaper) {
@@ -286,7 +290,13 @@ void ThemeManager::syncLabwcTheme()
         QProcess::startDetached(QStringLiteral("labwc"), {QStringLiteral("--reconfigure")});
     }
 
-    // Sincronizar tema del sistema (GTK 3, GTK 4, GNOME y Portal de apariencia)
+    sincronizarGtk();
+}
+
+// Claro/oscuro para lo que no es Qt: GTK 3/4, libadwaita y el portal de
+// apariencia (Firefox, OnlyOffice, apps GTK y Flatpak leen color-scheme).
+void ThemeManager::sincronizarGtk()
+{
     QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
     QString gtkTheme = m_isDark ? QStringLiteral("Adwaita-dark") : QStringLiteral("Adwaita");
 
@@ -324,3 +334,9 @@ void ThemeManager::syncLabwcTheme()
     }
 }
 
+void ThemeManager::setSincronizaSistema(bool activo)
+{
+    m_sincronizaSistema = activo;
+    if (activo)
+        sincronizarGtk(); // al entrar: dconf puede no coincidir con theme.conf
+}

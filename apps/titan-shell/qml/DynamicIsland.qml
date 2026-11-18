@@ -20,7 +20,7 @@ Item {
     property bool showIdlePill: false        // true = pastilla visible incluso sin notificación
     property real expandedWidth: 380
     property int  compactWidth: 140
-    property int  compactHeight: 26
+    property int  compactHeight: 24
 
     // Refleja el fondo de pantalla ACTUAL (ver GlassPanel.qml): se decodifica en minúscula y se
     // amplía, así que no hace falta pre-desenfocar nada ni usar blur en vivo.
@@ -67,18 +67,18 @@ Item {
     property real glassOriginX: 0
     property real glassOriginY: 0
     function updateOrigin() {
+        // La ventana de la isla va centrada arriba del todo (main.cpp); en
+        // Wayland mapToGlobal no conoce esa posición, así que se calcula.
         if (!islandCard) return
-        var p = islandCard.mapToGlobal(0, 0)
-        var vx = (typeof Screen !== "undefined" && typeof Screen.virtualX !== "undefined") ? Screen.virtualX : 0
-        var vy = (typeof Screen !== "undefined" && typeof Screen.virtualY !== "undefined") ? Screen.virtualY : 0
-        glassOriginX = p.x - vx
-        glassOriginY = p.y - vy
+        var sw = (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
+        glassOriginX = (sw - islandCard.width) / 2
+        glassOriginY = 2
     }
     Component.onCompleted: Qt.callLater(updateOrigin)
 
     Item {
         id: islandCard
-        objectName: "islandCard"   // main.cpp limita la zona de clics a esta tarjeta
+        objectName: "islandCard"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
 
@@ -93,7 +93,7 @@ Item {
         height: dynamicIslandRoot.active
                 ? Math.max(64, contentH + 28)
                 : dynamicIslandRoot.musica
-                  ? (dynamicIslandRoot.musicaAbierta ? 112 : 34)
+                  ? (dynamicIslandRoot.musicaAbierta ? 112 : 24)
                   : dynamicIslandRoot.compactHeight
         readonly property real cornerRadius: Math.min(height / 2, 24)
 
@@ -254,7 +254,7 @@ Item {
 
             Caratula {
                 id: caratulaPequena
-                width: 24; height: 24; radio: 12
+                width: 18; height: 18; radio: 9
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
             }

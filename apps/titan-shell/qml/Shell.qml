@@ -272,15 +272,19 @@ QtObject {
     property var dynamicIslandWin: Window {
         objectName: "dynamicIslandWindow"
         visible: false
-        width: Screen.width
-        height: 130
+        // Del tamaño de la isla (no de todo el ancho): fuera de ella no hay
+        // ventana, así que no tapa ni roba el ratón a las ventanas de debajo.
+        width: Math.max(40, isla.width + 16)
+        height: Math.max(28, isla.height + 8)
         color: "transparent"
         flags: Qt.FramelessWindowHint
 
+        // Sobre la barra superior (28 px): en reposo cabe dentro de ella.
         DynamicIsland {
+            id: isla
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 4
+            anchors.topMargin: 2
         }
     }
 

@@ -33,6 +33,8 @@ public:
 
     Q_INVOKABLE void toggleTheme();
     Q_INVOKABLE void setMode(const QString &mode); // "light", "dark", "auto"
+    // Solo el shell: mantiene GTK/portal (color-scheme) igual que theme.conf.
+    void setSincronizaSistema(bool activo);
 
 signals:
     void themeChanged();
@@ -46,6 +48,8 @@ private:
     void load();
     void save();
     void syncLabwcTheme();
+    void sincronizarGtk();
+    bool m_sincronizaSistema = false;
     void aplicarPaleta();
     void scanWallpapers();
 

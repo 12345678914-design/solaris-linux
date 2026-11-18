@@ -111,7 +111,7 @@ Item {
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
                 desktopIconsRoot.ctxPath = ""
-                desktopIconsRoot.ctxX = Math.min(mouse.x, desktopIconsRoot.width - 200)
+                desktopIconsRoot.ctxX = Math.min(mouse.x, desktopIconsRoot.width - 242)
                 desktopIconsRoot.ctxY = Math.min(mouse.y, desktopIconsRoot.height - 180)
                 desktopIconsRoot.ctxVisible = true
             }
@@ -201,7 +201,7 @@ Item {
 
         var snapX = w - gridRight - 90 - (col * cellWidth)
         var snapY = gridTop + (row * cellHeight)
-        return { x: snapX, y: snapY }
+        return { x: snapX, y: snapY, col: col, row: row }
     }
 
     Repeater {
@@ -215,20 +215,19 @@ Item {
             readonly property string itemPath: modelData.path
             readonly property bool isSelected: desktopIconsRoot.selectedPaths.indexOf(itemPath) !== -1
             readonly property bool hasSaved: (modelData.hasSavedPos === true && modelData.savedX !== undefined && modelData.savedX >= 0)
+            // Casilla guardada (columna desde la derecha, fila). Si en esta
+            // pantalla caben menos filas, sigue en la columna siguiente.
+            readonly property int filaReal: modelData.gridRow !== undefined ? modelData.gridRow : index
+            readonly property int colReal: (modelData.gridCol !== undefined ? modelData.gridCol : 0)
+                                           + Math.floor(filaReal / desktopIconsRoot.maxRows)
             readonly property real targetX: {
                 if (hasSaved) return modelData.savedX;
-                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
-                    var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width;
-                    return w - desktopIconsRoot.gridRight - 90 - (modelData.gridCol * desktopIconsRoot.cellWidth);
-                }
-                return desktopIconsRoot.defaultPositionForIndex(index).x;
+                var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width;
+                return w - desktopIconsRoot.gridRight - 90 - (colReal * desktopIconsRoot.cellWidth);
             }
             readonly property real targetY: {
                 if (hasSaved) return modelData.savedY;
-                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
-                    return desktopIconsRoot.gridTop + (modelData.gridRow * desktopIconsRoot.cellHeight);
-                }
-                return desktopIconsRoot.defaultPositionForIndex(index).y;
+                return desktopIconsRoot.gridTop + ((filaReal % desktopIconsRoot.maxRows) * desktopIconsRoot.cellHeight);
             }
 
             x: targetX
@@ -294,7 +293,7 @@ Item {
                     Image {
                         id: appIconImage
                         anchors.fill: parent
-                        source: modelData.icon ? modelData.icon : (modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png")
+                        source: titanTheme.tinte(modelData.icon ? modelData.icon : (modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png"))
                         sourceSize: Qt.size(128, 128)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -418,7 +417,7 @@ Item {
                                 var itm = iconRepeater.itemAt(k)
                                 if (itm && itm.itemPath === pth) {
                                     var snapped = desktopIconsRoot.snapToGrid(itm.x, itm.y, pth)
-                                    desktopBackend.moveItem(pth, snapped.x, snapped.y)
+                                    desktopBackend.moveItemToSlot(pth, snapped.col, snapped.row)
                                     itm.x = snapped.x
                                     itm.y = snapped.y
                                 }
@@ -441,7 +440,7 @@ Item {
                         }
                         desktopIconsRoot.ctxPath = modelData.path
                         var pt = iconWrapper.mapToItem(desktopIconsRoot, mouse.x, mouse.y)
-                        desktopIconsRoot.ctxX = Math.min(pt.x, desktopIconsRoot.width - 200)
+                        desktopIconsRoot.ctxX = Math.min(pt.x, desktopIconsRoot.width - 242)
                         desktopIconsRoot.ctxY = Math.min(pt.y, desktopIconsRoot.height - 180)
                         desktopIconsRoot.ctxVisible = true
                     }
@@ -466,7 +465,7 @@ Item {
         visible: desktopIconsRoot.ctxVisible
         x: desktopIconsRoot.ctxX
         y: desktopIconsRoot.ctxY
-        width: 190
+        width: 232
         height: ctxCol.implicitHeight + 16
         radius: 13
         z: 35
@@ -620,7 +619,7 @@ Item {
                 }
             }
 
-            // 3. ELIMINAR (Orden estricto solicitado: copiar-mover-eliminar)
+            // 3. QUITAR DEL ESCRITORIO (a la Papelera, recuperable)
             Rectangle {
                 width: parent.width
                 height: 32
@@ -636,7 +635,7 @@ Item {
                     spacing: 8
                     Text { text: "🗑"; color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextPrimary; font.pixelSize: 13 }
                     Text {
-                        text: desktopIconsRoot.selectedPaths.length > 1 ? ("Eliminar (" + desktopIconsRoot.selectedPaths.length + ")") : "Eliminar"
+                        text: desktopIconsRoot.selectedPaths.length > 1 ? ("Quitar del escritorio (" + desktopIconsRoot.selectedPaths.length + ")") : "Quitar del escritorio"
                         color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextPrimary
                         font.pixelSize: 13
                         Behavior on color { ColorAnimation { duration: 100 } }

@@ -94,6 +94,17 @@ ShellBackend::ShellBackend(QObject *parent)
     connect(m_batteryTimer, &QTimer::timeout, this, [this]() {
         updateBatteryStatus();
     });
+    // Sonido al conectar el cargador. La primera lectura no suena: solo
+    // los cambios mientras la sesión está abierta.
+    connect(this, &ShellBackend::batteryChanged, this, [this]() {
+        const int ahora = m_hasBattery ? (m_isCharging ? 1 : 0) : -1;
+        if (m_cargaPrevia == 0 && ahora == 1) {
+            const QString sonido = QStringLiteral("/usr/share/sounds/freedesktop/stereo/power-plug.oga");
+            if (QFile::exists(sonido))
+                QProcess::startDetached(QStringLiteral("pw-play"), {sonido});
+        }
+        m_cargaPrevia = ahora;
+    });
     m_batteryTimer->start();
 
     m_islandTimer = new QTimer(this);

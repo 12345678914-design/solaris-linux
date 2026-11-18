@@ -459,10 +459,10 @@ Rectangle {
 
             // Borde negro en modo claro, blanco en modo oscuro
             readonly property color batBorderColor: topBar.wallBright ? "#000000" : "#ffffff"
-            // Relleno verde si está cargando, rojo con poca batería; si no, del color del texto
-            readonly property color batFillColor: shellBackend.isCharging ? "#30d158" : (shellBackend.batteryPercent <= 20 ? "#ff3b30" : topBar.barText)
-            // Color de texto
-            readonly property color batTextColor: shellBackend.isCharging ? "#30d158" : topBar.barText
+            // Sigue el tema (blanco o negro) al cargar y al descargar; rojo solo
+            // con poca batería y sin cargador. El rayo indica que está cargando.
+            readonly property color batFillColor: !shellBackend.isCharging && shellBackend.batteryPercent <= 20 ? "#ff3b30" : topBar.barText
+            readonly property color batTextColor: topBar.barText
 
             Text {
                 visible: topBar.pBateria

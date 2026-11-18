@@ -1172,7 +1172,7 @@ Rectangle {
                             spacing: 6
                             width: parent.width - 8
                             Image {
-                                source: modelData.icon
+                                source: theme.tinte(modelData.icon)
                                 sourceSize: Qt.size(64, 64)
                                 width: 58; height: 58
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -1301,7 +1301,7 @@ Rectangle {
                                     height: parent.height
                                     spacing: 8
                                     Image {
-                                        source: modelData.icon
+                                        source: theme.tinte(modelData.icon)
                                         sourceSize: Qt.size(24, 24)
                                         width: 18; height: 18
                                         anchors.verticalCenter: parent.verticalCenter

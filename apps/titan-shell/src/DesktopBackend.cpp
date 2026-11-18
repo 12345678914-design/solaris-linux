@@ -15,6 +15,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QClipboard>
 #include <QMimeData>
 
@@ -164,22 +165,17 @@ void DesktopBackend::loadItems()
     QDir desk(m_desktopPath);
     const QFileInfoList list = desk.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries, QDir::DirsFirst | QDir::Name);
 
-    const qreal cellWidth = 96.0;
-    const qreal cellHeight = 102.0;
-    const qreal gridTop = 36.0;
-    const qreal gridRight = 16.0;
-    const int maxRows = 7;
+    const int maxRows = filasEscritorio();
 
+    // Las posiciones se guardan como casilla (columna desde la derecha, fila),
+    // no en píxeles: así el escritorio sale igual con cualquier resolución o
+    // escala. Antes se suponía una pantalla de 1920 px y, en un portátil de
+    // 1366 o 1536 px, los iconos nuevos quedaban fuera de la pantalla.
     QSet<QPair<int, int>> occupiedSlots;
     for (auto it = m_positions.begin(); it != m_positions.end(); ++it) {
-        QVariantMap pos = it.value().toMap();
-        qreal px = pos.value(QStringLiteral("x"), -1.0).toDouble();
-        qreal py = pos.value(QStringLiteral("y"), -1.0).toDouble();
-        if (px >= 0 && py >= 0) {
-            int col = qMax(0, qRound((1920.0 - gridRight - 90.0 - px) / cellWidth));
-            int row = qMax(0, qMin(maxRows - 1, qRound((py - gridTop) / cellHeight)));
-            occupiedSlots.insert(qMakePair(col, row));
-        }
+        const QPair<int, int> c = casillaDe(it.value().toMap());
+        if (c.first >= 0)
+            occupiedSlots.insert(c);
     }
 
     int nextFreeCol = 0;
@@ -272,36 +268,22 @@ void DesktopBackend::loadItems()
             item[QStringLiteral("exec")] = fi.isExecutable() ? path : QString();
         }
 
-        qreal posX = -1.0;
-        qreal posY = -1.0;
-        if (m_positions.contains(path)) {
-            QVariantMap pos = m_positions[path].toMap();
-            posX = pos.value(QStringLiteral("x"), -1.0).toDouble();
-            posY = pos.value(QStringLiteral("y"), -1.0).toDouble();
-        }
-
-        if (posX < 0 || posY < 0) {
-            // Asignar el siguiente slot libre abajo en la columna
-            auto slot = findNextSlot();
-            posX = 1920.0 - gridRight - 90.0 - (slot.first * cellWidth);
-            posY = gridTop + (slot.second * cellHeight);
-
-            QVariantMap newPos;
-            newPos[QStringLiteral("x")] = posX;
-            newPos[QStringLiteral("y")] = posY;
-            m_positions[path] = newPos;
+        QPair<int, int> casilla = m_positions.contains(path) ? casillaDe(m_positions.value(path).toMap()) : qMakePair(-1, -1);
+        if (casilla.first < 0) {
+            // Siguiente casilla libre, bajando por la columna
+            casilla = findNextSlot();
             positionsModified = true;
-
-            item[QStringLiteral("gridCol")] = slot.first;
-            item[QStringLiteral("gridRow")] = slot.second;
-            item[QStringLiteral("savedX")] = posX;
-            item[QStringLiteral("savedY")] = posY;
-            item[QStringLiteral("hasSavedPos")] = true;
-        } else {
-            item[QStringLiteral("savedX")] = posX;
-            item[QStringLiteral("savedY")] = posY;
-            item[QStringLiteral("hasSavedPos")] = true;
         }
+        QVariantMap pos;
+        pos[QStringLiteral("col")] = casilla.first;
+        pos[QStringLiteral("row")] = casilla.second;
+        if (m_positions.value(path).toMap() != pos) {
+            m_positions[path] = pos; // las antiguas (x, y) pasan a casilla
+            positionsModified = true;
+        }
+        item[QStringLiteral("gridCol")] = casilla.first;
+        item[QStringLiteral("gridRow")] = casilla.second;
+        item[QStringLiteral("hasSavedPos")] = false;
 
         m_items.append(item);
     }
@@ -664,27 +646,56 @@ void DesktopBackend::refresh()
 
 void DesktopBackend::removeItem(const QString &path)
 {
-    QFileInfo fi(path);
-    if (!fi.exists()) return;
-
-    if (fi.isDir()) {
-        QDir dir(path);
-        dir.removeRecursively();
-    } else {
-        QFile::remove(path);
-    }
-
-    refresh();
+    deleteItems({path});
 }
 
 void DesktopBackend::moveItem(const QString &path, qreal x, qreal y)
 {
+    QVariantMap px;
+    px[QStringLiteral("x")] = x;
+    px[QStringLiteral("y")] = y;
+    const QPair<int, int> c = casillaDe(px);
+    moveItemToSlot(path, c.first, c.second);
+}
+
+void DesktopBackend::moveItemToSlot(const QString &path, int col, int row)
+{
     QVariantMap pos;
-    pos[QStringLiteral("x")] = x;
-    pos[QStringLiteral("y")] = y;
+    pos[QStringLiteral("col")] = qMax(0, col);
+    pos[QStringLiteral("row")] = qMax(0, row);
     m_positions[path] = pos;
     savePositions();
     emit positionsChanged();
+}
+
+int DesktopBackend::anchoEscritorio()
+{
+    QScreen *p = QGuiApplication::primaryScreen();
+    return p && p->size().width() > 200 ? p->size().width() : 1920;
+}
+
+int DesktopBackend::filasEscritorio()
+{
+    // Igual que DesktopIcons.qml: (alto - gridTop - 74) / cellHeight
+    QScreen *p = QGuiApplication::primaryScreen();
+    const int alto = p && p->size().height() > 200 ? p->size().height() : 1080;
+    return qMax(1, (alto - 36 - 74) / 102);
+}
+
+QPair<int, int> DesktopBackend::casillaDe(const QVariantMap &pos)
+{
+    if (pos.contains(QStringLiteral("col")))
+        return qMakePair(qMax(0, pos.value(QStringLiteral("col")).toInt()), qMax(0, pos.value(QStringLiteral("row")).toInt()));
+    const qreal x = pos.value(QStringLiteral("x"), -1.0).toDouble();
+    const qreal y = pos.value(QStringLiteral("y"), -1.0).toDouble();
+    if (x < 0 || y < 0)
+        return qMakePair(-1, -1);
+    // Formato antiguo en píxeles. Lo que cae fuera de esta pantalla venía de
+    // suponer 1920 px de ancho.
+    int ancho = anchoEscritorio();
+    if (x > ancho - 96)
+        ancho = 1920;
+    return qMakePair(qMax(0, qRound((ancho - 16.0 - 90.0 - x) / 96.0)), qMax(0, qRound((y - 36.0) / 102.0)));
 }
 
 QVariantMap DesktopBackend::iconPosition(const QString &path)
@@ -711,11 +722,7 @@ void DesktopBackend::loadPositions()
 
     QJsonObject root = doc.object();
     for (auto it = root.begin(); it != root.end(); ++it) {
-        QJsonObject posObj = it.value().toObject();
-        QVariantMap pos;
-        pos[QStringLiteral("x")] = posObj.value(QStringLiteral("x")).toDouble(-1.0);
-        pos[QStringLiteral("y")] = posObj.value(QStringLiteral("y")).toDouble(-1.0);
-        m_positions[it.key()] = pos;
+        m_positions[it.key()] = it.value().toObject().toVariantMap(); // {col,row} o antiguo {x,y}
     }
 }
 
@@ -728,11 +735,7 @@ void DesktopBackend::savePositions()
 
     QJsonObject root;
     for (auto it = m_positions.begin(); it != m_positions.end(); ++it) {
-        QVariantMap posMap = it.value().toMap();
-        QJsonObject posObj;
-        posObj[QStringLiteral("x")] = posMap.value(QStringLiteral("x")).toDouble();
-        posObj[QStringLiteral("y")] = posMap.value(QStringLiteral("y")).toDouble();
-        root[it.key()] = posObj;
+        root[it.key()] = QJsonObject::fromVariantMap(it.value().toMap());
     }
 
     QFile file(configPath);
@@ -816,15 +819,13 @@ void DesktopBackend::copyItems(const QStringList &paths)
 
 void DesktopBackend::deleteItems(const QStringList &paths)
 {
+    // "Quitar del escritorio": a la Papelera (se puede recuperar). Nunca se
+    // borra para siempre desde aquí, ni siquiera si falla la Papelera.
     for (const QString &p : paths) {
         QFileInfo fi(p);
-        if (!fi.exists()) continue;
-        if (fi.isDir()) {
-            QDir(p).removeRecursively();
-        } else {
-            QFile::remove(p);
-        }
-        m_positions.remove(p);
+        if (!fi.exists() && !fi.isSymLink()) continue;
+        if (QFile::moveToTrash(p))
+            m_positions.remove(p);
     }
     savePositions();
     refresh();
