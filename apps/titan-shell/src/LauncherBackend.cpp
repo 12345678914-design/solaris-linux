@@ -5,6 +5,7 @@
 #include <QHash>
 #include <algorithm>
 #include "TitanIconoSvg.h"
+#include "TitanIconoApp.h"
 #include "TitanDesktopEntry.h"
 #include <QDir>
 #include <QFileInfo>
@@ -212,83 +213,10 @@ void LauncherBackend::loadApps()
         m_apps.append(app);
     };
 
+    // El mismo icono que el Dock y el escritorio (ver TitanIconoApp.h).
     // Devuelve "" si no encuentra nada: quien llama genera un icono SVG.
-    auto resolverIcono = [](QString icono, const QString &exec) -> QString {
-        if (icono.startsWith(QStringLiteral("qrc:/"))) {
-            return icono;
-        }
-        if (icono.startsWith(QLatin1Char('/'))) {
-            if (titan::iconoExiste(icono))
-                return QUrl::fromLocalFile(icono).toString();
-            // Ruta rota (app desinstalada a medias): se busca por el nombre.
-            icono = QFileInfo(icono).completeBaseName();
-        }
-        // Icon=nombre.png: los temas guardan el nombre sin extension.
-        icono.remove(QRegularExpression(QStringLiteral("\\.(png|svg|xpm)$"), QRegularExpression::CaseInsensitiveOption));
-        if (icono.isEmpty())
-            return QString();
-
-        // Buscar en rutas comunes de iconos del sistema (Pacman y Flatpak)
-        static const QStringList iconSearchPaths = {
-            QStringLiteral("/usr/share/icons/hicolor/128x128/apps/"),
-            QStringLiteral("/usr/share/icons/hicolor/256x256/apps/"),
-            QStringLiteral("/usr/share/icons/hicolor/scalable/apps/"),
-            QStringLiteral("/usr/share/icons/hicolor/64x64/apps/"),
-            QStringLiteral("/usr/share/icons/hicolor/48x48/apps/"),
-            QStringLiteral("/var/lib/flatpak/exports/share/icons/hicolor/128x128/apps/"),
-            QStringLiteral("/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/"),
-            QStringLiteral("/usr/share/pixmaps/"),
-            QStringLiteral("/usr/share/titan/icons/")
-        };
-
-        for (const QString &path : iconSearchPaths) {
-            QString fullPng = path + icono + QStringLiteral(".png");
-            if (QFile::exists(fullPng)) return QUrl::fromLocalFile(fullPng).toString();
-            QString fullSvg = path + icono + QStringLiteral(".svg");
-            if (QFile::exists(fullSvg)) return QUrl::fromLocalFile(fullSvg).toString();
-        }
-
-        // Mapeo a iconos de estilo macOS
-        QString lower = icono.toLower();
-        QString execLower = exec.toLower();
-        if (lower.contains(QStringLiteral("calc")) || execLower.contains(QStringLiteral("calc")))
-            return QStringLiteral("file:///usr/share/titan/icons/calculator.png");
-        if (lower.contains(QStringLiteral("calendar")) || execLower.contains(QStringLiteral("calendar")))
-            return QStringLiteral("file:///usr/share/titan/icons/calendar.png");
-        if (lower.contains(QStringLiteral("clock")) || execLower.contains(QStringLiteral("clock")))
-            return QStringLiteral("file:///usr/share/titan/icons/clock.png");
-        if (lower.contains(QStringLiteral("celluloid")) || execLower.contains(QStringLiteral("celluloid")) || lower.contains(QStringLiteral("video")))
-            return QStringLiteral("file:///usr/share/titan/icons/video.png");
-        if (lower.contains(QStringLiteral("software")) || execLower.contains(QStringLiteral("software")))
-            return QStringLiteral("file:///usr/share/titan/icons/apps-folder.png");
-        if (lower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("terminal")) || execLower.contains(QStringLiteral("kitty")))
-            return QStringLiteral("qrc:/icons/terminal.png");
-        if (lower.contains(QStringLiteral("firefox")) || lower.contains(QStringLiteral("browser")) || execLower.contains(QStringLiteral("firefox")) || execLower.contains(QStringLiteral("chrome")))
-            return QStringLiteral("qrc:/icons/firefox.png");
-        if (lower.contains(QStringLiteral("vim")) || execLower.contains(QStringLiteral("vim")))
-            return QStringLiteral("qrc:/icons/developer.png");
-        if (lower.contains(QStringLiteral("htop")) || execLower.contains(QStringLiteral("htop")) || lower.contains(QStringLiteral("top")) || execLower.contains(QStringLiteral("top")))
-            return QStringLiteral("qrc:/icons/system.png");
-        if (lower.contains(QStringLiteral("code")) || execLower.contains(QStringLiteral("code")) || execLower.contains(QStringLiteral("editor")))
-            return QStringLiteral("qrc:/icons/vscode.png");
-        if (lower.contains(QStringLiteral("file")) || lower.contains(QStringLiteral("folder")) || execLower.contains(QStringLiteral("fm")) || execLower.contains(QStringLiteral("pcmanfm")))
-            return QStringLiteral("qrc:/icons/files.png");
-        if (lower.contains(QStringLiteral("about")) || lower.contains(QStringLiteral("info")))
-            return QStringLiteral("qrc:/icons/about.png");
-        if (lower.contains(QStringLiteral("system")) || lower.contains(QStringLiteral("setting")) || lower.contains(QStringLiteral("control")) || lower.contains(QStringLiteral("config")))
-            return QStringLiteral("qrc:/icons/system.png");
-        if (lower.contains(QStringLiteral("music")) || lower.contains(QStringLiteral("audio")) || lower.contains(QStringLiteral("player")) || lower.contains(QStringLiteral("spotify")))
-            return QStringLiteral("qrc:/icons/music.png");
-        if (lower.contains(QStringLiteral("image")) || lower.contains(QStringLiteral("photo")) || lower.contains(QStringLiteral("picture")) || lower.contains(QStringLiteral("gimp")))
-            return QStringLiteral("qrc:/icons/pictures.png");
-        if (lower.contains(QStringLiteral("edit")) || lower.contains(QStringLiteral("notes")) || lower.contains(QStringLiteral("text")))
-            return QStringLiteral("qrc:/icons/notes.png");
-        if (lower.contains(QStringLiteral("trash")))
-            return QStringLiteral("qrc:/icons/trash.png");
-        if (lower.contains(QStringLiteral("dev")) || lower.contains(QStringLiteral("build")) || execLower.contains(QStringLiteral("gcc")) || execLower.contains(QStringLiteral("clang")) || execLower.contains(QStringLiteral("cmake")))
-            return QStringLiteral("qrc:/icons/developer.png");
-
-        return QString();
+    auto resolverIcono = [](const QString &icono, const QString &exec) -> QString {
+        return titan::iconoApp(icono, exec);
     };
 
     // Las apps propias de Inti OS van primero: así ganan la deduplicación por
@@ -298,11 +226,11 @@ void LauncherBackend::loadApps()
     addApp(QStringLiteral("Fotos"), QStringLiteral("titan-fotos"), QStringLiteral("qrc:/icons/pictures.png"));
     addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music-app.png"));
     addApp(QStringLiteral("Terminal"), QStringLiteral("titan-terminal"), QStringLiteral("qrc:/icons/terminal.png"));
-    addApp(QStringLiteral("Calculadora"), QStringLiteral("titan-calc"), QStringLiteral("file:///usr/share/titan/icons/calculator.png"));
-    addApp(QStringLiteral("Calendario"), QStringLiteral("titan-calendar"), QStringLiteral("file:///usr/share/titan/icons/calendar.png"));
-    addApp(QStringLiteral("Reloj"), QStringLiteral("titan-clock"), QStringLiteral("file:///usr/share/titan/icons/clock.png"));
-    addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("titan-video"), QStringLiteral("file:///usr/share/titan/icons/video.png"));
-    addApp(QStringLiteral("App Store"), QStringLiteral("plasma-discover"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
+    addApp(QStringLiteral("Calculadora"), QStringLiteral("titan-calc"), QStringLiteral("qrc:/icons/calculator.png"));
+    addApp(QStringLiteral("Calendario"), QStringLiteral("titan-calendar"), QStringLiteral("qrc:/icons/calendar.png"));
+    addApp(QStringLiteral("Reloj"), QStringLiteral("titan-clock"), QStringLiteral("qrc:/icons/clock.png"));
+    addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("titan-video"), QStringLiteral("qrc:/icons/video.png"));
+    addApp(QStringLiteral("App Store"), QStringLiteral("plasma-discover"), QStringLiteral("qrc:/icons/apps-folder.png"));
     addApp(QStringLiteral("Ajustes del Sistema"), QStringLiteral("titan-settings"), QStringLiteral("qrc:/icons/system.png"));
     addApp(QStringLiteral("ONLYOFFICE"), QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("qrc:/icons/onlyoffice.png"));
     addApp(QStringLiteral("Acerca de Inti OS"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));

@@ -2,6 +2,7 @@
 #include "DesktopBackend.h"
 #include "TitanIconoSvg.h"
 #include "TitanDesktopEntry.h"
+#include "TitanIconoApp.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -10,6 +11,8 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QSettings>
+#include <QSet>
+#include <QTimer>
 #include <QUrl>
 #include <QRegularExpression>
 #include <QJsonDocument>
@@ -41,57 +44,121 @@ DesktopBackend::DesktopBackend(QObject *parent)
 
     m_watcher->addPath(m_desktopPath);
 
-    // Observar rutas de exportación de aplicaciones Flatpak (de la tienda de software)
-    const QStringList storeDirs = {
-        QStringLiteral("/var/lib/flatpak/exports/share/applications"),
-        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")
-    };
-    for (const QString &d : storeDirs) {
-        if (!QDir(d).exists()) {
-            QDir().mkpath(d);
-        }
-        if (QDir(d).exists() && !m_watcher->directories().contains(d)) {
-            m_watcher->addPath(d);
-        }
-    }
+    // Apps de la tienda (Flatpak): se vigila su carpeta; si aún no existe
+    // (ninguna app instalada), la carpeta más cercana que sí exista.
+    vigilarTienda();
 
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &path) {
         if (path.contains(QStringLiteral("flatpak"))) {
+            vigilarTienda();
             syncStoreAppsToDesktop();
+            // Al desinstalar, Flatpak puede quitar la entrada antes que la
+            // carpeta de la app: se repasa otra vez un poco después.
+            QTimer::singleShot(4000, this, [this]() { syncStoreAppsToDesktop(); refresh(); });
         }
         refresh();
     });
 }
 
+static QStringList dirsTienda()
+{
+    return {QStringLiteral("/var/lib/flatpak/exports/share/applications"),
+            QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")};
+}
+
+void DesktopBackend::vigilarTienda()
+{
+    for (QString d : dirsTienda()) {
+        // Sin permiso para crearla (la del sistema es de root): se sube hasta
+        // una que exista, y al aparecer la de verdad se vigila esa.
+        if (!QDir(d).exists())
+            QDir().mkpath(d);
+        while (!QDir(d).exists() && d.count(QLatin1Char('/')) > 2)
+            d = d.left(d.lastIndexOf(QLatin1Char('/')));
+        if (QDir(d).exists() && !m_watcher->directories().contains(d))
+            m_watcher->addPath(d);
+    }
+}
+
+// Las apps instaladas desde la App Store salen en el escritorio (como en
+// macOS al bajar una app), y se quitan al desinstalarlas. Lo ya puesto se
+// apunta en ~/.config/titan/escritorio-tienda.list: si alguien borra el
+// icono a mano, no vuelve a aparecer.
 void DesktopBackend::syncStoreAppsToDesktop()
 {
-    const QStringList storeDirs = {
-        QStringLiteral("/var/lib/flatpak/exports/share/applications"),
-        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")
-    };
+    const QString registro = QDir::homePath() + QStringLiteral("/.config/titan/escritorio-tienda.list");
+    QSet<QString> puestas;
+    const bool primeraVez = !QFile::exists(registro);
+    {
+        QFile f(registro);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const auto lineas = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (const QString &l : lineas)
+                puestas.insert(l.trimmed());
+        }
+    }
+    const QSet<QString> antes = puestas;
 
-    for (const QString &dirRuta : storeDirs) {
-        QDir dir(dirRuta);
-        if (!dir.exists()) continue;
-
-        const auto entradas = dir.entryInfoList(QStringList() << QStringLiteral("*.desktop"), QDir::Files);
-        for (const auto &info : entradas) {
-            QString destDesktop = m_desktopPath + QStringLiteral("/") + info.fileName();
-            if (!QFile::exists(destDesktop)) {
-                // Leer el archivo .desktop para verificar si es una aplicación visible de usuario
-                QSettings ini(info.absoluteFilePath(), QSettings::IniFormat);
-                ini.beginGroup(QStringLiteral("Desktop Entry"));
-                if (ini.value(QStringLiteral("NoDisplay"), false).toBool()) continue;
-                if (ini.value(QStringLiteral("Type"), QStringLiteral("Application")).toString() != QStringLiteral("Application")) continue;
-
-                // Copiar el acceso directo al escritorio
-                if (QFile::copy(info.absoluteFilePath(), destDesktop)) {
-                    QFile::setPermissions(destDesktop,
-                        QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
-                        QFileDevice::ReadGroup | QFileDevice::ExeGroup |
-                        QFileDevice::ReadOther | QFileDevice::ExeOther);
-                }
+    QSet<QString> instaladas;
+    for (const QString &dirRuta : dirsTienda()) {
+        const auto entradas = QDir(dirRuta).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+        for (const QFileInfo &info : entradas) {
+            const QString nombre = info.fileName();
+            instaladas.insert(nombre);
+            if (puestas.contains(nombre))
+                continue;
+            puestas.insert(nombre);
+            // La primera vez solo se apunta lo que ya había (sus iconos ya se
+            // pusieron antes, o los quitó la persona).
+            if (primeraVez)
+                continue;
+            const QString destino = m_desktopPath + QLatin1Char('/') + nombre;
+            if (QFile::exists(destino))
+                continue;
+            const auto ini = titan::leerDesktop(info.absoluteFilePath());
+            if (titan::esVerdadero(ini.value(QStringLiteral("NoDisplay"))))
+                continue;
+            if (ini.value(QStringLiteral("Type"), QStringLiteral("Application")) != QStringLiteral("Application"))
+                continue;
+            if (QFile::copy(info.absoluteFilePath(), destino)) {
+                QFile::setPermissions(destino,
+                    QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                    QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                    QFileDevice::ReadOther | QFileDevice::ExeOther);
             }
+        }
+    }
+
+    // Desinstaladas: fuera del registro y, si el icono del escritorio es de
+    // esa app de Flatpak (X-Flatpak=), fuera del escritorio. También limpia
+    // los que quedaron de antes de este arreglo.
+    const auto enEscritorio = QDir(m_desktopPath).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+    for (const QFileInfo &fi : enEscritorio) {
+        if (instaladas.contains(fi.fileName()))
+            continue;
+        const auto ini = titan::leerDesktop(fi.absoluteFilePath());
+        const QString app = ini.value(QStringLiteral("X-Flatpak"));
+        if (app.isEmpty())
+            continue;
+        // Solo si de verdad ya no está (ni en el sistema ni en el usuario)
+        if (QDir(QStringLiteral("/var/lib/flatpak/app/") + app).exists()
+            || QDir(QDir::homePath() + QStringLiteral("/.local/share/flatpak/app/") + app).exists())
+            continue;
+        QFile::remove(fi.absoluteFilePath());
+        m_positions.remove(fi.absoluteFilePath());
+    }
+    for (auto it = puestas.begin(); it != puestas.end();) {
+        if (!instaladas.contains(*it)) it = puestas.erase(it);
+        else ++it;
+    }
+
+    if (puestas != antes || primeraVez) {
+        QDir().mkpath(QFileInfo(registro).absolutePath());
+        QFile f(registro);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QStringList l(puestas.begin(), puestas.end());
+            l.sort();
+            f.write((l.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
         }
     }
 }
@@ -246,7 +313,12 @@ void DesktopBackend::loadItems()
             QString exec = ini.value(QStringLiteral("Exec"));
 
             item[QStringLiteral("name")] = name;
-            item[QStringLiteral("icon")] = resolveAppIcon(icon, exec);
+            // El mismo icono que en el lanzador y el Dock (TitanIconoApp.h)
+            QString icono = titan::iconoApp(icon, exec);
+            if (!titan::iconoExiste(icono))
+                icono = titan::iconoGenerado(name, exec + QLatin1Char(' ') + icon + QLatin1Char(' ') +
+                                                       ini.value(QStringLiteral("Categories")));
+            item[QStringLiteral("icon")] = icono;
             item[QStringLiteral("isApp")] = true;
             item[QStringLiteral("exec")] = exec;
         } else {

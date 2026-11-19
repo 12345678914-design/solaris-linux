@@ -45,6 +45,7 @@ private:
     void loadItems();
     void ensureSampleDesktop();
     void syncStoreAppsToDesktop();
+    void vigilarTienda();
     void loadPositions();
     void savePositions();
     QString resolveIcon(const QString &fileName, bool isDir) const;

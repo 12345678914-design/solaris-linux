@@ -2,6 +2,7 @@
 #include "DockModel.h"
 #include "TitanIconoSvg.h"
 #include "TitanDesktopEntry.h"
+#include "TitanIconoApp.h"
 #include "WindowTracker.h"
 #include "ShellBackend.h"
 #include <QProcess>
@@ -266,51 +267,14 @@ void DockModel::savePinnedApps()
 // StartupWMClass=<app_id>. Se guarda en cache (Alt+Tab lo pide a menudo).
 static QString nombreDesdeDesktop(const QString &appId)
 {
-    static QHash<QString, QString> cache;
-    const QString clave = appId.toLower();
-    if (clave.isEmpty())
+    const QString ruta = titan::desktopDeAppId(appId);
+    if (ruta.isEmpty())
         return QString();
-    auto it = cache.constFind(clave);
-    if (it != cache.constEnd())
-        return it.value();
-
-    const QStringList dirs = {QDir::homePath() + QStringLiteral("/.local/share/applications"),
-                              QStringLiteral("/var/lib/flatpak/exports/share/applications"),
-                              QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications"),
-                              QStringLiteral("/usr/local/share/applications"), QStringLiteral("/usr/share/applications")};
-    auto nombreDe = [](const QHash<QString, QString> &ini) {
-        QString n = ini.value(QStringLiteral("Name[es]"));
-        if (n.isEmpty()) n = ini.value(QStringLiteral("Name[es_ES]"));
-        if (n.isEmpty()) n = ini.value(QStringLiteral("Name"));
-        return n;
-    };
-    QString nombre;
-    for (const QString &d : dirs) {
-        const auto ficheros = QDir(d).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
-        for (const QFileInfo &f : ficheros) {
-            const QString base = f.completeBaseName().toLower();
-            if (base == clave) {
-                nombre = nombreDe(titan::leerDesktop(f.absoluteFilePath()));
-                break;
-            }
-        }
-        if (!nombre.isEmpty()) break;
-    }
-    if (nombre.isEmpty()) {
-        for (const QString &d : dirs) {
-            const auto ficheros = QDir(d).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
-            for (const QFileInfo &f : ficheros) {
-                const auto ini = titan::leerDesktop(f.absoluteFilePath());
-                if (ini.value(QStringLiteral("StartupWMClass")).toLower() == clave) {
-                    nombre = nombreDe(ini);
-                    break;
-                }
-            }
-            if (!nombre.isEmpty()) break;
-        }
-    }
-    cache.insert(clave, nombre);
-    return nombre;
+    const auto ini = titan::leerDesktop(ruta);
+    QString n = ini.value(QStringLiteral("Name[es]"));
+    if (n.isEmpty()) n = ini.value(QStringLiteral("Name[es_ES]"));
+    if (n.isEmpty()) n = ini.value(QStringLiteral("Name"));
+    return n;
 }
 
 QString DockModel::nombreVentana(const QString &appId, const QString &titulo) const
@@ -347,6 +311,18 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
 {
     QString cleanId = cleanAppId(appId);
     QString cleanTitle = title.trimmed().toLower();
+
+    // 0. Si la ventana tiene su .desktop, el mismo icono que en el lanzador
+    //    (antes "video", "music", "control"... en el app_id ganaban al suyo).
+    {
+        const QString ruta = titan::desktopDeAppId(appId);
+        if (!ruta.isEmpty()) {
+            const auto ini = titan::leerDesktop(ruta);
+            const QString ic = titan::iconoApp(ini.value(QStringLiteral("Icon")), ini.value(QStringLiteral("Exec")));
+            if (!ic.isEmpty())
+                return ic;
+        }
+    }
 
     // 1. Iconos estándar del sistema Inti OS
     if (cleanId.contains(QStringLiteral("onlyoffice")) || cleanTitle.contains(QStringLiteral("onlyoffice"))) return QStringLiteral("qrc:/icons/onlyoffice.png");

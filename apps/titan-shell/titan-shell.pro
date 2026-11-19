@@ -43,6 +43,7 @@ HEADERS += \
     ../titan-common/TitanPrefs.h \
     ../titan-common/TitanBinary.h \
     ../titan-common/TitanDesktopEntry.h \
+    ../titan-common/TitanIconoApp.h \
     ../titan-panel/src/tareas.h
 
 RESOURCES += resources.qrc
