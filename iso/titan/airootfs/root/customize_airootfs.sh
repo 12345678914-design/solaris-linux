@@ -748,11 +748,17 @@ fi
 # el fallo por nombres baja a aviso en vez de tumbar el build.)
 sync_log=/tmp/titan-pacman-sync.log
 sync_ok=0
-pacman -Sy --noconfirm >"${sync_log}" 2>&1 && sync_ok=1
+# Un corte de red de unos segundos no debe tumbar el build: se reintenta.
+for intento in 1 2 3; do
+  pacman -Sy --noconfirm >"${sync_log}" 2>&1 && { sync_ok=1; break; }
+  (( intento < 3 )) && sleep 5
+done
+# Fallos de DNS (en cualquiera de sus formas: sin servidor, nombre que no se
+# resuelve o resolucion que tarda demasiado) no son culpa del mirrorlist: aviso.
 if (( sync_ok )); then
   log "pacman: repos sincronizados desde la imagen"
-elif grep -qE 'Could not resolve host|Temporary failure in name resolution' "${sync_log}"; then
-  echo "AVISO: no se pudieron sincronizar los repos en el chroot (sin DNS aqui)." >&2
+elif grep -qE 'Could not resolve host|Temporary failure in name resolution|Resolving timed out' "${sync_log}"; then
+  echo "AVISO: no se pudieron sincronizar los repos en el chroot (DNS sin respuesta aqui)." >&2
   echo "       Lo verificara el check 9 de verify-qemu.sh dentro del live." >&2
 else
   echo "ERROR: los repos de la imagen no sincronizan con este mirrorlist:" >&2
