@@ -9,6 +9,10 @@
 # El fondo es el fondo de escritorio actual, oscurecido; reloj grande, foto y
 # nombre del usuario, campo de contrasena y botones de suspender, reiniciar y
 # apagar. Estilo y disposicion: /usr/share/titan/gtklock/.
+# Debajo del reloj, la musica y las notificaciones de este usuario (modulo
+# titan-avisos, apps/titan-avisos-bloqueo): las que no caben hasta el perfil se
+# acoplan en iconos. Las lee de su XDG_RUNTIME_DIR, asi que otro usuario no
+# las ve; Ajustes > Notificaciones decide si se ensena todo, sin contenido o nada.
 #
 #   titan-bloquear            bloquea (no hace nada si ya esta bloqueada)
 #   titan-bloquear --esperar  bloquea y espera a que el bloqueo este puesto
@@ -64,6 +68,7 @@ gtklock --daemonize \
     --modules userinfo-module \
     --modules powerbar-module \
     --modules playerctl-module \
+    --modules titan-avisos-module \
     --time-format "%H:%M" \
     --date-format "%A, %e de %B" \
     --idle-hide --idle-timeout 30 \

@@ -498,8 +498,11 @@ int main(int argc, char *argv[])
                            LayerShellQt::Window::KeyboardInteractivityNone, false);
             // Visible con una notificacion o con musica sonando.
             auto actualizarIsla = [win, &shellBackend, &mpris]() {
-                win->setVisible(shellBackend.islandActive() || mpris.disponible());
+                // La pantalla de bloqueo ensena sus propios avisos y musica.
+                win->setVisible((shellBackend.islandActive() || mpris.disponible())
+                                && !shellBackend.lockScreenActive());
             };
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, actualizarIsla);
             QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, actualizarIsla);
             QObject::connect(&mpris, &Mpris::cambiado, win, actualizarIsla);
             actualizarIsla();

@@ -272,12 +272,34 @@ QtObject {
     property var dynamicIslandWin: Window {
         objectName: "dynamicIslandWindow"
         visible: false
-        // Del tamaño de la isla (no de todo el ancho): fuera de ella no hay
-        // ventana, así que no tapa ni roba el ratón a las ventanas de debajo.
-        width: Math.max(40, isla.width + 16)
-        height: Math.max(28, isla.height + 8)
+        id: ventanaIsla
+        // Del tamaño de la isla, para no tapar ni robar clics a las ventanas
+        // de debajo. Antes seguía cada fotograma de la animación (unos 60
+        // cambios de tamaño de la superficie Wayland por transición): ahora
+        // crece de una vez al tamaño final y solo encoge cuando la animación
+        // ha terminado. (Una máscara de entrada con ventana fija no sirve:
+        // su commit a mitad de animación deja a Qt sin frame callback.)
+        property real anchoV: 40
+        property real altoV: 28
+        width: anchoV
+        height: altoV
         color: "transparent"
         flags: Qt.FramelessWindowHint
+
+        function ajustar() {
+            var w = Math.ceil(Math.max(isla.anchoObjetivo, isla.width)) + 16
+            var h = Math.ceil(Math.max(isla.altoObjetivo, isla.height)) + 8
+            var quieta = Math.abs(isla.width - isla.anchoObjetivo) < 1 && Math.abs(isla.height - isla.altoObjetivo) < 1
+            if (w > anchoV || quieta) anchoV = Math.max(40, w)
+            if (h > altoV || quieta) altoV = Math.max(28, h)
+        }
+        Connections {
+            target: isla
+            function onAnchoObjetivoChanged() { ventanaIsla.ajustar() }
+            function onAltoObjetivoChanged() { ventanaIsla.ajustar() }
+            function onWidthChanged() { ventanaIsla.ajustar() }
+            function onHeightChanged() { ventanaIsla.ajustar() }
+        }
 
         // Sobre la barra superior (28 px): en reposo cabe dentro de ella.
         DynamicIsland {

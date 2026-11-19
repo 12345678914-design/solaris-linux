@@ -77,6 +77,8 @@ class ShellBackend : public QObject
     Q_PROPERTY(bool islandActive READ islandActive NOTIFY islandChanged)
     Q_PROPERTY(QVariantMap currentIslandNotification READ currentIslandNotification NOTIFY islandChanged)
     Q_PROPERTY(int islandQueueCount READ islandQueueCount NOTIFY islandChanged)
+    // Avisos para la pantalla de bloqueo (segun Notificaciones/bloqueo)
+    Q_PROPERTY(QVariantList avisosBloqueo READ avisosBloqueo NOTIFY avisosBloqueoChanged)
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
@@ -173,18 +175,21 @@ public:
     void setNotificationCenterVisible(bool visible);
     bool islandActive() const { return m_islandActive; }
     QVariantMap currentIslandNotification() const { return m_currentIslandNotification; }
-    int islandQueueCount() const { return 0; }
+    int islandQueueCount() const { return m_islandQueue; }
+    QVariantList avisosBloqueo() const;
 
     Q_INVOKABLE void toggleNotificationCenter();
     Q_INVOKABLE void closeNotificationCenter();
     Q_INVOKABLE void clearNotifications();
     Q_INVOKABLE void removeNotification(int id);
     Q_INVOKABLE void dismissIsland();
+    // Raton encima del aviso: no se cierra solo; al salir, 3 s mas.
+    Q_INVOKABLE void mantenerIsla(bool encima);
     Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString(),
                             const QStringList &actions = QStringList(), bool urgente = false);
     // No molestar desde el Centro de control (lo mismo que en Ajustes).
     Q_INVOKABLE void setNoMolestar(bool activo);
-    void setPrefs(TitanPrefs *p) { m_prefs = p; }
+    void setPrefs(TitanPrefs *p);
     Q_INVOKABLE void invokeNotificationAction(int id, const QString &key);
     void removeNotificationSilently(int id);
     void closeNotificationByApp(int id);
@@ -268,6 +273,7 @@ signals:
     void currentWallpaperChanged();
     void blurredWallpaperChanged();
     void notificationsChanged();
+    void avisosBloqueoChanged();
     void notificationCenterVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
@@ -284,6 +290,8 @@ private:
     void registrarAppNotificadora(const QString &app, const QString &icono);
     TitanPrefs *m_prefs = nullptr;
     bool takeNotification(int id);
+    void escribirAvisosBloqueo();
+    int m_islandQueue = 0;
 
     void updateBatteryStatus();
     void syncHardwareStatus();

@@ -165,6 +165,7 @@ Item {
 
     // ── 2. CABECERA: candado, fecha y hora grande ──────────────────────────
     Column {
+        id: cabecera
         anchors.top: parent.top
         anchors.topMargin: parent.height * 0.07
         anchors.horizontalCenter: parent.horizontalCenter
@@ -202,6 +203,18 @@ Item {
             style: Text.Raised
             styleColor: Qt.rgba(0, 0, 0, 0.18)
         }
+    }
+
+    // ── 2b. MÚSICA Y NOTIFICACIONES (como Android) ─────────────────────────
+    // Si llegan hasta el perfil se acoplan en iconos. Son de quien bloqueó:
+    // al cambiar de usuario (o abrir Usuarios y grupos) se ocultan.
+    AvisosBloqueo {
+        anchors.top: cabecera.bottom
+        anchors.topMargin: 22
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(380, lockScreenRoot.width - 48)
+        alturaDisponible: profileCard.y - (cabecera.y + cabecera.height) - 22 - 24
+        oculto: lockScreenRoot.panelUsuarios || lockScreenRoot.confirmarCambio
     }
 
     // ── 3. ABAJO EN EL CENTRO: cuenta y contraseña (como macOS) ────────────

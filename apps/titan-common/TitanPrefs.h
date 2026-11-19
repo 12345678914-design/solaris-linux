@@ -7,7 +7,8 @@
 //                     segundos, fecha, diaSemana, bateriaPorcentaje,
 //                     iconoWifi, iconoBluetooth, iconoFondo
 //   [Centro]          conectividad, energia, brillo, sonido, noMolestar
-//   [Notificaciones]  vistaPrevia, sonido, noMolestar, apps/<app>=false
+//   [Notificaciones]  vistaPrevia, sonido, noMolestar, apps/<app>=false,
+//                     bloqueo (todo|sinContenido|nada: en la pantalla de bloqueo)
 //   [Concentracion]   programado, desde (HH:mm), hasta (HH:mm)
 //   [Escritorio]      iconos
 //

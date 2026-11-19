@@ -22,6 +22,17 @@ PaginaAjustes {
             }
         }
         Fila {
+            titulo: "En la pantalla de bloqueo"
+            detalle: "Solo las ve quien bloqueó la sesión: al cambiar de usuario no se muestran"
+            Segmentos {
+                anchors.verticalCenter: parent.verticalCenter
+                anchoSegmento: 104
+                opciones: [{ valor: "todo", texto: "Todo" }, { valor: "sinContenido", texto: "Sin contenido" }, { valor: "nada", texto: "Nada" }]
+                valor: { prefs.version; return prefs.s("Notificaciones/bloqueo") }
+                onElegido: (v) => prefs.poner("Notificaciones/bloqueo", v)
+            }
+        }
+        Fila {
             titulo: "Sonido al recibir una notificación"
             Interruptor {
                 anchors.verticalCenter: parent.verticalCenter

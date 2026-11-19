@@ -37,6 +37,7 @@ const QHash<QString, QVariant> &tabla()
         {QStringLiteral("Centro/noMolestar"), true},
         {QStringLiteral("Notificaciones/vistaPrevia"), true},
         {QStringLiteral("Notificaciones/sonido"), true},
+        {QStringLiteral("Notificaciones/bloqueo"), QStringLiteral("todo")},
         {QStringLiteral("Notificaciones/noMolestar"), false},
         {QStringLiteral("Concentracion/programado"), false},
         {QStringLiteral("Concentracion/desde"), QStringLiteral("22:00")},

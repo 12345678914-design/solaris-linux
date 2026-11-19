@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
-import QtQuick.Effects   // MultiEffect (Qt 6.5+), solo para recortar esquinas
+import QtQuick.Effects   // MultiEffect (Qt 6.5+), solo para las caratulas
 
 Item {
     id: dynamicIslandRoot
@@ -22,18 +22,7 @@ Item {
     property int  compactWidth: 140
     property int  compactHeight: 24
 
-    // Refleja el fondo de pantalla ACTUAL (ver GlassPanel.qml): se decodifica en minúscula y se
-    // amplía, así que no hace falta pre-desenfocar nada ni usar blur en vivo.
-    readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
-    readonly property bool hasGlass: wallpaperPath !== ""
-
-    function toUrl(p) {
-        if (!p) return ""
-        var s = p.toString()
-        if (s.indexOf("://") !== -1 || s.indexOf("qrc:") === 0) return s
-        if (s.charAt(0) === "/") return "file://" + s
-        return s
-    }
+    readonly property real anchoPantalla: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
 
     // ---------- Musica (MPRIS) ----------
     // Sin notificacion delante, la isla ensena lo que suena: una pastilla con
@@ -63,18 +52,15 @@ Item {
 
     signal actionTriggered(var action)       // conecta esto a tu backend
 
-    // Posición de la isla en pantalla (para alinear el wallpaper borroso)
-    property real glassOriginX: 0
-    property real glassOriginY: 0
-    function updateOrigin() {
-        // La ventana de la isla va centrada arriba del todo (main.cpp); en
-        // Wayland mapToGlobal no conoce esa posición, así que se calcula.
-        if (!islandCard) return
-        var sw = (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
-        glassOriginX = (sw - islandCard.width) / 2
-        glassOriginY = 2
-    }
-    Component.onCompleted: Qt.callLater(updateOrigin)
+    // Tamaño final de la isla (sin la animación): Shell.qml ajusta la
+    // ventana a él una sola vez por transición.
+    // (Con prefijo: hay un Item con id musicaAbierta que taparía la propiedad.)
+    readonly property real anchoObjetivo: dynamicIslandRoot.active
+           ? Math.min(dynamicIslandRoot.expandedWidth, dynamicIslandRoot.anchoPantalla - 32)
+           : dynamicIslandRoot.musica ? (dynamicIslandRoot.musicaAbierta ? 360 : 236) : dynamicIslandRoot.compactWidth
+    readonly property real altoObjetivo: dynamicIslandRoot.active
+           ? Math.max(64, islandCard.contentH + 28)
+           : dynamicIslandRoot.musica ? (dynamicIslandRoot.musicaAbierta ? 112 : 24) : dynamicIslandRoot.compactHeight
 
     Item {
         id: islandCard
@@ -85,20 +71,9 @@ Item {
         readonly property real contentH: Math.max(40, textCol.implicitHeight)
                                          + (actionsRow.visible ? actionsRow.height + 10 : 0)
 
-        width: dynamicIslandRoot.active
-               ? Math.min(dynamicIslandRoot.expandedWidth, (typeof Screen !== "undefined" && Screen.width > 0 ? Screen.width : 1920) - 32)
-               : dynamicIslandRoot.musica
-                 ? (dynamicIslandRoot.musicaAbierta ? 360 : 236)
-                 : dynamicIslandRoot.compactWidth
-        height: dynamicIslandRoot.active
-                ? Math.max(64, contentH + 28)
-                : dynamicIslandRoot.musica
-                  ? (dynamicIslandRoot.musicaAbierta ? 112 : 24)
-                  : dynamicIslandRoot.compactHeight
+        width: dynamicIslandRoot.anchoObjetivo
+        height: dynamicIslandRoot.altoObjetivo
         readonly property real cornerRadius: Math.min(height / 2, 24)
-
-        onWidthChanged: Qt.callLater(dynamicIslandRoot.updateOrigin)
-        onHeightChanged: Qt.callLater(dynamicIslandRoot.updateOrigin)
 
         // Mismo muelle en ancho y alto: la isla crece sin deformarse
         Behavior on width  { SpringAnimation { spring: 3.4; damping: 0.34; epsilon: 0.25 } }
@@ -125,45 +100,14 @@ Item {
             }
         }
 
-        // ---------- VIDRIO: wallpaper borroso recortado + tinte oscuro ----------
-        Item {
-            anchors.fill: parent
-            layer.enabled: dynamicIslandRoot.hasGlass
-            layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: glassMask
-                maskThresholdMin: 0.5
-                maskSpreadAtMin: 1.0
-            }
-
-            Image {
-                visible: dynamicIslandRoot.hasGlass
-                source: dynamicIslandRoot.toUrl(dynamicIslandRoot.wallpaperPath)
-                sourceSize: Qt.size(48, 27)      // decodificación minúscula = desenfoque barato
-                x: -dynamicIslandRoot.glassOriginX
-                y: -dynamicIslandRoot.glassOriginY
-                width: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
-                height: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: true
-                smooth: true
-            }
-
-            // Tinte: oscuro y casi opaco para un blur "pequeño" y legible
-            Rectangle {
-                anchors.fill: parent
-                radius: islandCard.cornerRadius
-                color: dynamicIslandRoot.hasGlass ? Qt.rgba(0.04, 0.045, 0.055, 0.80) : "#0a0b0e"
-            }
-        }
-
+        // ---------- FONDO: negro casi opaco, como la isla del iPhone ----------
+        // Antes era el fondo de pantalla recortado con MultiEffect: esa capa
+        // se volvía a pintar en cada fotograma de la animación de tamaño.
         Rectangle {
-            id: glassMask
             anchors.fill: parent
             radius: islandCard.cornerRadius
-            visible: false
-            layer.enabled: true
+            color: Qt.rgba(0.02, 0.022, 0.03, 0.96)
+            antialiasing: true
         }
 
         // Borde fino y brillo superior
@@ -204,6 +148,12 @@ Item {
             target: dynamicIslandRoot
             function onNotifChanged() { if (dynamicIslandRoot.active) ringAnim.restart() }
             function onActiveChanged() { if (dynamicIslandRoot.active) ringAnim.restart() }
+        }
+
+        // Con el ratón encima, el aviso no se va solo
+        HoverHandler {
+            enabled: dynamicIslandRoot.active
+            onHoveredChanged: shellBackend.mantenerIsla(hovered)
         }
 
         // Clic en la tarjeta: abre el centro de notificaciones
@@ -254,6 +204,7 @@ Item {
 
             Caratula {
                 id: caratulaPequena
+                fuente: dynamicIslandRoot.hayMpris ? mpris.caratula : ""
                 width: 18; height: 18; radio: 9
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -293,6 +244,7 @@ Item {
 
             Caratula {
                 id: caratulaGrande
+                fuente: dynamicIslandRoot.hayMpris ? mpris.caratula : ""
                 width: 76; height: 76; radio: 14
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -547,50 +499,6 @@ Item {
     }
 
     // ---------- Piezas de la musica ----------
-    component Caratula: Item {
-        property real radio: 8
-        Rectangle {
-            id: fondoCaratula
-            anchors.fill: parent
-            radius: parent.radio
-            color: Qt.rgba(1, 1, 1, 0.10)
-            // Nota musical si el reproductor no da caratula
-            Text {
-                anchors.centerIn: parent
-                visible: imagenCaratula.status !== Image.Ready
-                text: "\u266A"
-                color: Qt.rgba(1, 1, 1, 0.7)
-                font.pixelSize: parent.height * 0.5
-            }
-        }
-        Image {
-            id: imagenCaratula
-            anchors.fill: parent
-            source: dynamicIslandRoot.hayMpris ? mpris.caratula : ""
-            sourceSize: Qt.size(160, 160)
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            smooth: true
-            visible: false
-        }
-        MultiEffect {
-            anchors.fill: parent
-            source: imagenCaratula
-            visible: imagenCaratula.status === Image.Ready
-            maskEnabled: true
-            maskSource: mascaraCaratula
-            maskThresholdMin: 0.5
-            maskSpreadAtMin: 1.0
-        }
-        Rectangle {
-            id: mascaraCaratula
-            anchors.fill: parent
-            radius: parent.radio
-            visible: false
-            layer.enabled: true
-        }
-    }
-
     component BarrasSonido: Row {
         spacing: 2
         height: 14
@@ -606,7 +514,8 @@ Item {
                 readonly property bool suena: dynamicIslandRoot.hayMpris && mpris.reproduciendo && dynamicIslandRoot.musica
                 height: suena ? 4 : 3
                 SequentialAnimation on height {
-                    running: barra.suena
+                    // Solo se anima la copia que se ve (hay dos: pastilla y tarjeta)
+                    running: barra.suena && barra.visible
                     loops: Animation.Infinite
                     NumberAnimation { to: 6 + (barra.index * 5) % 9; duration: 220 + barra.index * 60; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 3 + barra.index % 2; duration: 260 + barra.index * 40; easing.type: Easing.InOutSine }
@@ -614,57 +523,6 @@ Item {
                     NumberAnimation { to: 4; duration: 240; easing.type: Easing.InOutSine }
                 }
             }
-        }
-    }
-
-    component BotonMedio: Item {
-        id: boton
-        property string tipo: "play"
-        property bool grande: false
-        property bool activo: true
-        signal pulsado()
-        width: grande ? 36 : 30
-        height: 30
-        opacity: activo ? 1 : 0.35
-        Rectangle {
-            anchors.centerIn: parent
-            width: 30; height: 30; radius: 15
-            color: ratonBoton.containsMouse && boton.activo ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
-        }
-        Canvas {
-            id: dibujo
-            anchors.centerIn: parent
-            width: 18; height: 18
-            property string t: boton.tipo
-            onTChanged: requestPaint()
-            onPaint: {
-                var c = getContext("2d")
-                c.reset()
-                c.fillStyle = "#ffffff"
-                function tri(x0, dir) {   // triangulo de 8 px de ancho apuntando a dir
-                    c.beginPath()
-                    if (dir > 0) { c.moveTo(x0, 4); c.lineTo(x0 + 8, 9); c.lineTo(x0, 14) }
-                    else { c.moveTo(x0 + 8, 4); c.lineTo(x0, 9); c.lineTo(x0 + 8, 14) }
-                    c.closePath(); c.fill()
-                }
-                if (t === "play") {
-                    c.beginPath(); c.moveTo(5, 2); c.lineTo(16, 9); c.lineTo(5, 16); c.closePath(); c.fill()
-                } else if (t === "pausa") {
-                    c.fillRect(4, 3, 3.5, 12); c.fillRect(10.5, 3, 3.5, 12)
-                } else if (t === "siguiente") {
-                    tri(2, 1); tri(9, 1)
-                } else {
-                    tri(1, -1); tri(8, -1)
-                }
-            }
-        }
-        MouseArea {
-            id: ratonBoton
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: boton.activo
-            cursorShape: Qt.PointingHandCursor
-            onClicked: boton.pulsado()
         }
     }
 }

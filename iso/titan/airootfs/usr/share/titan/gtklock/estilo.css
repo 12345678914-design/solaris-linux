@@ -88,3 +88,32 @@ button#unlock-button:hover { background-color: rgba(255, 255, 255, 0.34); }
 }
 #title-label  { font-weight: 600; }
 #artist-label, #album-label { color: rgba(255, 255, 255, 0.75); }
+
+/* Notificaciones (titan-avisos-module), debajo del reloj y la musica */
+#titan-aviso {
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(18, 20, 28, 0.48);
+}
+#titan-aviso-app, #titan-aviso-hora { font-size: 11px; color: rgba(255, 255, 255, 0.65); }
+#titan-aviso-titulo { font-size: 13px; font-weight: 600; }
+#titan-aviso-texto  { font-size: 12px; color: rgba(255, 255, 255, 0.80); }
+/* Las que no caben hasta el perfil: acopladas en iconos */
+#titan-avisos-repisa {
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(18, 20, 28, 0.48);
+}
+#titan-avisos-cuenta {
+  min-width: 11px;
+  padding: 0 2px;
+  border-radius: 7px;
+  background-color: #ffffff;
+  color: #111111;
+  text-shadow: none;
+  font-size: 9px;
+  font-weight: 700;
+}
+#titan-avisos-rollo, #titan-avisos-rollo viewport { background: none; border: none; box-shadow: none; }

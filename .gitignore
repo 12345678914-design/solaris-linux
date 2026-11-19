@@ -150,6 +150,10 @@ apps/titan-cli/target/
 apps/titan-*/titan-*
 !apps/titan-*/titan-*.pro
 !apps/titan-*/titan-*.qrc
+# Makefile escrito a mano (modulo de gtklock, no es de qmake)
+!apps/titan-avisos-bloqueo/Makefile
+# Modulo de gtklock que compila build-iso.sh
+iso/titan/airootfs/usr/lib/gtklock/titan-avisos-module.so
 
 # Discos virtuales de QEMU y caches
 *.raw

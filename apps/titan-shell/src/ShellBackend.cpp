@@ -21,6 +21,7 @@
 #include <QDBusConnection>
 #include <QUrl>
 #include <QQuickWindow>
+#include <QSaveFile>
 
 NotificationsAdaptor::NotificationsAdaptor(ShellBackend *parent)
     : QDBusAbstractAdaptor(parent)
@@ -1328,8 +1329,110 @@ void ShellBackend::dismissIsland()
 {
     if (m_islandActive) {
         m_islandActive = false;
+        m_islandQueue = 0;
         emit islandChanged();
     }
+}
+
+void ShellBackend::mantenerIsla(bool encima)
+{
+    if (!m_islandTimer || !m_islandActive)
+        return;
+    if (encima)
+        m_islandTimer->stop();
+    else
+        m_islandTimer->start(3000);
+}
+
+void ShellBackend::setPrefs(TitanPrefs *p)
+{
+    m_prefs = p;
+    // Cambiar en Ajustes que se ve en el bloqueo se aplica al momento.
+    if (m_prefs)
+        connect(m_prefs, &TitanPrefs::cambiado, this, [this]() {
+            emit avisosBloqueoChanged();
+            escribirAvisosBloqueo();
+        });
+    connect(this, &ShellBackend::notificationsChanged, this, [this]() {
+        emit avisosBloqueoChanged();
+        escribirAvisosBloqueo();
+    });   // setPrefs se llama una sola vez (main.cpp)
+    escribirAvisosBloqueo();
+}
+
+QVariantList ShellBackend::avisosBloqueo() const
+{
+    // Como Android: todo, sin contenido (app y hora) o nada.
+    const QString modo = m_prefs ? m_prefs->s(QStringLiteral("Notificaciones/bloqueo")) : QStringLiteral("todo");
+    QVariantList lista;
+    if (modo == QStringLiteral("nada"))
+        return lista;
+    const bool contenido = modo != QStringLiteral("sinContenido")
+                           && (!m_prefs || m_prefs->b(QStringLiteral("Notificaciones/vistaPrevia")));
+    for (const QVariant &v : m_notifications) {
+        if (lista.size() >= 30)
+            break;
+        const QVariantMap n = v.toMap();
+        QVariantMap a;
+        a[QStringLiteral("id")] = n.value(QStringLiteral("id"));
+        a[QStringLiteral("appName")] = n.value(QStringLiteral("appName"));
+        a[QStringLiteral("icon")] = n.value(QStringLiteral("icon"));
+        a[QStringLiteral("time")] = n.value(QStringLiteral("time"));
+        if (modo == QStringLiteral("sinContenido")) {
+            a[QStringLiteral("title")] = QStringLiteral("Contenido oculto");
+            a[QStringLiteral("message")] = QString();
+        } else {
+            a[QStringLiteral("title")] = n.value(QStringLiteral("title"));
+            a[QStringLiteral("message")] = contenido ? n.value(QStringLiteral("message")) : QVariant(QString());
+        }
+        lista.append(a);
+    }
+    return lista;
+}
+
+// Valor de GKeyFile (lo lee el modulo de gtklock con g_key_file).
+static QString valorClave(QString t)
+{
+    t.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    t.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+    t.replace(QLatin1Char('\r'), QStringLiteral("\\r"));
+    t.replace(QLatin1Char('\t'), QStringLiteral("\\t"));
+    if (t.startsWith(QLatin1Char(' ')))
+        t = QStringLiteral("\\s") + t.mid(1);
+    return t;
+}
+
+void ShellBackend::escribirAvisosBloqueo()
+{
+    // La pantalla de bloqueo segura (gtklock) es otro programa: se le pasan
+    // los avisos en un fichero de XDG_RUNTIME_DIR, que solo puede leer este
+    // usuario y desaparece al cerrar su sesion. Asi, al cambiar de usuario
+    // nadie mas los ve.
+    const QString dir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (dir.isEmpty() || !QFileInfo(dir).isDir())
+        return;
+    QSaveFile f(dir + QStringLiteral("/titan-avisos-bloqueo"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QString out = QStringLiteral("# Inti OS - avisos para la pantalla de bloqueo (titan-shell)\n");
+    int i = 0;
+    for (const QVariant &v : avisosBloqueo()) {
+        const QVariantMap a = v.toMap();
+        QString icono = a.value(QStringLiteral("icon")).toString();
+        if (icono.startsWith(QStringLiteral("file://")))
+            icono = QUrl(icono).toLocalFile();
+        else if (!icono.startsWith(QLatin1Char('/')))
+            icono.clear();   // qrc: no existe fuera del shell
+        out += QStringLiteral("\n[aviso %1]\n").arg(i++);
+        out += QStringLiteral("app=") + valorClave(a.value(QStringLiteral("appName")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("titulo=") + valorClave(a.value(QStringLiteral("title")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("texto=") + valorClave(a.value(QStringLiteral("message")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("icono=") + valorClave(icono) + QLatin1Char('\n');
+        out += QStringLiteral("hora=") + valorClave(a.value(QStringLiteral("time")).toString()) + QLatin1Char('\n');
+    }
+    f.write(out.toUtf8());
+    f.commit();
 }
 
 // Clave de una app en las preferencias ('/' separaria grupos en QSettings).
@@ -1440,6 +1543,8 @@ void ShellBackend::notify(const QString &title, const QString &message, const QS
     if (m_prefs && !m_prefs->b(QStringLiteral("Notificaciones/vistaPrevia")))
         aviso[QStringLiteral("message")] = QString();
     m_currentIslandNotification = aviso;
+    // Si ya habia un aviso en la isla, el nuevo lo sustituye y cuenta "+N".
+    m_islandQueue = m_islandActive ? m_islandQueue + 1 : 0;
     m_islandActive = true;
     emit islandChanged();
 
@@ -1546,6 +1651,10 @@ void ShellBackend::switchUser()
     // pantalla de inicio con todas las cuentas.
     if (!canSwitchUser())
         return;
+    // Los avisos de esta sesion no deben verse en la de otro usuario.
+    const QString dir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (!dir.isEmpty())
+        QFile::remove(dir + QStringLiteral("/titan-avisos-bloqueo"));
     const QString sesion = qEnvironmentVariable("XDG_SESSION_ID");
     QStringList args{QStringLiteral("terminate-session")};
     if (!sesion.isEmpty())

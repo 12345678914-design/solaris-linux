@@ -12,6 +12,9 @@
         <file>qml/ControlCenter.qml</file>
         <file>qml/NotificationCenter.qml</file>
         <file>qml/DynamicIsland.qml</file>
+        <file>qml/Caratula.qml</file>
+        <file>qml/BotonMedio.qml</file>
+        <file>qml/AvisosBloqueo.qml</file>
         <file>qml/WorkspacesView.qml</file>
         <file>qml/BootSplash.qml</file>
         <file>qml/LockScreen.qml</file>

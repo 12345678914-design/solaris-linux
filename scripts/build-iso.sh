@@ -457,6 +457,22 @@ fi
 install -m 0755 "${DISTRO}/apps/titan-greeter/helper/titan-usuarios-helper" \
   "${PROFILE}/airootfs/usr/local/bin/titan-usuarios-helper"
 
+# Notificaciones en la pantalla de bloqueo segura: modulo de gtklock (C, GTK 3).
+info "compilando el modulo de gtklock titan-avisos"
+command -v pkg-config >/dev/null 2>&1 && pkg-config --exists gtk+-3.0 gmodule-export-2.0 || {
+  red "Faltan las cabeceras de GTK 3 (paquete gtk3) para el modulo de gtklock."
+  exit 1
+}
+install -d "${PROFILE}/airootfs/usr/lib/gtklock"
+if ! make -C "${DISTRO}/apps/titan-avisos-bloqueo" \
+     SALIDA="${PROFILE}/airootfs/usr/lib/gtklock/titan-avisos-module.so" \
+     >"${WORK_DIR}/titan-avisos-build.log" 2>&1; then
+  red "Fallo al compilar titan-avisos-module; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-avisos-build.log" >&2
+  exit 1
+fi
+chmod 0644 "${PROFILE}/airootfs/usr/lib/gtklock/titan-avisos-module.so"
+
 # ------------------------------------------- 2d. app 'titan-acerca' ----------
 
 ACERCA="${DISTRO}/apps/titan-acerca"

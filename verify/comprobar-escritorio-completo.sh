@@ -325,6 +325,35 @@ no_contiene apps/titan-shell/src/LauncherBackend.cpp '"gnome-software"' "el lanz
 contiene "${RAIZ}/root/customize_airootfs.sh" 'org.kde.discover.desktop' "Discover se llama App Store en el menú"
 contiene "${RAIZ}/etc/profile.d/15-titan-grafico.sh" '\. /etc/profile.d/flatpak.sh' "la sesión ve las apps Flatpak (Lanzar, menú, Abrir con)"
 
+# ------------------------------------------------------------------ bloqueo e isla
+echo -e "${AZUL}--- Notificaciones en el bloqueo e Isla Dinámica (2026-11-18)${SC}"
+SH=apps/titan-shell
+contiene "$SH/qml/LockScreen.qml" 'AvisosBloqueo' "bloqueo QML (live): música y notificaciones"
+contiene "$SH/qml/LockScreen.qml" 'oculto: lockScreenRoot.panelUsuarios \|\| lockScreenRoot.confirmarCambio' "al cambiar de usuario se ocultan los avisos"
+contiene "$SH/qml/AvisosBloqueo.qml" 'tarjetasQueCaben' "las que no caben hasta el perfil se acoplan en iconos"
+contiene "$SH/resources.qrc" 'qml/AvisosBloqueo.qml' "AvisosBloqueo.qml en el qrc"
+contiene "$SH/resources.qrc" 'qml/Caratula.qml' "Caratula.qml en el qrc"
+contiene "$SH/resources.qrc" 'qml/BotonMedio.qml' "BotonMedio.qml en el qrc"
+contiene "$SH/src/ShellBackend.cpp" 'titan-avisos-bloqueo' "el shell pasa los avisos al bloqueo seguro"
+contiene "$SH/src/ShellBackend.cpp" 'XDG_RUNTIME_DIR' "avisos en la carpeta privada del usuario"
+contiene apps/titan-common/TitanPrefs.cpp 'Notificaciones/bloqueo' "preferencia: todo / sin contenido / nada"
+contiene apps/titan-settings/qml/NotificacionesView.qml 'Notificaciones/bloqueo' "opción en Ajustes > Notificaciones"
+contiene "${BIN}/titan-bloquear" 'titan-avisos-module' "gtklock carga el módulo de notificaciones"
+contiene scripts/build-iso.sh 'titan-avisos-module.so' "build-iso compila el módulo de gtklock"
+contiene apps/titan-avisos-bloqueo/avisos.c 'GTK_POLICY_EXTERNAL' "el módulo nunca agranda la ventana de bloqueo"
+contiene "${RAIZ}/usr/share/titan/gtklock/estilo.css" '#titan-aviso ' "estilo de las tarjetas en gtklock"
+if command -v pkg-config >/dev/null && pkg-config --exists gtk+-3.0 gmodule-export-2.0 && \
+   make -s -C apps/titan-avisos-bloqueo SALIDA="$(mktemp -d)/m.so" CFLAGS="-O2 -Wall -Wextra -Wno-unused-parameter -Werror" >/dev/null 2>&1; then
+    ok "el módulo de gtklock compila sin avisos"
+else
+    fallo "el módulo de gtklock no compila (o faltan las cabeceras de GTK 3)"
+fi
+contiene "$SH/qml/DynamicIsland.qml" 'dynamicIslandRoot.musicaAbierta . 360' "isla: tamaño final sin el id que tapa la propiedad"
+no_contiene "$SH/qml/DynamicIsland.qml" 'wallpaperPath' "isla: sin capa de fondo recortada en cada fotograma"
+contiene "$SH/qml/DynamicIsland.qml" 'barra.suena && barra.visible' "isla: las barras solo se animan si se ven"
+contiene "$SH/qml/Shell.qml" 'function ajustar' "isla: la ventana no cambia de tamaño en cada fotograma"
+contiene "$SH/src/ShellBackend.cpp" 'm_islandQueue = m_islandActive' "isla: contador real «+N»"
+
 # ------------------------------------------------------------------ binarios ISA
 if [[ -x scripts/fijar-isa-baseline.py ]] || [[ -f scripts/fijar-isa-baseline.py ]]; then
     elfs=()
