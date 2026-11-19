@@ -304,6 +304,27 @@ contiene "${RAIZ}/etc/systemd/system/user@.service.d/10-titan-oomd.conf" 'Manage
 no_contiene iso/titan/grub/grub.cfg 'Titan Linux' "menú de arranque con el nombre Inti OS (GRUB)"
 no_contiene iso/titan/syslinux/syslinux-linux.cfg 'Titan Linux' "menú de arranque con el nombre Inti OS (syslinux)"
 
+# ------------------------------------------------------------------ tienda: Discover
+echo -e "${AZUL}--- App Store: Discover (2026-11-18)${SC}"
+contiene "$P" '^discover$' "Discover en la ISO"
+no_contiene "$P" '^gnome-software$' "GNOME Software fuera (una sola tienda)"
+no_contiene "$P" '^packagekit-qt6$' "sin packagekit-qt6 (Discover no gestiona los paquetes de Arch)"
+DW="${BIN}/plasma-discover"
+if [[ -x "$DW" ]] && sh -n "$DW" && grep -qE '\["/usr/local/bin/plasma-discover"\]="0:0:755"' iso/titan/profiledef.sh && ! git check-ignore -q "$DW"; then
+    ok "envoltorio plasma-discover: sintaxis, permisos, profiledef.sh y git"
+else
+    fallo "envoltorio plasma-discover (sintaxis, permisos, profiledef.sh o .gitignore)"
+fi
+contiene "$DW" 'flatpak-backend,fwupd-backend' "Discover solo con Flatpak y firmware"
+contiene "$DW" 'QT_QPA_PLATFORMTHEME=gtk3' "Discover sigue el modo claro/oscuro"
+contiene apps/titan-common/ThemeManager.cpp 'glib-2.0/settings' "el cambio de modo llega a Discover (iconos breeze/breeze-dark)"
+contiene apps/titan-shell/src/DockModel.cpp 'QStringLiteral\("plasma-discover"\)\);' "el Dock abre Discover"
+contiene apps/titan-shell/src/DockModel.cpp 'org.gnome.Software' "un Dock guardado con GNOME Software pasa a Discover"
+contiene apps/titan-shell/src/LauncherBackend.cpp '"plasma-discover"' "el lanzador abre Discover"
+no_contiene apps/titan-shell/src/LauncherBackend.cpp '"gnome-software"' "el lanzador ya no abre GNOME Software"
+contiene "${RAIZ}/root/customize_airootfs.sh" 'org.kde.discover.desktop' "Discover se llama App Store en el menú"
+contiene "${RAIZ}/etc/profile.d/15-titan-grafico.sh" '\. /etc/profile.d/flatpak.sh' "la sesión ve las apps Flatpak (Lanzar, menú, Abrir con)"
+
 # ------------------------------------------------------------------ binarios ISA
 if [[ -x scripts/fijar-isa-baseline.py ]] || [[ -f scripts/fijar-isa-baseline.py ]]; then
     elfs=()

@@ -316,6 +316,22 @@ void ThemeManager::sincronizarGtk()
     if (QFile::exists(QStringLiteral("/usr/local/bin/titan-acento")))
         QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-acento"), {});
 
+    // Discover (la App Store) lee sus ajustes GTK de este fichero, no de
+    // dconf (ver /usr/local/bin/plasma-discover): asi sigue el modo y usa
+    // iconos Breeze claros u oscuros sin cambiar los de las demas apps GTK.
+    {
+        const QString dir = QDir::homePath() + QStringLiteral("/.config/glib-2.0/settings");
+        QDir().mkpath(dir);
+        QFile kf(dir + QStringLiteral("/keyfile"));
+        if (kf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QTextStream k(&kf);
+            k << "[org/gnome/desktop/interface]\n"
+              << "color-scheme='" << gtkColorScheme << "'\n"
+              << "gtk-theme='" << gtkTheme << "'\n"
+              << "icon-theme='" << (m_isDark ? "breeze-dark" : "breeze") << "'\n";
+        }
+    }
+
     for (const QString &ver : {QStringLiteral("gtk-3.0"), QStringLiteral("gtk-4.0")}) {
         QString p = QDir::homePath() + QStringLiteral("/.config/") + ver;
         QDir().mkpath(p);

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Inti OS - envoltorio de Discover (la "App Store"). Va antes que
+# /usr/bin/plasma-discover en el PATH, así que lo usan el Dock, el lanzador,
+# los enlaces flatpak/appstream de Firefox y el comando "discover".
+#
+#  - Solo Flatpak y firmware: KDE avisa de que gestionar los paquetes de Arch
+#    desde Discover está incompleto (el sistema se actualiza con pacman
+#    desde Ajustes). Si quien lo llama pide otros --backends, se respetan.
+#  - Tema: Discover sin Plasma sale siempre claro. Con el tema GTK de Qt
+#    sigue el modo claro/oscuro, y los iconos los toma de un fichero de
+#    ajustes propio (GSETTINGS_BACKEND=keyfile) que escribe Inti OS al
+#    cambiar de modo: breeze o breeze-dark, sin cambiar los iconos de las
+#    demás apps GTK. Ver ThemeManager::sincronizarGtk.
+export QT_QPA_PLATFORMTHEME=gtk3
+export GSETTINGS_BACKEND=keyfile
+
+ajustes="${XDG_CONFIG_HOME:-$HOME/.config}/glib-2.0/settings/keyfile"
+if [ ! -s "$ajustes" ]; then
+    # Primera vez (o sin titan-shell): el modo actual de theme.conf
+    modo=claro
+    grep -qsi '^isDark=true' "${XDG_CONFIG_HOME:-$HOME/.config}/titan/theme.conf" && modo=oscuro
+    mkdir -p "$(dirname "$ajustes")"
+    if [ "$modo" = oscuro ]; then
+        printf "[org/gnome/desktop/interface]\ncolor-scheme='prefer-dark'\ngtk-theme='Adwaita-dark'\nicon-theme='breeze-dark'\n" >"$ajustes"
+    else
+        printf "[org/gnome/desktop/interface]\ncolor-scheme='default'\ngtk-theme='Adwaita'\nicon-theme='breeze'\n" >"$ajustes"
+    fi
+fi
+
+case " $* " in
+    *" --backends"*) exec /usr/bin/plasma-discover "$@" ;;
+esac
+exec /usr/bin/plasma-discover --backends flatpak-backend,fwupd-backend "$@"

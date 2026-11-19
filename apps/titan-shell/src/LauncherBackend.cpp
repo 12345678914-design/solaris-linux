@@ -147,7 +147,7 @@ void LauncherBackend::loadApps()
     addApp(QStringLiteral("Calendario"), QStringLiteral("titan-calendar"), QStringLiteral("file:///usr/share/titan/icons/calendar.png"));
     addApp(QStringLiteral("Reloj"), QStringLiteral("titan-clock"), QStringLiteral("file:///usr/share/titan/icons/clock.png"));
     addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("titan-video"), QStringLiteral("file:///usr/share/titan/icons/video.png"));
-    addApp(QStringLiteral("App Store"), QStringLiteral("gnome-software"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
+    addApp(QStringLiteral("App Store"), QStringLiteral("plasma-discover"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"));
     addApp(QStringLiteral("Ajustes del Sistema"), QStringLiteral("titan-settings"), QStringLiteral("qrc:/icons/system.png"));
     addApp(QStringLiteral("ONLYOFFICE"), QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("qrc:/icons/onlyoffice.png"));
     addApp(QStringLiteral("Acerca de Inti OS"), QStringLiteral("titan-acerca"), QStringLiteral("qrc:/icons/about.png"));

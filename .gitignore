@@ -49,6 +49,7 @@ iso/titan/airootfs/usr/local/bin/*
 !iso/titan/airootfs/usr/local/bin/titan-inactividad
 !iso/titan/airootfs/usr/local/bin/titan-captura
 !iso/titan/airootfs/usr/local/bin/titan-grabar
+!iso/titan/airootfs/usr/local/bin/plasma-discover
 !iso/titan/airootfs/usr/local/bin/titan-elegir-pantalla
 !iso/titan/airootfs/usr/local/bin/titan-cortafuegos
 !iso/titan/airootfs/usr/local/bin/titan-actualizaciones

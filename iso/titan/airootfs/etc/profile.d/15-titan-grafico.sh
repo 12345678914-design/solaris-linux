@@ -287,6 +287,12 @@ if grep -qw 'titan.labwc' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-
   COMPOSITOR="labwc"
 fi
 
+# Apps Flatpak en XDG_DATA_DIRS. /etc/profile.d/flatpak.sh va DESPUES de este
+# fichero (orden alfabetico) y el compositor se queda corriendo aqui, asi que
+# sin esto la sesion no las veia: la App Store no podia "Lanzar" lo que
+# instalaba y "Abrir con" no las ofrecia. flatpak.sh no repite carpetas.
+[ -r /etc/profile.d/flatpak.sh ] && . /etc/profile.d/flatpak.sh
+
 codigo_salida=1
 if [ "${COMPOSITOR}" = "wayfire" ]; then
   # labwc lee ~/.config/labwc/environment; Wayfire no, asi que se exporta aqui.

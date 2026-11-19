@@ -76,6 +76,7 @@ file_permissions=(
   ["/usr/local/bin/titan-acento"]="0:0:755"
   ["/usr/local/bin/titan-captura"]="0:0:755"
   ["/usr/local/bin/titan-grabar"]="0:0:755"
+  ["/usr/local/bin/plasma-discover"]="0:0:755"
   ["/usr/local/bin/titan-elegir-pantalla"]="0:0:755"
   ["/usr/local/bin/titan-cortafuegos"]="0:0:755"
   ["/usr/local/bin/titan-actualizaciones"]="0:0:755"

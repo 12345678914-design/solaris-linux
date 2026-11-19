@@ -245,9 +245,12 @@ pavucontrol
 networkmanager
 udisks2
 
-# --- Tienda de Aplicaciones (Arch Linux Pacman + Flatpak) y Apps GNOME ---
-gnome-software
-packagekit
+# --- Tienda de Aplicaciones y Apps GNOME ---
+# Discover (KDE) para Flatpak y firmware (fwupd). Sin packagekit-qt6 a
+# proposito: KDE avisa de que gestionar paquetes de Arch desde Discover esta
+# incompleto; el sistema se actualiza con pacman desde Ajustes. El envoltorio
+# /usr/local/bin/plasma-discover le da el tema claro/oscuro de Inti OS.
+discover
 gnome-calculator
 gnome-calendar
 gnome-clocks

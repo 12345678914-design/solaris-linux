@@ -186,7 +186,7 @@ void DockModel::initDefaultPinnedApps()
     addPinned(QStringLiteral("titan-musica"), QStringLiteral("Música"), QStringLiteral("qrc:/icons/music-app.png"), QStringLiteral("titan-musica"));
     addPinned(QStringLiteral("titan-terminal"), QStringLiteral("Terminal"), QStringLiteral("qrc:/icons/terminal.png"), QStringLiteral("titan-terminal"));
     addPinned(QStringLiteral("titan-settings"), QStringLiteral("Ajustes"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("titan-settings"));
-    addPinned(QStringLiteral("org.gnome.Software"), QStringLiteral("App Store"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"), QStringLiteral("gnome-software"));
+    addPinned(QStringLiteral("org.kde.discover"), QStringLiteral("App Store"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"), QStringLiteral("plasma-discover"));
     addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
     addPinned(QStringLiteral("titan-trash"), QStringLiteral("Papelera"), QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("titan-finder ") + QDir::homePath() + QStringLiteral("/.local/share/Trash/files"));
 }
@@ -208,6 +208,13 @@ void DockModel::loadPinnedApps()
                 app[QStringLiteral("name")] = obj.value(QStringLiteral("name")).toString();
                 app[QStringLiteral("icon")] = obj.value(QStringLiteral("icon")).toString();
                 app[QStringLiteral("exec")] = obj.value(QStringLiteral("exec")).toString();
+                // La tienda paso de GNOME Software a Discover (2026-11): un
+                // Dock guardado antes seguiria lanzando gnome-software.
+                if (app[QStringLiteral("appId")].toString() == QStringLiteral("org.gnome.Software")
+                    || app[QStringLiteral("exec")].toString() == QStringLiteral("gnome-software")) {
+                    app[QStringLiteral("appId")] = QStringLiteral("org.kde.discover");
+                    app[QStringLiteral("exec")] = QStringLiteral("plasma-discover");
+                }
                 app[QStringLiteral("running")] = false;
                 app[QStringLiteral("hasWindow")] = false;
                 app[QStringLiteral("active")] = false;

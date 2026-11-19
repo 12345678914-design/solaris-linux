@@ -280,10 +280,14 @@ if [[ -f /usr/share/applications/org.gnome.clocks.desktop ]]; then
   sed -i 's|^Name=.*|Name=Reloj|g' /usr/share/applications/org.gnome.clocks.desktop
 fi
 
-if [[ -f /usr/share/applications/org.gnome.Software.desktop ]]; then
-  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/apps-folder.png|g' /usr/share/applications/org.gnome.Software.desktop
-  sed -i 's|^Name=.*|Name=App Store|g' /usr/share/applications/org.gnome.Software.desktop
+# La tienda es Discover (KDE), solo para Flatpak y firmware: ver
+# /usr/local/bin/plasma-discover. Se llama "App Store" como antes.
+if [[ -f /usr/share/applications/org.kde.discover.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/apps-folder.png|g' /usr/share/applications/org.kde.discover.desktop
+  sed -i -E 's|^Name(\[[^]]*\])?=.*|Name\1=App Store|g' /usr/share/applications/org.kde.discover.desktop
 fi
+# Sin Snap en Inti OS: que nadie abra enlaces snap:// con Discover
+rm -f /usr/share/applications/org.kde.discover.snap.desktop
 
 if [[ -f /usr/share/applications/io.github.celluloid_player.Celluloid.desktop ]]; then
   sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/video.png|g' /usr/share/applications/io.github.celluloid_player.Celluloid.desktop
@@ -304,9 +308,9 @@ fi
 if [[ ! -f /usr/local/bin/titan-video || -L /usr/local/bin/titan-video ]]; then
   [[ -x /usr/bin/celluloid ]] && ln -sf /usr/bin/celluloid /usr/local/bin/titan-video || true
 fi
-if [[ -x /usr/bin/gnome-software ]] && [[ ! -f /usr/bin/discover ]]; then
-  ln -sf /usr/bin/gnome-software /usr/local/bin/discover || true
-fi
+# "discover" en la terminal abre la tienda (el ejecutable de KDE se llama
+# plasma-discover; /usr/local/bin/plasma-discover es el envoltorio de Inti OS)
+ln -sf /usr/local/bin/plasma-discover /usr/local/bin/discover
 
 # ----------------------------------------------- Seguridad Antimalware y Permisos
 log "seguridad: permisos de raiz (root) y aislamiento de usuario"
