@@ -354,6 +354,23 @@ contiene "$SH/qml/DynamicIsland.qml" 'barra.suena && barra.visible' "isla: las b
 contiene "$SH/qml/Shell.qml" 'function ajustar' "isla: la ventana no cambia de tamaño en cada fotograma"
 contiene "$SH/src/ShellBackend.cpp" 'm_islandQueue = m_islandActive' "isla: contador real «+N»"
 
+# ------------------------------------------------------------------ ofimática
+echo -e "${AZUL}--- Ofimática: ONLYOFFICE (AppImage, no está en los repos de Arch)${SC}"
+contiene scripts/build-iso.sh 'DesktopEditors-x86_64.AppImage' "build-iso descarga ONLYOFFICE si falta"
+contiene scripts/build-iso.sh 'es_appimage "\$\{OO\}.parte"' "comprueba que lo descargado es un AppImage"
+contiene iso/titan/profiledef.sh '/opt/onlyoffice/DesktopEditors.AppImage"\]="0:0:755"' "el AppImage es ejecutable en la ISO"
+if git ls-files --error-unmatch "${BIN}/onlyoffice-desktopeditors" >/dev/null 2>&1; then
+    ok "lanzador de ONLYOFFICE en git"
+else
+    fallo "el lanzador de ONLYOFFICE no está en git"
+fi
+OO="${RAIZ}/opt/onlyoffice/DesktopEditors.AppImage"
+if [[ -s "$OO" ]]; then
+    ok "AppImage de ONLYOFFICE presente ($(du -h "$OO" | cut -f1))"
+else
+    aviso "AppImage de ONLYOFFICE ausente: build-iso lo descargará"
+fi
+
 # ------------------------------------------------------------------ binarios ISA
 if [[ -x scripts/fijar-isa-baseline.py ]] || [[ -f scripts/fijar-isa-baseline.py ]]; then
     elfs=()

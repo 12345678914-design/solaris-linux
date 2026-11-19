@@ -30,6 +30,8 @@
 #   TITAN_OUT       directorio de salida         (<distro>/out)
 #   TITAN_WORK      directorio de trabajo        (<proyecto>/build/archiso)
 #   TITAN_SKIP_APP  1 = no recompilar el CLI titan
+#   TITAN_SIN_ONLYOFFICE  1 = no descargar ONLYOFFICE si falta (la ISO
+#                   sale sin suite ofimatica; solo para pruebas)
 
 set -euo pipefail
 
@@ -456,6 +458,40 @@ if ! (
 fi
 install -m 0755 "${DISTRO}/apps/titan-greeter/helper/titan-usuarios-helper" \
   "${PROFILE}/airootfs/usr/local/bin/titan-usuarios-helper"
+
+# ONLYOFFICE no esta en los repos de Arch (solo en AUR, que no se usa), asi
+# que va como AppImage oficial en /opt/onlyoffice; lo abre el lanzador
+# /usr/local/bin/onlyoffice-desktopeditors y es la app por defecto de los
+# documentos (mimeapps.list). El AppImage (unos 400 MB) no esta en git: si
+# falta, se descarga de la ultima version publicada por ONLYOFFICE en GitHub.
+# Sin el, la ISO saldria con los .docx/.odt apuntando a una app que no existe.
+OO_DIR="${PROFILE}/airootfs/opt/onlyoffice"
+OO="${OO_DIR}/DesktopEditors.AppImage"
+OO_URL="https://github.com/ONLYOFFICE/DesktopEditors/releases/latest/download/DesktopEditors-x86_64.AppImage"
+# AppImage de tipo 2: ejecutable ELF con "AI" 0x02 en el byte 8.
+es_appimage() {
+  [[ -s "$1" ]] &&
+    [[ "$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')" == "7f454c46" ]] &&
+    [[ "$(dd if="$1" bs=1 skip=8 count=3 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "414902" ]]
+}
+if es_appimage "${OO}"; then
+  info "ONLYOFFICE: se usa el AppImage que ya hay ($(du -h "${OO}" | cut -f1))"
+elif [[ "${TITAN_SIN_ONLYOFFICE:-0}" == "1" ]]; then
+  yel "TITAN_SIN_ONLYOFFICE=1: la ISO sale SIN suite ofimatica"
+else
+  info "descargando ONLYOFFICE (AppImage oficial, unos 400 MB)"
+  install -d "${OO_DIR}"
+  if curl -fL --retry 3 --connect-timeout 20 -o "${OO}.parte" "${OO_URL}" && es_appimage "${OO}.parte"; then
+    mv -f "${OO}.parte" "${OO}"
+  else
+    rm -f -- "${OO}.parte"
+    red "No se pudo descargar ONLYOFFICE de ${OO_URL}"
+    red "Descargalo a mano y ponlo con scripts/integrar-onlyoffice-appimage.sh <fichero>,"
+    red "o compila sin el con TITAN_SIN_ONLYOFFICE=1."
+    exit 1
+  fi
+fi
+[[ -f "${OO}" ]] && chmod 0755 "${OO}"
 
 # Notificaciones en la pantalla de bloqueo segura: modulo de gtklock (C, GTK 3).
 info "compilando el modulo de gtklock titan-avisos"
