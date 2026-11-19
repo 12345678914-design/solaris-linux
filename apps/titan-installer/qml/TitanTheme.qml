@@ -41,6 +41,21 @@ QtObject {
     // El acento lo elige el usuario en Ajustes (ThemeManager); si no hay gestor, azul.
     readonly property color accent: (typeof titanThemeManager !== "undefined" && titanThemeManager.accent) ? titanThemeManager.accent : "#0071e3"
     readonly property color accentHover: Qt.lighter(accent, 1.08)
+
+    // Carpetas e icono del Finder con el color de acento (proveedor
+    // "image://tinte", TitanTinte.h; lo registran el Finder y el shell).
+    // Con el azul de serie se deja el PNG original.
+    function tinte(src) {
+        var s = String(src)
+        if (!/\/icons\/(folder|desktop|downloads|apps-folder|music-folder|finder)\.png$/.test(s))
+            return s
+        var a = String(accent).toLowerCase()
+        if (a === "#0071e3")
+            return s
+        // qrc:/icons/x.png -> /icons/x.png ; file:///usr/... -> /usr/... (TitanTinte
+        // prueba primero el recurso interno y luego el fichero del disco)
+        return "image://tinte/" + a.substring(1) + s.replace(/^qrc:/, "").replace(/^file:\/\//, "")
+    }
     readonly property color selectionBg: Qt.rgba(accent.r, accent.g, accent.b, isDark ? 0.45 : 0.20)
     readonly property color itemHover: isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06)
 

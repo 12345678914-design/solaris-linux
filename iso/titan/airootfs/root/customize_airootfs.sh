@@ -508,7 +508,8 @@ log "escritorio completo: impresion, energia, cortafuegos, llavero, mDNS"
 for unidad in cups.socket cups-browsed.service avahi-daemon.service \
               power-profiles-daemon.service ModemManager.service \
               ufw.service titan-cortafuegos.service \
-              apparmor.service systemd-oomd.service; do
+              apparmor.service systemd-oomd.service \
+              switcheroo-control.service; do
   if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
     systemctl enable "${unidad}"
   fi

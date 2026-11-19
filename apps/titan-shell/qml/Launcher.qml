@@ -102,7 +102,24 @@ Item {
         selectedIndex = t
     }
 
+    function elegirCategoria(id) {
+        launcherBackend.categoria = id
+        selectedIndex = appGrid.count > 0 ? 0 : -1
+        appGrid.positionViewAtBeginning()
+        searchField.forceActiveFocus()
+    }
+
+    // Tab / Mayús+Tab: siguiente / anterior categoría
+    function cambiarCategoria(paso) {
+        var c = launcherBackend.categorias, n = c.length
+        if (n === 0) return
+        var i = 0
+        for (var k = 0; k < n; ++k) if (c[k].id === launcherBackend.categoria) i = k
+        elegirCategoria(c[(i + paso + n) % n].id)
+    }
+
     function resetState() {
+        launcherBackend.categoria = "todas"
         searchField.text = ""
         pendingPower = ""
         selectedIndex = appGrid.count > 0 ? 0 : -1
@@ -411,7 +428,9 @@ Item {
                 }
 
                 Keys.onPressed: (event) => {
-                    if (event.key === Qt.Key_Down) {
+                    if ((event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) && text.length === 0) {
+                        launcher.cambiarCategoria(event.key === Qt.Key_Backtab ? -1 : 1); event.accepted = true
+                    } else if (event.key === Qt.Key_Down) {
                         launcher.moveSelection(launcher.columns); event.accepted = true
                     } else if (event.key === Qt.Key_Up) {
                         launcher.moveSelection(-launcher.columns); event.accepted = true
@@ -509,15 +528,63 @@ Item {
         anchors.right: parent.right
         anchors.leftMargin: 28
         anchors.rightMargin: 28
-        height: 22
+        height: 28
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
-            text: searchField.text.length > 0 ? qsTr("Resultados de búsqueda") : qsTr("Todas las aplicaciones")
+            visible: searchField.text.length > 0
+            text: qsTr("Resultados de búsqueda")
             color: titanTheme.contentTextSecondary
             font.pixelSize: 11
             font.weight: Font.DemiBold
+        }
+
+        // Categorías (Todas, Productividad, Internet...). "Todas" deja fuera
+        // las herramientas del sistema; están en "Sistema" y al buscar.
+        ListView {
+            id: filaCategorias
+            anchors.fill: parent
+            visible: searchField.text.length === 0
+            orientation: ListView.Horizontal
+            spacing: 6
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            model: launcherBackend.categorias
+            currentIndex: {
+                for (var i = 0; i < count; ++i)
+                    if (launcherBackend.categorias[i].id === launcherBackend.categoria) return i
+                return 0
+            }
+            onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+            delegate: Rectangle {
+                required property var modelData
+                required property int index
+                readonly property bool elegida: launcherBackend.categoria === modelData.id
+                height: 26
+                width: textoCategoria.implicitWidth + 24
+                radius: 13
+                color: elegida ? titanTheme.accent
+                       : (ratonCategoria.containsMouse ? titanTheme.itemHover : "transparent")
+                border.width: elegida ? 0 : 1
+                border.color: titanTheme.contentCardBorder
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Text {
+                    id: textoCategoria
+                    anchors.centerIn: parent
+                    text: modelData.nombre
+                    color: elegida ? "#ffffff" : titanTheme.contentTextPrimary
+                    font.pixelSize: 12
+                    font.weight: elegida ? Font.DemiBold : Font.Medium
+                }
+                MouseArea {
+                    id: ratonCategoria
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: launcher.elegirCategoria(modelData.id)
+                }
+            }
         }
     }
 

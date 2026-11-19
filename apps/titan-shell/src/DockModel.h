@@ -48,6 +48,10 @@ public:
     Q_INVOKABLE void closeApp(const QString &appId);
     Q_INVOKABLE QVariantList getWindowsForApp(const QString &appId) const;
     Q_INVOKABLE void activateWindowById(qulonglong windowId);
+    // Icono de una ventana (Alt+Tab): el del Dock si la app esta, si no el que
+    // se resuelva por su app_id.
+    Q_INVOKABLE QString iconoVentana(const QString &appId, const QString &titulo) const;
+    Q_INVOKABLE QString nombreVentana(const QString &appId, const QString &titulo) const;
     
 private slots:
     void updateWindowStates();

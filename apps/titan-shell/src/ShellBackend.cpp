@@ -22,6 +22,8 @@
 #include <QUrl>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QHash>
+#include <QGuiApplication>
 
 NotificationsAdaptor::NotificationsAdaptor(ShellBackend *parent)
     : QDBusAbstractAdaptor(parent)
@@ -1342,6 +1344,158 @@ void ShellBackend::mantenerIsla(bool encima)
         m_islandTimer->stop();
     else
         m_islandTimer->start(3000);
+}
+
+// ---------------------------------------------------------------- teclas
+// Ejecuta un programa y espera poco: wpctl y brightnessctl tardan milisegundos.
+static QString salidaDe(const QString &prog, const QStringList &args, int ms = 800)
+{
+    QProcess p;
+    p.start(prog, args);
+    if (!p.waitForFinished(ms))
+        return QString();
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+}
+
+bool ShellBackend::leerVolumen(const QString &dispositivo, qreal *valor, bool *silencio)
+{
+    // "Volume: 0.45" o "Volume: 0.45 [MUTED]"
+    const QString o = salidaDe(QStringLiteral("wpctl"), {QStringLiteral("get-volume"), dispositivo});
+    if (!o.startsWith(QStringLiteral("Volume:")))
+        return false;
+    const QStringList partes = o.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    bool ok = false;
+    const qreal v = partes.size() >= 2 ? partes.at(1).toDouble(&ok) : 0;
+    if (!ok)
+        return false;
+    *valor = qBound(0.0, v, 1.0);
+    *silencio = o.contains(QStringLiteral("MUTED"));
+    return true;
+}
+
+bool ShellBackend::brilloRelativo(const QString &dispositivo, const QString &cambio, qreal *valor)
+{
+    // brightnessctl -m: "intel_backlight,backlight,412,43%,960". Va por logind,
+    // asi que no hace falta root. -n 1: bajar nunca apaga del todo la pantalla.
+    QStringList args{QStringLiteral("-m")};
+    if (dispositivo.isEmpty())
+        args << QStringLiteral("-c") << QStringLiteral("backlight");
+    else
+        args << QStringLiteral("-d") << dispositivo;
+    if (!cambio.isEmpty())
+        args << QStringLiteral("-n1") << QStringLiteral("set") << cambio;
+    const QString o = salidaDe(QStringLiteral("brightnessctl"), args);
+    const QStringList c = o.split(QLatin1Char('\n')).value(0).split(QLatin1Char(','));
+    if (c.size() < 5)
+        return false;
+    const double actual = c.at(2).toDouble(), maximo = c.at(4).toDouble();
+    if (maximo <= 0)
+        return false;
+    *valor = qBound(0.0, actual / maximo, 1.0);
+    return true;
+}
+
+void ShellBackend::mostrarIndicador(const QString &tipo, qreal valor, bool silencio)
+{
+    m_indicador = QVariantMap{{QStringLiteral("tipo"), tipo},
+                              {QStringLiteral("valor"), valor},
+                              {QStringLiteral("silencio"), silencio}};
+    m_indicadorActivo = true;
+    if (!m_indicadorTimer) {
+        m_indicadorTimer = new QTimer(this);
+        m_indicadorTimer->setSingleShot(true);
+        connect(m_indicadorTimer, &QTimer::timeout, this, [this]() {
+            m_indicadorActivo = false;
+            emit indicadorChanged();
+        });
+    }
+    m_indicadorTimer->start(1600);
+    emit indicadorChanged();
+}
+
+bool ShellBackend::altPulsada() const
+{
+    return QGuiApplication::queryKeyboardModifiers() & Qt::AltModifier;
+}
+
+void ShellBackend::tecla(const QString &accion)
+{
+    const QString salida = QStringLiteral("@DEFAULT_AUDIO_SINK@");
+    const QString micro = QStringLiteral("@DEFAULT_AUDIO_SOURCE@");
+    qreal v = 0;
+    bool mudo = false;
+
+    if (accion == QStringLiteral("volumen-subir") || accion == QStringLiteral("volumen-bajar")) {
+        const bool sube = accion == QStringLiteral("volumen-subir");
+        // -l 1.0: no pasar del 100 % (como Ubuntu y macOS)
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-volume"), QStringLiteral("-l"), QStringLiteral("1.0"),
+                                           salida, sube ? QStringLiteral("5%+") : QStringLiteral("5%-")});
+        if (sube)
+            salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), salida, QStringLiteral("0")});
+        if (leerVolumen(salida, &v, &mudo)) {
+            m_volume = v;
+            emit volumeChanged();
+            mostrarIndicador(QStringLiteral("volumen"), v, mudo);
+        }
+    } else if (accion == QStringLiteral("silenciar")) {
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), salida, QStringLiteral("toggle")});
+        if (leerVolumen(salida, &v, &mudo))
+            mostrarIndicador(QStringLiteral("volumen"), v, mudo);
+    } else if (accion == QStringLiteral("micro-silenciar")) {
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), micro, QStringLiteral("toggle")});
+        if (leerVolumen(micro, &v, &mudo))
+            mostrarIndicador(QStringLiteral("micro"), v, mudo);
+    } else if (accion == QStringLiteral("brillo-subir") || accion == QStringLiteral("brillo-bajar")) {
+        const bool sube = accion == QStringLiteral("brillo-subir");
+        if (m_hasHardwareBacklight
+            && brilloRelativo(QString(), sube ? QStringLiteral("5%+") : QStringLiteral("5%-"), &v)) {
+            m_brightness = qMax(0.05, v);
+            emit brightnessChanged();
+        } else {
+            // Sin pantalla con retroiluminacion (sobremesa): monitor por DDC/CI
+            setBrightness(m_brightness + (sube ? 0.1 : -0.1));
+            v = m_brightness;
+        }
+        mostrarIndicador(QStringLiteral("brillo"), v, false);
+    } else if (accion == QStringLiteral("teclado-subir") || accion == QStringLiteral("teclado-bajar")
+               || accion == QStringLiteral("teclado-alternar")) {
+        QString cambio = accion == QStringLiteral("teclado-subir") ? QStringLiteral("34%+")
+                       : accion == QStringLiteral("teclado-bajar") ? QStringLiteral("34%-") : QString();
+        const QString kbd = QStringLiteral("*::kbd_backlight");
+        if (cambio.isEmpty() && brilloRelativo(kbd, QString(), &v))
+            cambio = v > 0 ? QStringLiteral("0") : QStringLiteral("100%");
+        // -n1 no vale aqui (apagar la luz del teclado si se puede)
+        QStringList args{QStringLiteral("-m"), QStringLiteral("-d"), kbd, QStringLiteral("set"), cambio};
+        const QStringList c = salidaDe(QStringLiteral("brightnessctl"), args).split(QLatin1Char(','));
+        if (c.size() >= 5 && c.at(4).toDouble() > 0)
+            mostrarIndicador(QStringLiteral("teclado"), c.at(2).toDouble() / c.at(4).toDouble(), false);
+    } else if (accion == QStringLiteral("reproducir") || accion == QStringLiteral("pausa")
+               || accion == QStringLiteral("siguiente") || accion == QStringLiteral("anterior")
+               || accion == QStringLiteral("parar")) {
+        static const QHash<QString, QString> orden{
+            {QStringLiteral("reproducir"), QStringLiteral("play-pause")}, {QStringLiteral("pausa"), QStringLiteral("pause")},
+            {QStringLiteral("siguiente"), QStringLiteral("next")}, {QStringLiteral("anterior"), QStringLiteral("previous")},
+            {QStringLiteral("parar"), QStringLiteral("stop")}};
+        QProcess::startDetached(QStringLiteral("playerctl"), {orden.value(accion)});
+    } else if (accion == QStringLiteral("alt-tab") || accion == QStringLiteral("alt-tab-atras")) {
+        emit altTab(accion == QStringLiteral("alt-tab") ? 1 : -1);
+    } else if (accion == QStringLiteral("calculadora")) {
+        QProcess::startDetached(QStringLiteral("titan-calc"), {});
+    } else if (accion == QStringLiteral("navegador")) {
+        QProcess::startDetached(QStringLiteral("xdg-open"), {QStringLiteral("https://")});
+    } else if (accion == QStringLiteral("correo")) {
+        QProcess::startDetached(QStringLiteral("xdg-open"), {QStringLiteral("mailto:")});
+    } else if (accion == QStringLiteral("archivos")) {
+        QProcess::startDetached(QStringLiteral("titan-finder"), {});
+    } else if (accion == QStringLiteral("ajustes")) {
+        openSettings();
+    } else if (accion == QStringLiteral("buscar")) {
+        toggleLauncher();
+    } else if (accion == QStringLiteral("bloquear")) {
+        lockScreen();
+    } else if (accion == QStringLiteral("pantallas")) {
+        QProcess::startDetached(QStringLiteral("titan-elegir-pantalla"), {});
+    }
 }
 
 void ShellBackend::setPrefs(TitanPrefs *p)

@@ -235,6 +235,31 @@
 
     <!-- Lector de pantalla (Orca), como en GNOME -->
     <keybind key="W-A-s"><action name="Execute" command="titan-lector"/></keybind>
+
+    <!-- Teclas especiales (volumen, brillo, multimedia...): titan-shell -tecla
+         las hace y muestra el nivel en la Isla Dinamica -->
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="titan-shell --tecla volumen-subir"/></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="titan-shell --tecla volumen-bajar"/></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="titan-shell --tecla silenciar"/></keybind>
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="titan-shell --tecla micro-silenciar"/></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="titan-shell --tecla brillo-subir"/></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="titan-shell --tecla brillo-bajar"/></keybind>
+    <keybind key="XF86KbdBrightnessUp"><action name="Execute" command="titan-shell --tecla teclado-subir"/></keybind>
+    <keybind key="XF86KbdBrightnessDown"><action name="Execute" command="titan-shell --tecla teclado-bajar"/></keybind>
+    <keybind key="XF86KbdLightOnOff"><action name="Execute" command="titan-shell --tecla teclado-alternar"/></keybind>
+    <keybind key="XF86AudioPlay"><action name="Execute" command="titan-shell --tecla reproducir"/></keybind>
+    <keybind key="XF86AudioPause"><action name="Execute" command="titan-shell --tecla pausa"/></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="titan-shell --tecla siguiente"/></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="titan-shell --tecla anterior"/></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="titan-shell --tecla parar"/></keybind>
+    <keybind key="XF86Calculator"><action name="Execute" command="titan-shell --tecla calculadora"/></keybind>
+    <keybind key="XF86WWW"><action name="Execute" command="titan-shell --tecla navegador"/></keybind>
+    <keybind key="XF86Mail"><action name="Execute" command="titan-shell --tecla correo"/></keybind>
+    <keybind key="XF86Tools"><action name="Execute" command="titan-shell --tecla ajustes"/></keybind>
+    <keybind key="XF86Search"><action name="Execute" command="titan-shell --tecla buscar"/></keybind>
+    <keybind key="XF86ScreenSaver"><action name="Execute" command="titan-shell --tecla bloquear"/></keybind>
+    <keybind key="XF86Display"><action name="Execute" command="titan-shell --tecla pantallas"/></keybind>
+    <keybind key="W-d"><action name="Execute" command="titan-shell --tecla escritorio"/></keybind>
     
     <!-- Alt + Tab: Cambiar entre ventanas abiertas con estilo Liquid Glass -->
     <keybind key="A-Tab">

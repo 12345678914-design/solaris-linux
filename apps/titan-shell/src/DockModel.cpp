@@ -186,7 +186,7 @@ void DockModel::initDefaultPinnedApps()
     addPinned(QStringLiteral("titan-musica"), QStringLiteral("Música"), QStringLiteral("qrc:/icons/music-app.png"), QStringLiteral("titan-musica"));
     addPinned(QStringLiteral("titan-terminal"), QStringLiteral("Terminal"), QStringLiteral("qrc:/icons/terminal.png"), QStringLiteral("titan-terminal"));
     addPinned(QStringLiteral("titan-settings"), QStringLiteral("Ajustes"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("titan-settings"));
-    addPinned(QStringLiteral("org.kde.discover"), QStringLiteral("App Store"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"), QStringLiteral("plasma-discover"));
+    addPinned(QStringLiteral("org.kde.discover"), QStringLiteral("App Store"), QStringLiteral("qrc:/icons/apps-folder.png"), QStringLiteral("plasma-discover"));
     addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
     addPinned(QStringLiteral("titan-trash"), QStringLiteral("Papelera"), QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("titan-finder ") + QDir::homePath() + QStringLiteral("/.local/share/Trash/files"));
 }
@@ -214,6 +214,13 @@ void DockModel::loadPinnedApps()
                     || app[QStringLiteral("exec")].toString() == QStringLiteral("gnome-software")) {
                     app[QStringLiteral("appId")] = QStringLiteral("org.kde.discover");
                     app[QStringLiteral("exec")] = QStringLiteral("plasma-discover");
+                }
+                // La App Store guardada con el icono del disco salia en blanco
+                // con un acento distinto del azul: se pasa al icono interno.
+                if (app[QStringLiteral("appId")].toString() == QStringLiteral("org.kde.discover")) {
+                    const QString ic = app[QStringLiteral("icon")].toString();
+                    if (ic.isEmpty() || ic.contains(QStringLiteral("apps-folder.png")) || !ic.contains(QLatin1Char('/')))
+                        app[QStringLiteral("icon")] = QStringLiteral("qrc:/icons/apps-folder.png");
                 }
                 app[QStringLiteral("running")] = false;
                 app[QStringLiteral("hasWindow")] = false;
@@ -253,6 +260,87 @@ void DockModel::savePinnedApps()
         file.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
         file.close();
     }
+}
+
+// Nombre de la app segun su .desktop: <app_id>.desktop o el que tenga
+// StartupWMClass=<app_id>. Se guarda en cache (Alt+Tab lo pide a menudo).
+static QString nombreDesdeDesktop(const QString &appId)
+{
+    static QHash<QString, QString> cache;
+    const QString clave = appId.toLower();
+    if (clave.isEmpty())
+        return QString();
+    auto it = cache.constFind(clave);
+    if (it != cache.constEnd())
+        return it.value();
+
+    const QStringList dirs = {QDir::homePath() + QStringLiteral("/.local/share/applications"),
+                              QStringLiteral("/var/lib/flatpak/exports/share/applications"),
+                              QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications"),
+                              QStringLiteral("/usr/local/share/applications"), QStringLiteral("/usr/share/applications")};
+    auto nombreDe = [](const QHash<QString, QString> &ini) {
+        QString n = ini.value(QStringLiteral("Name[es]"));
+        if (n.isEmpty()) n = ini.value(QStringLiteral("Name[es_ES]"));
+        if (n.isEmpty()) n = ini.value(QStringLiteral("Name"));
+        return n;
+    };
+    QString nombre;
+    for (const QString &d : dirs) {
+        const auto ficheros = QDir(d).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+        for (const QFileInfo &f : ficheros) {
+            const QString base = f.completeBaseName().toLower();
+            if (base == clave) {
+                nombre = nombreDe(titan::leerDesktop(f.absoluteFilePath()));
+                break;
+            }
+        }
+        if (!nombre.isEmpty()) break;
+    }
+    if (nombre.isEmpty()) {
+        for (const QString &d : dirs) {
+            const auto ficheros = QDir(d).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+            for (const QFileInfo &f : ficheros) {
+                const auto ini = titan::leerDesktop(f.absoluteFilePath());
+                if (ini.value(QStringLiteral("StartupWMClass")).toLower() == clave) {
+                    nombre = nombreDe(ini);
+                    break;
+                }
+            }
+            if (!nombre.isEmpty()) break;
+        }
+    }
+    cache.insert(clave, nombre);
+    return nombre;
+}
+
+QString DockModel::nombreVentana(const QString &appId, const QString &titulo) const
+{
+    const QString n = nombreDesdeDesktop(appId);
+    if (!n.isEmpty())
+        return n;
+    // Las ancladas tienen su nombre bueno ("Finder", "Música"...); las demás
+    // del Dock guardan el título de la ventana, que no sirve aquí.
+    for (const QList<QVariantMap> *lista : {&m_pinnedApps})
+        for (const QVariantMap &app : *lista)
+            if (appsMatch(app.value(QStringLiteral("appId")).toString(), app.value(QStringLiteral("exec")).toString(), appId, titulo)) {
+                const QString n = app.value(QStringLiteral("name")).toString();
+                if (!n.isEmpty())
+                    return n;
+            }
+    return QString();
+}
+
+QString DockModel::iconoVentana(const QString &appId, const QString &titulo) const
+{
+    for (const QList<QVariantMap> *lista : {&m_apps, &m_pinnedApps})
+        for (const QVariantMap &app : *lista)
+            if (appsMatch(app.value(QStringLiteral("appId")).toString(), app.value(QStringLiteral("exec")).toString(), appId, titulo)) {
+                const QString ic = app.value(QStringLiteral("icon")).toString();
+                if (!ic.isEmpty())
+                    return ic;
+            }
+    const QString ic = resolveDynamicIcon(appId, titulo);
+    return ic.isEmpty() ? QStringLiteral("qrc:/icons/apps-folder.png") : ic;
 }
 
 QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title) const

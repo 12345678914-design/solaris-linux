@@ -171,6 +171,19 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        // Teclas de volumen, brillo, multimedia...: las enlaza el compositor
+        // (wayfire.ini [command], labwc rc.xml). Sin shell no hacen nada.
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--tecla") && i + 1 < argc) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("tecla " + QByteArray(argv[i + 1]) + "\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--lock")) {
             const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
             QLocalSocket socket;
@@ -236,9 +249,13 @@ int main(int argc, char *argv[])
     QLocalServer server;
     server.removeServer(socketName);
     if (server.listen(socketName)) {
-        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend]() {
+        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend, &windowTracker]() {
             while (QLocalSocket *client = server.nextPendingConnection()) {
-                QObject::connect(client, &QLocalSocket::readyRead, [client, &shellBackend]() {
+                // Se procesa tambien lo que ya llego antes de conectar readyRead:
+                // con varias teclas seguidas (volumen, brillo) se perdia alguna.
+                auto procesar = [client, &shellBackend, &windowTracker]() {
+                    if (client->bytesAvailable() <= 0)
+                        return;
                     const QByteArray cmd = client->readAll().trimmed();
                     if (cmd == "toggle-launcher") {
                         shellBackend.toggleLauncher();
@@ -254,6 +271,10 @@ int main(int argc, char *argv[])
                         shellBackend.toggleControlCenter();
                     } else if (cmd == "lock") {
                         shellBackend.lockScreen();
+                    } else if (cmd == "tecla escritorio") {
+                        windowTracker.mostrarEscritorio();
+                    } else if (cmd.startsWith("tecla ")) {
+                        shellBackend.tecla(QString::fromUtf8(cmd.mid(6)).trimmed());
                     } else if (cmd.startsWith("notify ")) {
                         QString payload = QString::fromUtf8(cmd.mid(7));
                         QStringList parts = payload.split(QLatin1Char('|'));
@@ -269,7 +290,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     client->disconnectFromServer();
-                });
+                };
+                QObject::connect(client, &QLocalSocket::readyRead, client, procesar);
+                QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
+                procesar();
             }
         });
     }
@@ -499,13 +523,28 @@ int main(int argc, char *argv[])
             // Visible con una notificacion o con musica sonando.
             auto actualizarIsla = [win, &shellBackend, &mpris]() {
                 // La pantalla de bloqueo ensena sus propios avisos y musica.
-                win->setVisible((shellBackend.islandActive() || mpris.disponible())
+                win->setVisible((shellBackend.islandActive() || mpris.disponible()
+                                 || shellBackend.indicadorActivo())
                                 && !shellBackend.lockScreenActive());
             };
+            QObject::connect(&shellBackend, &ShellBackend::indicadorChanged, win, actualizarIsla);
             QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, actualizarIsla);
             QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, actualizarIsla);
             QObject::connect(&mpris, &Mpris::cambiado, win, actualizarIsla);
             actualizarIsla();
+        } else if (name == QStringLiteral("cambiadorWindow")) {
+            // Teclado exclusivo: hace falta para ver cuándo se suelta Alt
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-alt-tab"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, false);
+            QObject::connect(&shellBackend, &ShellBackend::cambiadorVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.cambiadorVisible());
+                if (win->isVisible())
+                    win->requestActivate();
+            });
         } else if (name == QStringLiteral("workspacesWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;

@@ -47,7 +47,11 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           hunspell-es_any hunspell-en_us fprintd bolt pacman-contrib cryptsetup os-prober
           efibootmgr parted wlsunset sound-theme-freedesktop wlr-randr brightnessctl
           nvidia-open-dkms dkms linux-headers gnome-text-editor zip 7zip unrar file-roller
-          gnome-system-monitor gparted xorg-xhost wf-recorder wtype apparmor)
+          gnome-system-monitor gparted xorg-xhost wf-recorder wtype apparmor
+          openboard xournalpp libreoffice-fresh libreoffice-fresh-es pdfarranger obs-studio
+          kdenlive auto-multiple-choice joplin-desktop obsidian anki calibre kalzium kstars
+          kmplot kig geogebra stellarium gcompris-qt gutenprint foomatic-db
+          foomatic-db-engine foomatic-db-ppds hplip switcheroo-control qemu-guest-agent)
 faltan=()
 for p in "${paquetes[@]}"; do
     grep -qxF "$p" iso/titan/packages.x86_64 || faltan+=("$p")
@@ -55,13 +59,13 @@ done
 if ((${#faltan[@]} == 0)); then ok "packages.x86_64 lleva los ${#paquetes[@]} paquetes"; else fallo "faltan en packages.x86_64: ${faltan[*]}"; fi
 
 # Que existan en los repositorios de la ISO (core/extra/cachyos), si se puede mirar.
-if lista=$(pacman -Sl core extra 2>/dev/null) && [[ -n "$lista" ]]; then
+if lista=$(pacman -Sl core extra cachyos 2>/dev/null) && [[ -n "$lista" ]]; then
     desconocidos=()
     for p in "${paquetes[@]}"; do
         grep -qE "^[a-z-]+ ${p//+/\\+} " <<<"$lista" || desconocidos+=("$p")
     done
     if ((${#desconocidos[@]} == 0)); then ok "todos estan en Arch core/extra"
-    else fallo "no estan en core/extra: ${desconocidos[*]}"; fi
+    else fallo "no estan en core/extra/cachyos: ${desconocidos[*]}"; fi
 else
     aviso "sin pacman -Sl: no se comprueba que los paquetes existan en los repositorios"
 fi
@@ -385,6 +389,41 @@ if [[ -x scripts/fijar-isa-baseline.py ]] || [[ -f scripts/fijar-isa-baseline.py
         fi
     fi
 fi
+
+# ------------------------------------------------------- teclas y Alt+Tab
+echo -e "${AZUL}--- Teclas especiales, Super+D, Alt+Tab y Launchpad (2026-11-19)${SC}"
+SH=apps/titan-shell
+WI=iso/titan/airootfs/etc/skel/.config/wayfire.ini
+RC=iso/titan/airootfs/etc/skel/.config/labwc/rc.xml
+for k in KEY_VOLUMEUP KEY_VOLUMEDOWN KEY_MUTE KEY_MICMUTE KEY_BRIGHTNESSUP KEY_BRIGHTNESSDOWN \
+         KEY_KBDILLUMUP KEY_PLAYPAUSE KEY_NEXTSONG KEY_PREVIOUSSONG KEY_CALC; do
+    contiene "$WI" "binding_[a-z_]+ = ${k}\$" "Wayfire: tecla ${k}"
+done
+contiene "$WI" '^repeatable_binding_volumen_subir' "Wayfire: volumen se repite si se deja pulsada"
+contiene "$RC" 'XF86AudioRaiseVolume.*--tecla volumen-subir' "labwc: teclas de volumen"
+contiene "$RC" 'XF86MonBrightnessUp.*--tecla brillo-subir' "labwc: teclas de brillo"
+contiene "$SH/src/main.cpp" '"--tecla"' "titan-shell --tecla"
+contiene "$SH/src/ShellBackend.cpp" 'mostrarIndicador\(QStringLiteral\("volumen"\)' "la isla muestra el volumen"
+contiene "$SH/src/ShellBackend.cpp" 'mostrarIndicador\(QStringLiteral\("brillo"\)' "la isla muestra el brillo"
+contiene "$SH/qml/DynamicIsland.qml" 'indicadorVista' "indicador de nivel en la Isla Dinamica"
+contiene "$SH/src/main.cpp" 'procesar\(\);' "IPC: no se pierden ordenes seguidas"
+contiene "$WI" '^toggle_showdesktop = none' "Super+D de Wayfire desactivado (restauraba todo al abrir una app)"
+contiene "$WI" 'command_ver_escritorio = titan-shell --tecla escritorio' "Super+D: mostrar escritorio de titan-shell"
+contiene "$RC" 'W-d.*--tecla escritorio' "labwc: Super+D"
+contiene "$SH/src/WindowTracker.cpp" 'void WindowTracker::mostrarEscritorio' "mostrar escritorio sin restaurar al abrir"
+contiene "$WI" '^activate = none' "fast-switcher sin Alt+Tab"
+contiene "$WI" 'command_alt_tab = titan-shell --tecla alt-tab' "Alt+Tab de titan-shell"
+contiene "$SH/resources.qrc" 'qml/CambiadorVentanas.qml' "CambiadorVentanas.qml en el qrc"
+contiene "$SH/src/main.cpp" 'KeyboardInteractivityExclusive' "Alt+Tab toma el teclado (para ver soltar Alt)"
+contiene "$SH/src/WindowTracker.cpp" 'm_recientes.prepend' "Alt+Tab en orden de uso"
+contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'Teclas especiales' "migracion de teclas para usuarios existentes"
+contiene "$SH/src/LauncherBackend.cpp" 'static bool esInterna' "Launchpad: entradas internas ocultas"
+contiene "$SH/src/LauncherBackend.cpp" 'static QString categoriaDe' "Launchpad: categorias"
+contiene "$SH/qml/Launcher.qml" 'filaCategorias' "Launchpad: fila de categorias"
+contiene "$SH/src/LauncherBackend.cpp" 'QCollator' "Launchpad: orden alfabetico"
+contiene apps/titan-common/TitanTinte.h 'id.mid\(barra\)\.startsWith' "icono tintado desde el disco (App Store en el Dock)"
+contiene "$SH/src/DockModel.cpp" 'org.kde.discover"\)\) \{' "Dock: App Store guardada pasa al icono interno"
+contiene iso/titan/airootfs/root/customize_airootfs.sh 'switcheroo-control.service' "switcheroo-control activado"
 
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"

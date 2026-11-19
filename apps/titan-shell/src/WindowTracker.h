@@ -52,6 +52,14 @@ public:
                                        qreal x, qreal y, qreal ancho, qreal alto);
     // true si el compositor es Wayfire con IPC: los escritorios son reales.
     Q_INVOKABLE bool nativeWorkspaces() const;
+    // Mostrar el escritorio (Super+D): minimiza las ventanas del escritorio
+    // actual y, pulsando otra vez, las devuelve. A diferencia del de Wayfire
+    // (wm-actions), abrir una app despues no restaura las demas.
+    Q_INVOKABLE void mostrarEscritorio();
+    // Alt+Tab: ventanas del escritorio actual de la mas reciente a la mas
+    // antigua [{id, title, appId, minimized}], y traer una al frente.
+    Q_INVOKABLE QVariantList ventanasRecientes() const;
+    Q_INVOKABLE void traerVentana(qulonglong windowId);
     
 signals:
     void windowsChanged();
@@ -75,6 +83,8 @@ private:
     bool m_hasMaximized = false;
     int m_currentWorkspace = 0;
     QHash<quintptr, int> m_windowWorkspaces;
+    QList<quintptr> m_ocultasEscritorio;
+    QList<quintptr> m_recientes;   // orden de uso, la activa primero
 
     struct DestinoMinimizado {
         QPointer<QWindow> ventana;

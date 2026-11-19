@@ -267,6 +267,31 @@ case "${LANG:-}" in
   ""|C|POSIX) export LANG=C.UTF-8 ;;
 esac
 
+# 4b. Teclas de volumen, brillo, multimedia y Super+D (2026-11): a quien ya
+#     tenia su wayfire.ini / rc.xml de antes se le anaden las de /etc/skel.
+if [ -f "${HOME}/.config/wayfire.ini" ]; then
+  # Super+D de Wayfire restauraba todas las ventanas al abrir una app
+  # y Alt+Tab pasa a titan-shell (fast-switcher no decia a que app se cambiaba)
+  sed -i -e 's/^toggle_showdesktop = <super> KEY_D$/toggle_showdesktop = none/' \
+         -e 's/^activate = <alt> KEY_TAB$/activate = none/' \
+         -e 's/^activate_backward = <alt> <shift> KEY_TAB$/activate_backward = none/' "${HOME}/.config/wayfire.ini"
+  if ! grep -q -- '--tecla' "${HOME}/.config/wayfire.ini" && grep -q '^\[command\]' "${HOME}/.config/wayfire.ini"; then
+    awk '/^# Teclas especiales/{f=1} f{print} /^# Fin de las teclas especiales/{exit}' \
+      /etc/skel/.config/wayfire.ini > "${HOME}/.config/.teclas-titan" 2>/dev/null
+    awk -v f="${HOME}/.config/.teclas-titan" '{print} /^\[command\]/{while((getline l < f)>0) print l}' \
+      "${HOME}/.config/wayfire.ini" > "${HOME}/.config/wayfire.ini.nuevo" \
+      && mv "${HOME}/.config/wayfire.ini.nuevo" "${HOME}/.config/wayfire.ini"
+    rm -f "${HOME}/.config/.teclas-titan"
+  fi
+fi
+if [ -f "${HOME}/.config/labwc/rc.xml" ] && ! grep -q -- '--tecla' "${HOME}/.config/labwc/rc.xml"; then
+  grep -- '--tecla' /etc/skel/.config/labwc/rc.xml | grep '<keybind' > "${HOME}/.config/labwc/.teclas-titan" 2>/dev/null
+  awk -v f="${HOME}/.config/labwc/.teclas-titan" '/<\/keyboard>/{while((getline l < f)>0) print l} {print}' \
+    "${HOME}/.config/labwc/rc.xml" > "${HOME}/.config/labwc/rc.xml.nuevo" \
+    && mv "${HOME}/.config/labwc/rc.xml.nuevo" "${HOME}/.config/labwc/rc.xml"
+  rm -f "${HOME}/.config/labwc/.teclas-titan"
+fi
+
 # 5. Compositor: Wayfire (inmersivo) solo con aceleracion 3D real; necesita
 #    OpenGL ES y no tiene renderizado por software como labwc (pixman).
 COMPOSITOR="labwc"

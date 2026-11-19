@@ -397,3 +397,42 @@ xorg-xhost
 wf-recorder
 # AppArmor (como Ubuntu): el kernel lo trae; se activa con lsm= en el arranque
 apparmor
+
+# Apps para estudiar y dar clase (2026-11). Veyon, Epoptes y Gromit-MPX no
+# estan en los repos (solo AUR); Gromit-MPX se instala desde la App Store.
+# Pizarra y anotaciones
+openboard
+xournalpp
+# Oficina y PDF (ONLYOFFICE va aparte: build-iso.sh descarga su AppImage)
+libreoffice-fresh
+libreoffice-fresh-es
+pdfarranger
+# Grabar y editar video de clases
+obs-studio
+kdenlive
+# Examenes, notas y libros
+auto-multiple-choice
+joplin-desktop
+obsidian
+anki
+calibre
+# Ciencias y matematicas (KDE Edu), astronomia e infantil
+kalzium
+kstars
+kmplot
+kig
+geogebra
+stellarium
+gcompris-qt
+
+# Impresoras antiguas (las modernas imprimen sin driver, IPP Everywhere):
+# Epson/Canon/Brother con gutenprint y foomatic, HP con hplip (como Ubuntu)
+gutenprint
+foomatic-db
+foomatic-db-engine
+foomatic-db-ppds
+hplip
+# "Abrir con la grafica dedicada" en portatiles con dos GPU
+switcheroo-control
+# Mejor integracion como maquina virtual en QEMU/KVM (arranca solo por udev)
+qemu-guest-agent

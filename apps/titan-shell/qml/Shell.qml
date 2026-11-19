@@ -310,6 +310,18 @@ QtObject {
         }
     }
 
+    // Alt+Tab: a qué app se cambia (CambiadorVentanas.qml)
+    property var cambiadorWin: Window {
+        objectName: "cambiadorWindow"
+        visible: false
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        onActiveChanged: if (active) cambiadorVentanas.conTeclado = true
+        CambiadorVentanas { id: cambiadorVentanas }
+    }
+
     // 11. Sistema de Escritorios / Mission Control (Hot Corner superior derecho)
     property var workspacesWin: Window {
         objectName: "workspacesWindow"

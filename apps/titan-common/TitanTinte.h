@@ -41,6 +41,10 @@ public:
         QImage img(QLatin1Char(':') + id.mid(barra));
         if (img.isNull())
             img = QImage(QStringLiteral(":/") + id.mid(barra + 1));
+        // Icono en disco (p. ej. /usr/share/titan/icons/apps-folder.png de la
+        // App Store): sin esto el Dock lo dejaba en blanco con otro acento.
+        if (img.isNull() && id.mid(barra).startsWith(QLatin1Char('/')))
+            img = QImage(id.mid(barra));
         if (!img.isNull() && acento.isValid())
             tenir(img, acento);
         if (size)

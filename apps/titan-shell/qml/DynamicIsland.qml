@@ -47,18 +47,25 @@ Item {
         }
     }
 
+    // ---------- Indicador de volumen / brillo (teclas) ----------
+    // Tiene prioridad mientras dura (1,6 s); luego vuelve lo que hubiera.
+    readonly property bool indicando: shellBackend.indicadorActivo
+    readonly property var indicador: shellBackend.indicador
+
     // Dibujar la isla (visible solo si hay algo que mostrar)
-    readonly property bool shown: active || showIdlePill || musica
+    readonly property bool shown: active || showIdlePill || musica || indicando
 
     signal actionTriggered(var action)       // conecta esto a tu backend
 
     // Tamaño final de la isla (sin la animación): Shell.qml ajusta la
     // ventana a él una sola vez por transición.
     // (Con prefijo: hay un Item con id musicaAbierta que taparía la propiedad.)
-    readonly property real anchoObjetivo: dynamicIslandRoot.active
+    readonly property real anchoObjetivo: dynamicIslandRoot.indicando ? 236
+           : dynamicIslandRoot.active
            ? Math.min(dynamicIslandRoot.expandedWidth, dynamicIslandRoot.anchoPantalla - 32)
            : dynamicIslandRoot.musica ? (dynamicIslandRoot.musicaAbierta ? 360 : 236) : dynamicIslandRoot.compactWidth
-    readonly property real altoObjetivo: dynamicIslandRoot.active
+    readonly property real altoObjetivo: dynamicIslandRoot.indicando ? 34
+           : dynamicIslandRoot.active
            ? Math.max(64, islandCard.contentH + 28)
            : dynamicIslandRoot.musica ? (dynamicIslandRoot.musicaAbierta ? 112 : 24) : dynamicIslandRoot.compactHeight
 
@@ -198,7 +205,7 @@ Item {
             anchors.fill: parent
             anchors.leftMargin: 6
             anchors.rightMargin: 14
-            opacity: dynamicIslandRoot.musica && !dynamicIslandRoot.musicaAbierta && islandCard.height < 50 ? 1 : 0
+            opacity: dynamicIslandRoot.musica && !dynamicIslandRoot.musicaAbierta && !dynamicIslandRoot.indicando && islandCard.height < 50 ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 140 } }
 
@@ -233,7 +240,7 @@ Item {
             id: musicaAbierta
             anchors.fill: parent
             anchors.margins: 14
-            opacity: dynamicIslandRoot.musica && dynamicIslandRoot.musicaAbierta && islandCard.height > 80 ? 1 : 0
+            opacity: dynamicIslandRoot.musica && dynamicIslandRoot.musicaAbierta && !dynamicIslandRoot.indicando && islandCard.height > 80 ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity {
                 SequentialAnimation {
@@ -318,6 +325,102 @@ Item {
             }
         }
 
+        // ---------- INDICADOR: icono, barra y porcentaje ----------
+        Item {
+            id: indicadorVista
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
+            opacity: dynamicIslandRoot.indicando && islandCard.height < 50 ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+
+            readonly property string tipo: dynamicIslandRoot.indicador && dynamicIslandRoot.indicador.tipo ? dynamicIslandRoot.indicador.tipo : "volumen"
+            readonly property real valor: dynamicIslandRoot.indicador && dynamicIslandRoot.indicador.valor !== undefined ? dynamicIslandRoot.indicador.valor : 0
+            readonly property bool silencio: dynamicIslandRoot.indicador ? !!dynamicIslandRoot.indicador.silencio : false
+
+            Canvas {
+                id: iconoIndicador
+                width: 18; height: 18
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                property string clave: indicadorVista.tipo + (indicadorVista.silencio ? "-mudo" : "") + Math.min(3, Math.ceil(indicadorVista.valor * 3))
+                onClaveChanged: requestPaint()
+                onPaint: {
+                    var c = getContext("2d")
+                    c.reset()
+                    c.fillStyle = "#ffffff"; c.strokeStyle = "#ffffff"; c.lineWidth = 1.6; c.lineCap = "round"
+                    var t = indicadorVista.tipo, v = indicadorVista.valor
+                    if (t === "volumen" || t === "micro") {
+                        if (t === "volumen") {
+                            // altavoz
+                            c.beginPath(); c.moveTo(2, 7); c.lineTo(5, 7); c.lineTo(9, 3.5); c.lineTo(9, 14.5); c.lineTo(5, 11); c.lineTo(2, 11); c.closePath(); c.fill()
+                        } else {
+                            // micrófono
+                            c.beginPath(); c.moveTo(7, 3); c.lineTo(11, 3); c.lineTo(11, 10); c.lineTo(7, 10); c.closePath(); c.fill()
+                            c.beginPath(); c.arc(9, 9, 5, 0, Math.PI); c.stroke()
+                            c.beginPath(); c.moveTo(9, 14); c.lineTo(9, 16.5); c.stroke()
+                        }
+                        if (indicadorVista.silencio || (t === "volumen" && v <= 0.001)) {
+                            var x = t === "volumen" ? 13 : 4
+                            c.beginPath(); c.moveTo(x - 2.5, 6.5); c.lineTo(x + 2.5, 11.5); c.moveTo(x + 2.5, 6.5); c.lineTo(x - 2.5, 11.5)
+                            if (t === "micro") { c.moveTo(3, 3); c.lineTo(15, 15) }
+                            c.stroke()
+                        } else if (t === "volumen") {
+                            var ondas = Math.max(1, Math.min(3, Math.ceil(v * 3)))
+                            for (var i = 1; i <= ondas; ++i) { c.beginPath(); c.arc(9, 9, 2.5 + i * 2.2, -0.75, 0.75); c.stroke() }
+                        }
+                    } else if (t === "teclado") {
+                        c.strokeRect(1.5, 6, 15, 9)
+                        for (var k = 0; k < 4; ++k) c.fillRect(3.5 + k * 3, 8.5, 1.6, 1.6)
+                        c.fillRect(5.5, 12, 7, 1.4)
+                        c.beginPath(); c.moveTo(9, 1); c.lineTo(9, 3.5); c.moveTo(4.5, 2.2); c.lineTo(5.6, 4); c.moveTo(13.5, 2.2); c.lineTo(12.4, 4); c.stroke()
+                    } else {
+                        // sol: más rayos cuanto más brillo
+                        c.beginPath(); c.arc(9, 9, 3.4, 0, 2 * Math.PI); c.fill()
+                        for (var r = 0; r < 8; ++r) {
+                            var a = r * Math.PI / 4, l = 5.6 + 1.8 * Math.min(1, v + 0.2)
+                            c.beginPath(); c.moveTo(9 + Math.cos(a) * 5.2, 9 + Math.sin(a) * 5.2); c.lineTo(9 + Math.cos(a) * l, 9 + Math.sin(a) * l); c.stroke()
+                        }
+                    }
+                }
+            }
+
+            Text {
+                id: porcentajeIndicador
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 34
+                horizontalAlignment: Text.AlignRight
+                text: indicadorVista.silencio ? "" : Math.round(indicadorVista.valor * 100) + "%"
+                color: "#ffffff"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                font.features: { "tnum": 1 }
+            }
+
+            Rectangle {
+                anchors.left: iconoIndicador.right
+                anchors.leftMargin: 10
+                anchors.right: porcentajeIndicador.left
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                height: 5
+                radius: 2.5
+                color: Qt.rgba(1, 1, 1, 0.18)
+                Rectangle {
+                    height: parent.height
+                    radius: parent.radius
+                    // Se anima el nivel, no el ancho: así la barra no se queda
+                    // atrás mientras la isla crece.
+                    property real nivel: indicadorVista.silencio ? 0 : indicadorVista.valor
+                    Behavior on nivel { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+                    width: parent.width * nivel
+                    color: "#ffffff"
+                }
+            }
+        }
+
         // ---------- CONTENIDO (aparece un poco después de crecer) ----------
         Item {
             id: body
@@ -327,7 +430,7 @@ Item {
             anchors.topMargin: 14
             anchors.bottomMargin: 14
 
-            opacity: dynamicIslandRoot.active && islandCard.height > 48 ? 1.0 : 0.0
+            opacity: dynamicIslandRoot.active && !dynamicIslandRoot.indicando && islandCard.height > 48 ? 1.0 : 0.0
             visible: opacity > 0.01
             Behavior on opacity {
                 SequentialAnimation {

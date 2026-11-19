@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "WindowTracker.h"
 #include "WayfireIpc.h"
 #include "tareas.h"
@@ -203,6 +204,12 @@ void WindowTracker::onTareasCambiadas()
         }
 
         int winWs = m_windowWorkspaces.value(v.id, 0);
+        if (v.activa && m_recientes.value(0) != v.id) {
+            m_recientes.removeAll(v.id);
+            m_recientes.prepend(v.id);
+        } else if (!m_recientes.contains(v.id)) {
+            m_recientes.append(v.id);
+        }
 
         QVariantMap map;
         map[QStringLiteral("id")] = static_cast<qulonglong>(v.id);
@@ -333,6 +340,81 @@ void WindowTracker::closeWindowById(qulonglong windowId)
     if (!m_monitor) return;
     quintptr id = static_cast<quintptr>(windowId);
     m_monitor->cerrar(id);
+}
+
+QVariantList WindowTracker::ventanasRecientes() const
+{
+    QVariantList r;
+    if (!m_monitor) return r;
+    const auto ventanas = m_monitor->ventanas();
+    QHash<quintptr, int> pos;
+    for (int i = 0; i < m_recientes.size(); ++i)
+        pos.insert(m_recientes.at(i), i);
+    QList<Ventana> lista;
+    for (const auto &v : ventanas)
+        if (m_windowWorkspaces.value(v.id, 0) == m_currentWorkspace)
+            lista.append(v);
+    std::stable_sort(lista.begin(), lista.end(), [&pos](const Ventana &a, const Ventana &b) {
+        // La activa siempre primero; las minimizadas al final
+        if (a.activa != b.activa) return a.activa;
+        if (a.minimizada != b.minimizada) return !a.minimizada;
+        return pos.value(a.id, 1 << 20) < pos.value(b.id, 1 << 20);
+    });
+    for (const auto &v : std::as_const(lista)) {
+        QVariantMap m;
+        m[QStringLiteral("id")] = static_cast<qulonglong>(v.id);
+        m[QStringLiteral("title")] = v.titulo;
+        m[QStringLiteral("appId")] = v.appId;
+        m[QStringLiteral("minimized")] = v.minimizada;
+        r.append(m);
+    }
+    return r;
+}
+
+void WindowTracker::traerVentana(qulonglong windowId)
+{
+    if (!m_monitor) return;
+    const quintptr id = static_cast<quintptr>(windowId);
+    for (const auto &v : m_monitor->ventanas())
+        if (v.id == id && v.minimizada)
+            m_monitor->minimizar(id, false);
+    m_monitor->activar(id);
+    m_ocultasEscritorio.removeAll(id);
+}
+
+void WindowTracker::mostrarEscritorio()
+{
+    if (!m_monitor) return;
+    const auto ventanas = m_monitor->ventanas();
+    QList<quintptr> visibles;
+    for (const auto &v : ventanas)
+        if (!v.minimizada && m_windowWorkspaces.value(v.id, 0) == m_currentWorkspace)
+            visibles.append(v.id);
+
+    if (!visibles.isEmpty()) {
+        // Ocultar: tambien las abiertas despues de la ultima vez
+        for (quintptr id : std::as_const(visibles)) {
+            m_monitor->minimizar(id, true);
+            if (!m_ocultasEscritorio.contains(id))
+                m_ocultasEscritorio.append(id);
+        }
+        return;
+    }
+    // Ya estaba el escritorio a la vista: devolver las que se ocultaron aqui
+    // (las que el usuario minimizo a mano se quedan donde estan).
+    QSet<quintptr> existen;
+    for (const auto &v : ventanas)
+        if (v.minimizada)
+            existen.insert(v.id);
+    quintptr ultima = 0;
+    for (quintptr id : std::as_const(m_ocultasEscritorio)) {
+        if (!existen.contains(id)) continue;
+        m_monitor->minimizar(id, false);
+        ultima = id;
+    }
+    if (ultima)
+        m_monitor->activar(ultima);
+    m_ocultasEscritorio.clear();
 }
 
 bool WindowTracker::nativeWorkspaces() const

@@ -79,6 +79,10 @@ class ShellBackend : public QObject
     Q_PROPERTY(int islandQueueCount READ islandQueueCount NOTIFY islandChanged)
     // Avisos para la pantalla de bloqueo (segun Notificaciones/bloqueo)
     Q_PROPERTY(QVariantList avisosBloqueo READ avisosBloqueo NOTIFY avisosBloqueoChanged)
+    // Indicador de volumen/brillo en la isla: {tipo, valor (0-1), silencio}
+    Q_PROPERTY(QVariantMap indicador READ indicador NOTIFY indicadorChanged)
+    Q_PROPERTY(bool indicadorActivo READ indicadorActivo NOTIFY indicadorChanged)
+    Q_PROPERTY(bool cambiadorVisible READ cambiadorVisible WRITE setCambiadorVisible NOTIFY cambiadorVisibleChanged)
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
@@ -177,6 +181,15 @@ public:
     QVariantMap currentIslandNotification() const { return m_currentIslandNotification; }
     int islandQueueCount() const { return m_islandQueue; }
     QVariantList avisosBloqueo() const;
+    QVariantMap indicador() const { return m_indicador; }
+    bool indicadorActivo() const { return m_indicadorActivo; }
+    bool cambiadorVisible() const { return m_cambiadorVisible; }
+    void setCambiadorVisible(bool v) { if (v != m_cambiadorVisible) { m_cambiadorVisible = v; emit cambiadorVisibleChanged(); } }
+    // ¿Sigue pulsada Alt? (el cambiador se cierra al soltarla)
+    Q_INVOKABLE bool altPulsada() const;
+    // Teclas especiales (volumen, brillo, multimedia...): las manda el
+    // compositor con "titan-shell --tecla <accion>".
+    Q_INVOKABLE void tecla(const QString &accion);
 
     Q_INVOKABLE void toggleNotificationCenter();
     Q_INVOKABLE void closeNotificationCenter();
@@ -274,6 +287,10 @@ signals:
     void blurredWallpaperChanged();
     void notificationsChanged();
     void avisosBloqueoChanged();
+    void indicadorChanged();
+    // Alt+Tab (+1) / Alt+Mayus+Tab (-1): lo pinta CambiadorVentanas.qml
+    void altTab(int paso);
+    void cambiadorVisibleChanged();
     void notificationCenterVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
@@ -292,6 +309,13 @@ private:
     bool takeNotification(int id);
     void escribirAvisosBloqueo();
     int m_islandQueue = 0;
+    void mostrarIndicador(const QString &tipo, qreal valor, bool silencio);
+    bool leerVolumen(const QString &dispositivo, qreal *valor, bool *silencio);
+    bool brilloRelativo(const QString &dispositivo, const QString &cambio, qreal *valor);
+    QVariantMap m_indicador;
+    bool m_indicadorActivo = false;
+    bool m_cambiadorVisible = false;
+    class QTimer *m_indicadorTimer = nullptr;
 
     void updateBatteryStatus();
     void syncHardwareStatus();
