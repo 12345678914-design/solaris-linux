@@ -302,6 +302,11 @@ if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q '^disable_touchpad_while_ty
   fi
 fi
 
+# 4c''. Gestos del panel tactil (plugin titan-gestos, 2026-11)
+if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q 'titan-gestos' "${HOME}/.config/wayfire.ini"; then
+  sed -i 's/^  titan-decor \\$/  titan-decor \\\n  titan-gestos \\/' "${HOME}/.config/wayfire.ini"
+fi
+
 # 4c. Distribucion del teclado (2026-11): la del sistema (la que se eligio al
 #     instalar) si la persona no ha elegido otra en Ajustes > Teclado. Antes
 #     Wayfire usaba siempre "us" y labwc la de XKB_DEFAULT_* (ninguna).

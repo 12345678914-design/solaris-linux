@@ -444,6 +444,11 @@ contiene "$WI" '^disable_touchpad_while_typing = true' "panel tactil sin clics d
 contiene apps/titan-common/ThemeManager.cpp 'leerTemaDelDisco' "modo claro/oscuro a GTK/Firefox sin carreras"
 contiene apps/titan-common/TitanIconoApp.h 'desktopDeAppId' "mismo icono en lanzador, Dock y escritorio"
 contiene "$SH/src/DesktopBackend.cpp" 'X-Flatpak' "quitar del escritorio las apps desinstaladas"
+contiene "$WI" '^  titan-gestos' "gestos del panel tactil (plugin titan-gestos)"
+contiene iso/titan/airootfs/usr/share/wayfire/metadata/titan-gestos.xml 'arriba_3' "metadatos de titan-gestos"
+contiene apps/wayfire-titan/titan-gestos.cpp 'wlr_pointer_swipe_end_event' "titan-gestos escucha el panel tactil"
+contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'titan-gestos' "gestos para usuarios existentes"
+contiene apps/titan-settings/qml/RatonView.qml 'Gestos con tres y cuatro dedos' "Ajustes: gestos"
 
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"

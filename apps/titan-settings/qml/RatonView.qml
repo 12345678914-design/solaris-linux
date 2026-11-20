@@ -84,4 +84,39 @@ PaginaAjustes {
             }
         }
     }
+
+    Grupo {
+        etiqueta: "Gestos"
+        visible: sistema.hayPanelTactil
+        nota: "Como en Ubuntu, Fedora y macOS. Con dos dedos se desplaza y se pellizca para hacer zoom en las apps."
+        Fila {
+            titulo: "Gestos con tres y cuatro dedos"
+            Interruptor {
+                activo: vista.r.gestos !== false
+                onAlternado: (v) => sistema.setRaton("gestos", v)
+            }
+        }
+        Repeater {
+            model: [
+                ["3 dedos a los lados", "Cambiar de escritorio"],
+                ["3 dedos arriba", "Ver todas las ventanas"],
+                ["3 dedos abajo", "Mostrar el escritorio"],
+                ["4 dedos arriba o pellizcar", "Launchpad (todas las apps)"],
+                ["4 dedos abajo", "Ver los escritorios"]
+            ]
+            delegate: Fila {
+                required property var modelData
+                required property int index
+                separador: index < 4
+                titulo: modelData[0]
+                opacity: vista.r.gestos !== false ? 1 : 0.45
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData[1]
+                    color: tema.contentTextSecondary
+                    font.pixelSize: 12
+                }
+            }
+        }
+    }
 }
