@@ -18,6 +18,7 @@ class SettingsBackend : public QObject
     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY wallpaperChanged)
     Q_PROPERTY(QVariantList wallpapers READ wallpapers NOTIFY wallpapersChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    Q_PROPERTY(QString languageStatus READ languageStatus NOTIFY languageChanged)
     Q_PROPERTY(bool dockEnabled READ dockEnabled WRITE setDockEnabled NOTIFY shellSettingsChanged)
     Q_PROPERTY(bool topBarEnabled READ topBarEnabled WRITE setTopBarEnabled NOTIFY shellSettingsChanged)
     Q_PROPERTY(QVariantMap systemInfo READ systemInfo CONSTANT)
@@ -69,6 +70,7 @@ public:
     QVariantList wallpapers() const;
 
     QString language() const { return m_language; }
+    QString languageStatus() const { return m_languageStatus; }
     void setLanguage(const QString &lang);
 
     bool dockEnabled() const { return m_dockEnabled; }
@@ -156,6 +158,9 @@ private:
     QString m_searchQuery;
     QVariantList m_allSections;
     QString m_language = QStringLiteral("auto");
+    QString m_languageStatus;
+    bool m_languageBusy = false;
+    void applyUserLanguage(const QString &lang, const QString &codigo);
     bool m_dockEnabled = true;
     bool m_topBarEnabled = true;
     QVariantMap m_systemInfo;

@@ -5,6 +5,9 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QTextStream>
+#include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
@@ -167,53 +170,76 @@ void SettingsBackend::setWallpaper(const QString &path)
     ThemeManager::instance()->setWallpaper(path);
 }
 
+// Idioma de esta cuenta (~/.config/locale.conf, lo lee /etc/profile.d/locale.sh
+// al entrar). No necesita administrador; solo si el idioma no está preparado
+// en el sistema se pide la contraseña, en ventana, para titan-idioma.
 void SettingsBackend::setLanguage(const QString &lang)
 {
-    if (m_language != lang) {
-        m_language = lang;
-        saveShellSettings();
-
-        // Aplicar locale según Arch Linux
-        QString localeCode = QStringLiteral("es_ES.UTF-8");
-        QString localeGenEntry = QStringLiteral("es_ES.UTF-8 UTF-8");
-        if (lang == QStringLiteral("en")) {
-            localeCode = QStringLiteral("en_US.UTF-8");
-            localeGenEntry = QStringLiteral("en_US.UTF-8 UTF-8");
-        } else if (lang == QStringLiteral("quz")) {
-            localeCode = QStringLiteral("quz_PE.UTF-8");
-            localeGenEntry = QStringLiteral("quz_PE.UTF-8 UTF-8");
-        } else if (lang == QStringLiteral("auto")) {
-            localeCode = QStringLiteral("es_ES.UTF-8");
-            localeGenEntry = QStringLiteral("es_ES.UTF-8 UTF-8");
-        }
-
-        // 1. Escribir configuración de usuario en ~/.config/locale.conf
-        QString confDir = QDir::homePath() + QStringLiteral("/.config");
-        QDir().mkpath(confDir);
-        QFile uLocale(confDir + QStringLiteral("/locale.conf"));
-        if (uLocale.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-            QTextStream ts(&uLocale);
-            ts << "LANG=" << localeCode << "\n";
-            ts << "LC_ALL=" << localeCode << "\n";
-            uLocale.close();
-        }
-
-        // 2. Método completo: habilitar en /etc/locale.gen, ejecutar locale-gen y actualizar /etc/locale.conf
-        QString script = QStringLiteral(
-            "grep -qE '^[# ]*%1' /etc/locale.gen && sudo sed -i 's/^[# ]*%1/%1/' /etc/locale.gen || echo '%2' | sudo tee -a /etc/locale.gen; "
-            "sudo locale-gen; "
-            "echo 'LANG=%3' | sudo tee /etc/locale.conf; "
-            "echo 'LC_ALL=%3' | sudo tee -a /etc/locale.conf; "
-            "localectl set-locale LANG=%3 2>/dev/null || true"
-        ).arg(localeGenEntry.section(QLatin1Char(' '), 0, 0), localeGenEntry, localeCode);
-
-        QProcess::startDetached(QStringLiteral("bash"), {QStringLiteral("-c"), script});
-
-        qputenv("LANG", localeCode.toUtf8());
-        qputenv("LC_ALL", localeCode.toUtf8());
-
-        emit languageChanged();
+    if (m_language == lang || m_languageBusy)
+        return;
+    static const QHash<QString, QString> codigos = {
+        {QStringLiteral("es"), QStringLiteral("es_ES.UTF-8")},
+        {QStringLiteral("en"), QStringLiteral("en_US.UTF-8")},
+        {QStringLiteral("quz"), QStringLiteral("quz_PE.UTF-8")},
+    };
+    if (lang == QStringLiteral("auto")) {
+        applyUserLanguage(lang, QString());
+        return;
     }
+    const QString codigo = codigos.value(lang);
+    if (codigo.isEmpty())
+        return;
+
+    const QString helper = binTitan(QStringLiteral("titan-idioma"));
+    QProcess comprobar;
+    comprobar.start(helper, {QStringLiteral("instalado"), codigo});
+    const bool listo = comprobar.waitForFinished(5000) &&
+                       QString::fromUtf8(comprobar.readAllStandardOutput()).trimmed() == QStringLiteral("si");
+    if (listo) {
+        applyUserLanguage(lang, codigo);
+        return;
+    }
+
+    m_languageBusy = true;
+    m_languageStatus = QStringLiteral("Preparando el idioma: escribe la contraseña de administrador en la ventana…");
+    emit languageChanged();
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p, lang, codigo](int c, QProcess::ExitStatus) {
+        p->deleteLater();
+        m_languageBusy = false;
+        if (c == 0) {
+            applyUserLanguage(lang, codigo);
+            return;
+        }
+        m_languageStatus = c == 126 ? QStringLiteral("Cancelado: el idioma no ha cambiado.")
+                         : c == 127 ? QStringLiteral("Tu cuenta no puede instalar idiomas: pídeselo a quien administre el equipo.")
+                                    : QStringLiteral("No se pudo preparar el idioma.");
+        emit languageChanged();
+    });
+    p->start(QStringLiteral("pkexec"), {helper, QStringLiteral("instalar"), codigo});
+}
+
+void SettingsBackend::applyUserLanguage(const QString &lang, const QString &codigo)
+{
+    const QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/locale.conf");
+    if (lang == QStringLiteral("auto")) {
+        QFile::remove(conf);   // sin fichero propio: el idioma del sistema
+        m_languageStatus = QStringLiteral("Listo: se usará el idioma del sistema la próxima vez que entres.");
+    } else {
+        QDir().mkpath(QFileInfo(conf).absolutePath());
+        QFile f(conf);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QTextStream ts(&f);
+            ts << "LANG=" << codigo << "\n";
+            // Casi ninguna app está en quechua: lo que falte, en español
+            if (lang == QStringLiteral("quz"))
+                ts << "LANGUAGE=quz:es_ES:es\n";
+        }
+        m_languageStatus = QStringLiteral("Listo: el idioma cambiará la próxima vez que entres en la sesión.");
+    }
+    m_language = lang;
+    saveShellSettings();
+    emit languageChanged();
 }
 
 void SettingsBackend::setDockEnabled(bool enabled)

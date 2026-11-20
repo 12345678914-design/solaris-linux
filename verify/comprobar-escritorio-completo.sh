@@ -464,6 +464,9 @@ contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'noconfirm --
 contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'systemd-run' "la actualizacion sigue aunque se cierre Ajustes"
 contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy 'titan-actualizar-sistema' "permiso para actualizar con contrasena en ventana"
 contiene apps/titan-settings/qml/GeneralView.qml 'Mostrar detalles' "Ajustes: barra de progreso y registro de la actualizacion"
+contiene iso/titan/airootfs/usr/local/bin/titan-idioma 'grep -qFx' "titan-idioma solo acepta idiomas de la lista del sistema"
+contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy 'org.intios.idioma' "instalar un idioma pide la contrasena en ventana"
+contiene apps/titan-settings/src/SettingsBackend.cpp 'titan-idioma' "Ajustes cambia el idioma sin sudo en segundo plano"
 contiene iso/titan/airootfs/usr/local/bin/titan-actualizaciones 'titan-settings --actualizar' "el aviso de actualizaciones empieza a actualizar al pulsar"
 
 echo

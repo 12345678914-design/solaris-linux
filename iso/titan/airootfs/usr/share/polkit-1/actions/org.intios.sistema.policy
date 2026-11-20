@@ -6,7 +6,7 @@
   <vendor>Inti OS</vendor>
   <action id="org.intios.cortafuegos">
     <description>Cambiar el cortafuegos</description>
-    <message>Para activar o desactivar el cortafuegos hace falta la contraseña de administrador.</message>
+    <message>Por tu seguridad, para activar o desactivar el cortafuegos hace falta la contraseña de administrador.</message>
     <icon_name>security-high</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
@@ -17,7 +17,7 @@
   </action>
   <action id="org.intios.actualizar">
     <description>Actualizar el sistema</description>
-    <message>Para actualizar el sistema hace falta la contraseña de administrador.</message>
+    <message>Por tu seguridad, para actualizar el sistema hace falta la contraseña de administrador.</message>
     <icon_name>system-software-update</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
@@ -26,9 +26,20 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-actualizar-sistema</annotate>
   </action>
+  <action id="org.intios.idioma">
+    <description>Instalar un idioma en el sistema</description>
+    <message>Por tu seguridad, instalar un idioma nuevo en el sistema pide la contraseña de administrador. Así ningún programa puede cambiar el sistema sin que tú lo sepas.</message>
+    <icon_name>preferences-desktop-locale</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-idioma</annotate>
+  </action>
   <action id="org.intios.huella">
     <description>Usar la huella para entrar</description>
-    <message>Para usar el lector de huellas al entrar hace falta la contraseña de administrador.</message>
+    <message>Por tu seguridad, para usar el lector de huellas al entrar hace falta la contraseña de administrador.</message>
     <icon_name>security-high</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
@@ -39,7 +50,7 @@
   </action>
   <action id="org.intios.arranque-seguro">
     <description>Preparar el arranque seguro</description>
-    <message>Para inscribir las claves de arranque seguro y firmar el sistema hace falta la contraseña de administrador.</message>
+    <message>Por tu seguridad, para inscribir las claves de arranque seguro y firmar el sistema hace falta la contraseña de administrador.</message>
     <icon_name>security-high</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
@@ -50,7 +61,7 @@
   </action>
   <action id="org.intios.instantaneas">
     <description>Gestionar los puntos de restauración</description>
-    <message>Para crear o borrar puntos de restauración hace falta la contraseña de administrador.</message>
+    <message>Por tu seguridad, para crear o borrar puntos de restauración hace falta la contraseña de administrador.</message>
     <icon_name>security-high</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>

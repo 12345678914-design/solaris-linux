@@ -87,6 +87,16 @@ ScrollView {
                     }
                 }
             }
+
+            // Qué ha pasado al cambiarlo (se aplica al volver a entrar)
+            Text {
+                visible: settingsBackend.languageStatus !== ""
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: settingsBackend.languageStatus
+                color: settingsBackend.languageStatus.indexOf("Listo") === 0 ? theme.accent : theme.contentTextSecondary
+                font.pixelSize: 11
+            }
         }
 
         // 2. SHELL
