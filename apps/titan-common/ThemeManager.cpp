@@ -11,6 +11,8 @@
 #include <QGuiApplication>
 #include <QPalette>
 #include <QColor>
+#include <QLocalSocket>
+#include <QTimer>
 
 ThemeManager *ThemeManager::instance()
 {
@@ -93,10 +95,6 @@ void ThemeManager::onConfigFileChanged()
 
     if (oldDark != m_isDark || oldAccent != m_accent) {
         aplicarPaleta();
-        // Si lo cambió otro programa (p. ej. "titan tema oscuro"), el shell
-        // lleva el modo a GTK/portal para que Firefox y OnlyOffice acierten.
-        if (m_sincronizaSistema && oldDark != m_isDark)
-            sincronizarGtk();
         emit themeChanged();
     }
     if (oldWp != m_wallpaper) {
@@ -106,6 +104,60 @@ void ThemeManager::onConfigFileChanged()
     if (QFile::exists(m_configPath) && !m_watcher->files().contains(m_configPath)) {
         m_watcher->addPath(m_configPath);
     }
+
+    // El shell lleva el modo y el acento a GTK/portal (Firefox, OnlyOffice,
+    // apps GTK). Se espera un momento: el aviso llega a veces cuando Ajustes
+    // aún está escribiendo theme.conf, y leerlo entonces daba el modo anterior
+    // (Firefox quedaba al revés: claro -> oscuro y oscuro -> claro).
+    if (m_sincronizaSistema && m_retrasoSync)
+        m_retrasoSync->start();
+}
+
+// theme.conf leído del disco ahora mismo (QSettings guarda una copia en
+// memoria por proceso y puede devolver lo de antes).
+static void leerTemaDelDisco(const QString &ruta, bool *oscuro, QString *acento)
+{
+    QFile f(ruta);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    bool enTema = false;
+    while (!f.atEnd()) {
+        const QString l = QString::fromUtf8(f.readLine()).trimmed();
+        if (l.startsWith(QLatin1Char('['))) { enTema = (l == QStringLiteral("[Theme]")); continue; }
+        if (!enTema) continue;
+        if (l.startsWith(QStringLiteral("isDark=")))
+            *oscuro = l.mid(7).trimmed().compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
+        else if (l.startsWith(QStringLiteral("accent=")))
+            *acento = l.mid(7).trimmed().remove(QLatin1Char('"'));
+    }
+}
+
+// Solo el shell: deja GTK/portal igual que theme.conf si no lo está ya.
+void ThemeManager::repasarSistema()
+{
+    bool oscuro = m_isDark;
+    QString acento = m_accent;
+    leerTemaDelDisco(m_configPath, &oscuro, &acento);
+    if (oscuro != m_isDark || (QColor::isValidColorName(acento) && QColor(acento).name() != m_accent)) {
+        m_isDark = oscuro;
+        if (QColor::isValidColorName(acento))
+            m_accent = QColor(acento).name();
+        aplicarPaleta();
+        emit themeChanged();
+    }
+    if (m_ultimoOscuro != int(m_isDark) || m_ultimoAcento != m_accent)
+        sincronizarGtk();
+}
+
+// ¿Está titan-shell en marcha? Entonces él sincroniza GTK/portal y las demás
+// apps no (dos procesos a la vez podían dejar el valor viejo).
+bool ThemeManager::shellActivo()
+{
+    QLocalSocket s;
+    s.connectToServer(QStringLiteral("titan-shell-ipc-") + qEnvironmentVariable("USER"));
+    const bool hay = s.waitForConnected(150);
+    s.abort();
+    return hay;
 }
 
 void ThemeManager::setIsDark(bool dark)
@@ -290,7 +342,8 @@ void ThemeManager::syncLabwcTheme()
         QProcess::startDetached(QStringLiteral("labwc"), {QStringLiteral("--reconfigure")});
     }
 
-    sincronizarGtk();
+    if (m_sincronizaSistema || !shellActivo())
+        sincronizarGtk();
 }
 
 // Claro/oscuro para lo que no es Qt: GTK 3/4, libadwaita y el portal de
@@ -300,16 +353,17 @@ void ThemeManager::sincronizarGtk()
     QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
     QString gtkTheme = m_isDark ? QStringLiteral("Adwaita-dark") : QStringLiteral("Adwaita");
 
-    QProcess::startDetached(QStringLiteral("gsettings"), {
-        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"), gtkColorScheme
-    });
-    QProcess::startDetached(QStringLiteral("gsettings"), {
-        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("gtk-theme"), gtkTheme
-    });
+    m_ultimoOscuro = int(m_isDark);
+    m_ultimoAcento = m_accent;
 
-    QProcess::startDetached(QStringLiteral("gsettings"), {
-        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"), QStringLiteral("button-layout"),
-        QStringLiteral("close,minimize,maximize:")
+    // En orden y en un solo proceso: primero el tema GTK y después
+    // color-scheme (el portal), para que nadie vea una mezcla de los dos.
+    QProcess::startDetached(QStringLiteral("sh"), {
+        QStringLiteral("-c"),
+        QStringLiteral("gsettings set org.gnome.desktop.interface gtk-theme '%1'; "
+                       "gsettings set org.gnome.desktop.interface color-scheme '%2'; "
+                       "gsettings set org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'")
+            .arg(gtkTheme, gtkColorScheme)
     });
 
     // GTK, libadwaita, kitty y la pantalla de bloqueo siguen el acento.
@@ -353,6 +407,13 @@ void ThemeManager::sincronizarGtk()
 void ThemeManager::setSincronizaSistema(bool activo)
 {
     m_sincronizaSistema = activo;
-    if (activo)
+    if (activo) {
+        if (!m_retrasoSync) {
+            m_retrasoSync = new QTimer(this);
+            m_retrasoSync->setSingleShot(true);
+            m_retrasoSync->setInterval(350);
+            connect(m_retrasoSync, &QTimer::timeout, this, &ThemeManager::repasarSistema);
+        }
         sincronizarGtk(); // al entrar: dconf puede no coincidir con theme.conf
+    }
 }

@@ -1,4 +1,4 @@
-QT += quick quickcontrols2 multimedia gui dbus concurrent
+QT += quick quickcontrols2 multimedia gui dbus concurrent network
 CONFIG += c++17 warn_on release link_pkgconfig
 PKGCONFIG += taglib
 QMAKE_CXXFLAGS_RELEASE += -O3 -pipe -fno-plt

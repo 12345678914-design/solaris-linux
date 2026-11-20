@@ -49,7 +49,13 @@ private:
     void save();
     void syncLabwcTheme();
     void sincronizarGtk();
+    void repasarSistema();
+    static bool shellActivo();
     bool m_sincronizaSistema = false;
+    // Lo último que se llevó a GTK/portal (-1: nada aún)
+    int m_ultimoOscuro = -1;
+    QString m_ultimoAcento;
+    class QTimer *m_retrasoSync = nullptr;
     void aplicarPaleta();
     void scanWallpapers();
 

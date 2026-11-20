@@ -1,4 +1,4 @@
-QT += quick quickcontrols2
+QT += quick quickcontrols2 network
 CONFIG += c++17 warn_on release
 QMAKE_CXXFLAGS_RELEASE += -O3 -pipe -fno-plt
 QMAKE_LFLAGS_RELEASE += -Wl,-O1,--as-needed
