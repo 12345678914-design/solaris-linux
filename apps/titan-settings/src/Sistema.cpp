@@ -390,18 +390,46 @@ void Sistema::setEscritorioRemoto(bool activo)
         }
         // Con el cortafuegos activo, el puerto 5900 se abre solo mientras se comparte
         if (m_cortafuegos == QStringLiteral("activo")) {
-            comoAdmin(QStringLiteral("cortafuegos"),
-                      {kBin + QStringLiteral("titan-cortafuegos"), QStringLiteral("vnc"),
-                       activo ? QStringLiteral("abrir") : QStringLiteral("cerrar")},
-                      [this, activo](int c2, const QString &, const QString &) {
-                          if (c2 != 0 && activo)
-                              avisar(QStringLiteral("Compartiendo, pero el cortafuegos no deja entrar: ábrelo con «sudo ufw allow 5900/tcp»."));
-                          leerCompartir();
-                      });
+            if (activo) {
+                abrirPuertoRemoto();
+            } else {
+                m_remotoPuertoCerrado = false;
+                comoAdmin(QStringLiteral("cortafuegos"),
+                          {kBin + QStringLiteral("titan-cortafuegos"), QStringLiteral("vnc"), QStringLiteral("cerrar")},
+                          [this](int, const QString &, const QString &) { leerCompartir(); });
+            }
             return;
         }
         leerCompartir();
     }, 15000);
+}
+
+// Abre 5900/tcp en el cortafuegos. Si se cancela la contraseña, Ajustes
+// enseña el botón "Abrir el puerto" para volver a intentarlo.
+void Sistema::abrirPuertoRemoto()
+{
+    m_remotoPuertoCerrado = true;
+    leerCompartir();   // ya se comparte: que se vea aunque se cancele la contraseña
+    comoAdmin(QStringLiteral("cortafuegos"),
+              {kBin + QStringLiteral("titan-cortafuegos"), QStringLiteral("vnc"), QStringLiteral("abrir")},
+              [this](int c, const QString &, const QString &) {
+                  m_remotoPuertoCerrado = c != 0;
+                  avisar(c == 0 ? QStringLiteral("Puerto abierto: otros equipos ya pueden conectarse.")
+                                : QStringLiteral("No se pudo abrir el puerto en el cortafuegos."));
+                  leerCompartir();
+              });
+}
+
+void Sistema::instalarComponente(const QString &nombre)
+{
+    comoAdmin(QStringLiteral("componente"), {kBin + QStringLiteral("titan-componente"), QStringLiteral("instalar"), nombre},
+              [this, nombre](int c, const QString &, const QString &e) {
+                  if (c == 0)
+                      avisar(QStringLiteral("Instalado."));
+                  else
+                      avisar(e.trimmed().isEmpty() ? QStringLiteral("No se pudo instalar.") : e.trimmed());
+                  leerCompartir();
+              });
 }
 
 void Sistema::prepararArranqueSeguro()

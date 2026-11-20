@@ -43,6 +43,8 @@ class Sistema : public QObject
     // Compartir: escritorio remoto (VNC) — "activo" | "inactivo" | "no-instalado"
     Q_PROPERTY(QString escritorioRemoto READ escritorioRemoto NOTIFY cambiado)
     Q_PROPERTY(QStringList direccionesIp READ direccionesIp NOTIFY cambiado)
+    // Se comparte, pero el cortafuegos aún no deja entrar (se canceló la contraseña)
+    Q_PROPERTY(bool remotoPuertoCerrado READ remotoPuertoCerrado NOTIFY cambiado)
     // Impresoras, instantaneas, VPN, discos
     Q_PROPERTY(QVariantList impresoras READ impresoras NOTIFY cambiado)
     Q_PROPERTY(QString tipoInstantaneas READ tipoInstantaneas NOTIFY cambiado)
@@ -105,6 +107,10 @@ public:
     Q_INVOKABLE void setDistribucion(const QString &capa, const QString &variante);
     Q_INVOKABLE void setRaton(const QString &clave, const QVariant &valor);
     Q_INVOKABLE void setEscritorioRemoto(bool activo);
+    Q_INVOKABLE void abrirPuertoRemoto();
+    // Instala un componente de la lista de titan-componente (botón "Instalar")
+    Q_INVOKABLE void instalarComponente(const QString &nombre);
+    bool remotoPuertoCerrado() const { return m_remotoPuertoCerrado; }
     QString escritorioRemoto() const { return m_remoto; }
     QStringList direccionesIp() const { return m_ips; }
 
@@ -152,6 +158,7 @@ private:
     QString m_cortafuegos = QStringLiteral("desconocido");
     QString m_remoto = QStringLiteral("inactivo");
     QStringList m_ips;
+    bool m_remotoPuertoCerrado = false;
     void leerCompartir();
     QString m_sb, m_sbTexto;
     QString m_huella;

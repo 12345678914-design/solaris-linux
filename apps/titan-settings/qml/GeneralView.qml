@@ -242,7 +242,7 @@ ScrollView {
             }
 
             Text {
-                text: "Si desactivas ambos, reabre esta ventana con: titan-settings"
+                text: "Si desactivas los dos, pulsa la tecla Super (⊞) y busca «Ajustes» para volver aquí."
                 color: theme.contentTextSecondary
                 font.pixelSize: 11
                 leftPadding: 4

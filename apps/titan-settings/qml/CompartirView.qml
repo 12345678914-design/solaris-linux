@@ -17,8 +17,28 @@ PaginaAjustes {
     Grupo {
         etiqueta: "Escritorio remoto"
         nota: sistema.escritorioRemoto === "no-instalado"
-              ? "Falta el programa wayvnc: instálalo desde la App Store o con «sudo pacman -S wayvnc»."
+              ? "Para compartir el escritorio hace falta un programa que aún no está instalado (wayvnc). Pulsa «Instalar»: pide la contraseña de administrador."
               : "La conexión va cifrada y pide el usuario y la contraseña de esta cuenta. Desde otro equipo, usa un visor VNC (Remmina, TigerVNC, RealVNC...). Se vuelve a activar solo al entrar en la sesión."
+        Fila {
+            visible: sistema.escritorioRemoto === "no-instalado"
+            titulo: "Falta un programa para compartir"
+            detalle: sistema.ocupado === "componente" ? "Instalando…" : "Escritorio remoto (wayvnc, muy pequeño)"
+            Boton {
+                texto: sistema.ocupado === "componente" ? "Instalando…" : "Instalar"
+                habilitado: sistema.ocupado === ""
+                onPulsado: sistema.instalarComponente("wayvnc")
+            }
+        }
+        Fila {
+            visible: vista.activo && sistema.remotoPuertoCerrado
+            titulo: "El cortafuegos aún no deja entrar"
+            detalle: "Hasta abrir el puerto, otros equipos no podrán conectarse"
+            Boton {
+                texto: "Abrir el puerto"
+                habilitado: sistema.ocupado === ""
+                onPulsado: sistema.abrirPuertoRemoto()
+            }
+        }
         Fila {
             titulo: "Compartir este escritorio"
             detalle: vista.activo ? "Activado: cualquiera con tu contraseña puede conectarse"
