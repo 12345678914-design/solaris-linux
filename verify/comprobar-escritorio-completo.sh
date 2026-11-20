@@ -14,6 +14,10 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+# build-iso.sh corre como root (sudo) y el repositorio es del usuario: git se
+# niega a leer un repositorio de otro dueño ("dubious ownership") y las
+# comprobaciones con git fallarían, o peor, pasarían sin mirar nada.
+git() { command git -c safe.directory="$PWD" "$@"; }
 RAIZ="iso/titan/airootfs"
 BIN="${RAIZ}/usr/local/bin"
 
