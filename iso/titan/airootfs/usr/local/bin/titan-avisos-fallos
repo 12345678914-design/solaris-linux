@@ -1,0 +1,36 @@
+#!/bin/sh
+# Inti OS - aviso cuando una app se cierra sola (como Apport en Ubuntu o
+# ABRT en Fedora). systemd-coredump apunta cada cierre inesperado en el
+# diario del usuario; aquí se escucha y se muestra una notificación con el
+# nombre de la app. Los detalles para informar del fallo: 'coredumpctl info'.
+# Lo arranca el servicio de usuario titan-avisos-fallos.service.
+set -u
+yo=$(id -u)
+ultimo=""; cuando=0
+
+nombre_app() { # nombre visible de la app por su programa (o el programa)
+    prog=$(basename "$1")
+    for d in "$HOME/.local/share/applications" /var/lib/flatpak/exports/share/applications /usr/share/applications; do
+        f=$(grep -lsE "^Exec=([^ ]*/)?$prog( |$)" "$d"/*.desktop 2>/dev/null | head -n 1)
+        if [ -n "$f" ]; then
+            n=$(sed -n 's/^Name\[es\]=//p' "$f" | head -n 1)
+            [ -n "$n" ] || n=$(sed -n 's/^Name=//p' "$f" | head -n 1)
+            [ -n "$n" ] && { printf '%s' "$n"; return; }
+        fi
+    done
+    printf '%s' "$prog"
+}
+
+journalctl --user -f -n 0 -o json MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1 |
+jq -r --unbuffered '[.COREDUMP_UID // "", .COREDUMP_EXE // .COREDUMP_COMM // ""] | @tsv' |
+while IFS="$(printf '\t')" read -r uid exe; do
+    [ "$uid" = "$yo" ] && [ -n "$exe" ] || continue
+    ahora=$(date +%s)
+    # La misma app varias veces seguidas: un solo aviso por minuto
+    if [ "$exe" = "$ultimo" ] && [ $((ahora - cuando)) -lt 60 ]; then continue; fi
+    ultimo=$exe; cuando=$ahora
+    app=$(nombre_app "$exe")
+    notify-send -a "Inti OS" -i dialog-warning \
+        "«$app» se cerró inesperadamente" \
+        "Puedes volver a abrirla. Si vuelve a pasar, los detalles del fallo están en «coredumpctl info $(basename "$exe")»." || true
+done

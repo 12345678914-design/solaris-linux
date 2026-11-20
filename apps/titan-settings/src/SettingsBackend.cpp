@@ -61,6 +61,7 @@ void SettingsBackend::initSections()
     add(QStringLiteral("Concentración"), QStringLiteral("Concentración"), QStringLiteral("🌙"), QStringLiteral("#af52de"));
     add(QStringLiteral("Bloquear pantalla"), QStringLiteral("Bloquear pantalla"), QStringLiteral("🔒"), QStringLiteral("#8e8e93"));
     add(QStringLiteral("Privacidad y seguridad"), QStringLiteral("Privacidad y seguridad"), QStringLiteral("🛡️"), QStringLiteral("#007aff"));
+    add(QStringLiteral("Compartir"), QStringLiteral("Compartir"), QStringLiteral("🖥️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Usuarios y grupos"), QStringLiteral("Usuarios y grupos"), QStringLiteral("👤"), QStringLiteral("#007aff"));
     add(QStringLiteral("Teclado"), QStringLiteral("Teclado"), QStringLiteral("⌨️"), QStringLiteral("#8e8e93"));
     add(QStringLiteral("Ratón y panel táctil"), QStringLiteral("Ratón y panel táctil"), QStringLiteral("🖱️"), QStringLiteral("#8e8e93"));

@@ -2,6 +2,9 @@
 # Las apps propias (Fotos, Música, Vídeo, Finder) van primero; Celluloid queda
 # como alternativa para vídeo en "Abrir con".
 [Default Applications]
+x-scheme-handler/mailto=org.mozilla.Thunderbird.desktop
+message/rfc822=org.mozilla.Thunderbird.desktop
+text/calendar=org.mozilla.Thunderbird.desktop
 application/vnd.openxmlformats-officedocument.wordprocessingml.document=onlyoffice-desktopeditors.desktop
 application/vnd.openxmlformats-officedocument.wordprocessingml.template=onlyoffice-desktopeditors.desktop
 application/msword=onlyoffice-desktopeditors.desktop

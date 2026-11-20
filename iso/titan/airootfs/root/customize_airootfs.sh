@@ -521,7 +521,7 @@ done
 # Servicios de cada usuario: llavero (socket), carpetas Documentos/Descargas...
 # en el idioma del sistema y el aviso de actualizaciones.
 for unidad in gnome-keyring-daemon.socket xdg-user-dirs-update.service \
-              titan-actualizaciones.timer; do
+              titan-actualizaciones.timer titan-avisos-fallos.service; do
   if [[ -e "/usr/lib/systemd/user/${unidad}" || -e "/etc/systemd/user/${unidad}" ]]; then
     systemctl --global enable "${unidad}"
   fi

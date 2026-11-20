@@ -19,6 +19,7 @@
         <file>qml/AccesibilidadView.qml</file>
         <file>qml/TecladoView.qml</file>
         <file>qml/RatonView.qml</file>
+        <file>qml/CompartirView.qml</file>
         <file>qml/ImpresorasView.qml</file>
         <file>qml/RestaurarView.qml</file>
         <file>qml/VpnView.qml</file>

@@ -40,6 +40,9 @@ class Sistema : public QObject
     // Ratón y panel táctil ([input] de wayfire.ini)
     Q_PROPERTY(QVariantMap raton READ raton NOTIFY cambiado)
     Q_PROPERTY(bool hayPanelTactil READ hayPanelTactil NOTIFY cambiado)
+    // Compartir: escritorio remoto (VNC) — "activo" | "inactivo" | "no-instalado"
+    Q_PROPERTY(QString escritorioRemoto READ escritorioRemoto NOTIFY cambiado)
+    Q_PROPERTY(QStringList direccionesIp READ direccionesIp NOTIFY cambiado)
     // Impresoras, instantaneas, VPN, discos
     Q_PROPERTY(QVariantList impresoras READ impresoras NOTIFY cambiado)
     Q_PROPERTY(QString tipoInstantaneas READ tipoInstantaneas NOTIFY cambiado)
@@ -101,6 +104,9 @@ public:
     // "es", "latam", "us"... y variante ("intl", "" ...): al momento
     Q_INVOKABLE void setDistribucion(const QString &capa, const QString &variante);
     Q_INVOKABLE void setRaton(const QString &clave, const QVariant &valor);
+    Q_INVOKABLE void setEscritorioRemoto(bool activo);
+    QString escritorioRemoto() const { return m_remoto; }
+    QStringList direccionesIp() const { return m_ips; }
 
     Q_INVOKABLE void crearInstantanea(const QString &descripcion);
     Q_INVOKABLE void borrarInstantanea(int numero);
@@ -144,6 +150,9 @@ private:
     QVariantMap m_bateria;
     QVariantMap m_inactividad;
     QString m_cortafuegos = QStringLiteral("desconocido");
+    QString m_remoto = QStringLiteral("inactivo");
+    QStringList m_ips;
+    void leerCompartir();
     QString m_sb, m_sbTexto;
     QString m_huella;
     bool m_huellaActiva = false;

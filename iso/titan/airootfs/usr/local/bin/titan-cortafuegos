@@ -10,6 +10,7 @@
 #   titan-cortafuegos activar    (root; Ajustes lo pide con pkexec)
 #   titan-cortafuegos desactivar (root)
 #   titan-cortafuegos inicial    primera vez (titan-cortafuegos.service)
+#   titan-cortafuegos vnc abrir|cerrar   escritorio remoto (5900/tcp; Ajustes)
 
 marca=/var/lib/titan/cortafuegos-inicial
 
@@ -40,8 +41,15 @@ case "${1:-estado}" in
         ufw --force enable
         mkdir -p /var/lib/titan && : > "$marca"
         ;;
+    vnc)
+        case "${2:-}" in
+            abrir) ufw allow 5900/tcp comment 'Escritorio remoto (VNC)' >/dev/null ;;
+            cerrar) ufw delete allow 5900/tcp >/dev/null 2>&1 || true ;;
+            *) echo "uso: titan-cortafuegos vnc abrir|cerrar" >&2; exit 2 ;;
+        esac
+        ;;
     *)
-        echo "uso: titan-cortafuegos estado|activar|desactivar" >&2
+        echo "uso: titan-cortafuegos estado|activar|desactivar|vnc abrir|cerrar" >&2
         exit 2
         ;;
 esac

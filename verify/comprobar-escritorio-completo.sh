@@ -52,7 +52,8 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           kdenlive auto-multiple-choice joplin-desktop obsidian anki calibre kalzium kstars
           kmplot kig geogebra stellarium gcompris-qt gutenprint foomatic-db
           foomatic-db-engine foomatic-db-ppds hplip switcheroo-control qemu-guest-agent
-          firefox-i18n-es-es firefox-i18n-es-mx ttf-carlito ttf-caladea)
+          firefox-i18n-es-es firefox-i18n-es-mx ttf-carlito ttf-caladea
+          thunderbird thunderbird-i18n-es-es snapshot wayvnc)
 faltan=()
 for p in "${paquetes[@]}"; do
     grep -qxF "$p" iso/titan/packages.x86_64 || faltan+=("$p")
@@ -449,6 +450,16 @@ contiene iso/titan/airootfs/usr/share/wayfire/metadata/titan-gestos.xml 'arriba_
 contiene apps/wayfire-titan/titan-gestos.cpp 'wlr_pointer_swipe_end_event' "titan-gestos escucha el panel tactil"
 contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'titan-gestos' "gestos para usuarios existentes"
 contiene apps/titan-settings/qml/RatonView.qml 'Gestos con tres y cuatro dedos' "Ajustes: gestos"
+contiene iso/titan/airootfs/etc/xdg/mimeapps.list '^x-scheme-handler/mailto=org.mozilla.Thunderbird' "la tecla Correo y los enlaces mailto abren Thunderbird"
+contiene iso/titan/airootfs/usr/local/bin/titan-raton-labwc '<libinput>' "raton y panel tactil tambien en labwc"
+contiene iso/titan/airootfs/usr/local/bin/titan-sesion 'titan-raton-labwc' "labwc recibe los ajustes del raton al entrar"
+contiene apps/titan-settings/src/Sistema.cpp 'titan-raton-labwc' "Ajustes copia el raton a labwc"
+contiene iso/titan/airootfs/usr/local/bin/titan-avisos-fallos 'fc2e22bc6ee647b6b90729ab34a250b1' "aviso cuando una app se cierra sola"
+contiene iso/titan/airootfs/etc/systemd/user/titan-avisos-fallos.service 'titan-avisos-fallos' "servicio del aviso de cierres"
+contiene iso/titan/airootfs/root/customize_airootfs.sh 'titan-avisos-fallos.service' "aviso de cierres activado para cada usuario"
+contiene iso/titan/airootfs/usr/local/bin/titan-escritorio-remoto 'enable_pam=true' "escritorio remoto cifrado y con la contrasena de la cuenta"
+contiene iso/titan/airootfs/usr/local/bin/titan-cortafuegos '5900/tcp' "el cortafuegos abre el escritorio remoto solo si se comparte"
+contiene apps/titan-settings/qml/CompartirView.qml 'setEscritorioRemoto' "Ajustes > Compartir"
 
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"

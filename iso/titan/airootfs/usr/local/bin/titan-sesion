@@ -40,6 +40,10 @@ fi
 [ -x /usr/local/bin/titan-pantallas ] && /usr/local/bin/titan-pantallas >/tmp/titan-pantallas.log 2>&1 &
 [ -x /usr/local/bin/titan-luz-nocturna ] && ( sleep 2; /usr/local/bin/titan-luz-nocturna ) >/dev/null 2>&1 &
 [ -x /usr/local/bin/titan-acento ] && /usr/local/bin/titan-acento >/dev/null 2>&1 &
+# Raton y panel tactil de Ajustes tambien en labwc (Wayfire los lee solo)
+[ -x /usr/local/bin/titan-raton-labwc ] && /usr/local/bin/titan-raton-labwc >/dev/null 2>&1 &
+# Escritorio remoto (VNC), si se dejo activado en Ajustes > Compartir
+[ -x /usr/local/bin/titan-escritorio-remoto ] && ( sleep 3; /usr/local/bin/titan-escritorio-remoto inicio ) >/dev/null 2>&1 &
 
 # 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
 lanzar_titan_desktop() {

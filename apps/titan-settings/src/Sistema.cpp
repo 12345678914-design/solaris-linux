@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QNetworkInterface>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -196,6 +197,8 @@ void Sistema::refrescar(const QString &seccion)
         leerTeclado();
     } else if (seccion == QStringLiteral("Ratón y panel táctil")) {
         leerRaton();
+    } else if (seccion == QStringLiteral("Compartir")) {
+        leerCompartir();
     } else if (seccion == QStringLiteral("Impresoras y escáneres")) {
         leerImpresoras();
     } else if (seccion == QStringLiteral("Restaurar sistema")) {
@@ -348,6 +351,57 @@ void Sistema::setCortafuegos(bool activo)
                       avisar(QStringLiteral("No se pudo cambiar el cortafuegos: ") + e.trimmed());
                   leerSeguridad();
               });
+}
+
+// ---------------------------------------------------------------- compartir
+
+void Sistema::leerCompartir()
+{
+    m_ips.clear();
+    for (const QNetworkInterface &i : QNetworkInterface::allInterfaces()) {
+        if (!(i.flags() & QNetworkInterface::IsUp) || (i.flags() & QNetworkInterface::IsLoopBack))
+            continue;
+        for (const QNetworkAddressEntry &e : i.addressEntries()) {
+            if (e.ip().protocol() == QAbstractSocket::IPv4Protocol)
+                m_ips << e.ip().toString();
+        }
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("wayvnc")).isEmpty()) {
+        m_remoto = QStringLiteral("no-instalado");
+        emit cambiado();
+        return;
+    }
+    correr(kBin + QStringLiteral("titan-escritorio-remoto"), {QStringLiteral("estado")}, [this](int c, const QString &o, const QString &) {
+        m_remoto = c == 0 ? o.trimmed() : QStringLiteral("inactivo");
+        emit cambiado();
+    }, 5000);
+    leerSeguridad();   // ¿hay cortafuegos activo? (para abrir el puerto)
+}
+
+void Sistema::setEscritorioRemoto(bool activo)
+{
+    correr(kBin + QStringLiteral("titan-escritorio-remoto"),
+           {activo ? QStringLiteral("activar") : QStringLiteral("desactivar")},
+           [this, activo](int c, const QString &, const QString &e) {
+        if (c != 0) {
+            avisar(QStringLiteral("No se pudo activar el escritorio remoto: ") + e.trimmed());
+            leerCompartir();
+            return;
+        }
+        // Con el cortafuegos activo, el puerto 5900 se abre solo mientras se comparte
+        if (m_cortafuegos == QStringLiteral("activo")) {
+            comoAdmin(QStringLiteral("cortafuegos"),
+                      {kBin + QStringLiteral("titan-cortafuegos"), QStringLiteral("vnc"),
+                       activo ? QStringLiteral("abrir") : QStringLiteral("cerrar")},
+                      [this, activo](int c2, const QString &, const QString &) {
+                          if (c2 != 0 && activo)
+                              avisar(QStringLiteral("Compartiendo, pero el cortafuegos no deja entrar: ábrelo con «sudo ufw allow 5900/tcp»."));
+                          leerCompartir();
+                      });
+            return;
+        }
+        leerCompartir();
+    }, 15000);
 }
 
 void Sistema::prepararArranqueSeguro()
@@ -648,6 +702,8 @@ void Sistema::setRaton(const QString &clave, const QVariant &valor)
         texto = valor.toBool() ? QStringLiteral("true") : QStringLiteral("false");
 
     ponerClaveWayfire(QStringLiteral("input"), clave, texto);
+    // labwc (sesión de respaldo) no lee wayfire.ini: se le copia a su rc.xml
+    QProcess::startDetached(kBin + QStringLiteral("titan-raton-labwc"), {});
     m_raton.insert(clave, clave.endsWith(QStringLiteral("_speed")) ? QVariant(texto.toDouble()) : QVariant(valor.toBool()));
     emit cambiado();
 }

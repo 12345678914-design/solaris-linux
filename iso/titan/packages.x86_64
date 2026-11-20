@@ -272,6 +272,12 @@ firefox
 # Firefox en español (como Ubuntu: sin esto sale en inglés)
 firefox-i18n-es-es
 firefox-i18n-es-mx
+# Correo (como Ubuntu: Thunderbird; la tecla Correo y los enlaces mailto: lo abren)
+thunderbird
+thunderbird-i18n-es-es
+# Camara web (como Fedora: Snapshot) y escritorio remoto (VNC; Ajustes > Compartir)
+snapshot
+wayvnc
 
 
 
