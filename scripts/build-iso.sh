@@ -770,6 +770,37 @@ if [[ ! -x "${DISTRO}/scripts/detectar-resolucion.sh" ]]; then
 fi
 info "${entradas_total} entradas de arranque sin resolucion fija"
 
+# ------------------------------------------- 4b. paquetes de Inti ([inti]) ---
+# Lo que hace Inti (apps, herramientas, plugins, tema) se empaqueta con los
+# mismos ficheros recién compilados y la ISO los registra en la base de datos
+# de pacman sin volver a copiarlos (customize_airootfs.sh: pacman -U --dbonly).
+# Así un sistema instalado sabe que son paquetes y puede actualizarlos desde
+# el repositorio [inti]. makepkg no funciona como root: va con SUDO_USER.
+rm -rf -- "${PROFILE}/airootfs/root/inti-paquetes"
+if [[ "${TITAN_PAQUETES_INTI:-1}" == "1" ]]; then
+  usuario="${SUDO_USER:-}"
+  if [[ -n "${usuario}" && "${usuario}" != "root" ]] && command -v makepkg >/dev/null; then
+    install -d -o "${usuario}" -m 0755 "${DISTRO}/build"
+    if runuser -u "${usuario}" -- env INTI_CLAVE="${INTI_CLAVE:-}" \
+         "${DISTRO}/scripts/construir-repo-inti.sh" >"${WORK_DIR}/inti-paquetes.log" 2>&1; then
+      install -d -m 0755 "${PROFILE}/airootfs/root/inti-paquetes"
+      install -m 0644 "${DISTRO}"/build/inti-repo/inti-*.pkg.tar.zst "${PROFILE}/airootfs/root/inti-paquetes/"
+      # La clave se instala de verdad (sus ficheros no están en el perfil)
+      if compgen -G "${PROFILE}/airootfs/root/inti-paquetes/inti-keyring-*.pkg.tar.zst" >/dev/null; then
+        install -d -m 0755 "${PROFILE}/airootfs/root/inti-paquetes/clave"
+        mv "${PROFILE}"/airootfs/root/inti-paquetes/inti-keyring-*.pkg.tar.zst "${PROFILE}/airootfs/root/inti-paquetes/clave/"
+      fi
+      info "paquetes de Inti listos ($(ls "${PROFILE}/airootfs/root/inti-paquetes" | wc -l)); repositorio en build/inti-repo"
+    else
+      yel "No se pudieron hacer los paquetes de Inti (registro: ${WORK_DIR}/inti-paquetes.log)."
+      yel "La ISO funciona igual, pero los sistemas instalados no podrán actualizar las apps de Inti."
+      tail -n 5 "${WORK_DIR}/inti-paquetes.log" >&2 || true
+    fi
+  else
+    yel "Sin SUDO_USER (o sin makepkg): la ISO sale sin registrar los paquetes de Inti."
+  fi
+fi
+
 # ----------------------------------------------------------------- 5. mkarchiso --
 
 info "lanzando mkarchiso (esto tarda: descarga paquetes y monta airootfs.erofs)"

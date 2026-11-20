@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps repo-inti publicar-inti clave-inti apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -183,6 +183,16 @@ qemu-vmware:
 screenshot:
 	@echo "Lanzando QEMU y tomando captura de pantalla en out/capturas/..."
 	./scripts/run-qemu.sh --screenshot
+
+# Repositorio [inti]: paquetes de lo que hace Inti (ver scripts/construir-repo-inti.sh)
+clave-inti:
+	./scripts/crear-clave-inti.sh
+
+repo-inti:
+	./scripts/construir-repo-inti.sh
+
+publicar-inti:
+	./scripts/construir-repo-inti.sh --publicar
 
 iso:
 	@echo "Reconstruyendo ISO con titan-shell..."

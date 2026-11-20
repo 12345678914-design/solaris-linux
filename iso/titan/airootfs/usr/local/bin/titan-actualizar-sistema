@@ -77,6 +77,14 @@ retener_wayfire() {
     instalada=$(pacman -Q wayfire | cut -d' ' -f2)
     [ -n "$nueva" ] && [ "$nueva" != "$instalada" ] || return 0
     mio=$(cat "$abi_inti" 2>/dev/null)
+    # Si el repositorio [inti] trae plugins nuevos, cuentan los nuevos
+    plug_nueva=$(pacman -Sp --print-format %v inti-wayfire-plugins 2>/dev/null | tail -n 1)
+    plug_instalada=$(pacman -Q inti-wayfire-plugins 2>/dev/null | cut -d' ' -f2)
+    if [ -n "$plug_nueva" ] && [ "$plug_nueva" != "$plug_instalada" ]; then
+        pacman -Sw --noconfirm inti-wayfire-plugins >/dev/null 2>&1
+        plug=$(ls -t /var/cache/pacman/pkg/inti-wayfire-plugins-"$plug_nueva"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1)
+        [ -n "$plug" ] && mio=$(bsdtar -xOf "$plug" usr/share/titan/wayfire-abi 2>/dev/null)
+    fi
     pacman -Sw --noconfirm wayfire >/dev/null 2>&1
     paquete=$(ls -t /var/cache/pacman/pkg/wayfire-"$nueva"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1)
     suyo=""
@@ -154,7 +162,10 @@ trabajar() {
 
     # 1. Claves de los repositorios primero: es el fallo más típico al actualizar
     paso 5 "Comprobando las firmas de los paquetes…"
-    if ! pacman -Sy --needed --noconfirm archlinux-keyring; then
+    claves="archlinux-keyring"
+    pacman -Q inti-keyring >/dev/null 2>&1 && claves="$claves inti-keyring"
+    # shellcheck disable=SC2086
+    if ! pacman -Sy --needed --noconfirm $claves; then
         fin error "No se pudo conectar con los repositorios. ¿Hay conexión a Internet?"
     fi
 

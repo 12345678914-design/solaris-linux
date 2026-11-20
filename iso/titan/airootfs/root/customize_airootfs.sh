@@ -978,6 +978,34 @@ else
   log "titan-repo: sin paquete del kernel; lo instalado usara el de Arch"
 fi
 
+# Paquetes de Inti (build-iso.sh los deja en /root/inti-paquetes): se
+# registran en la base de datos de pacman SIN copiar ficheros, porque ya están
+# en el live y son idénticos. Así lo instalado sabe que son paquetes y recibe
+# las actualizaciones de las apps de Inti desde el repositorio [inti].
+if compgen -G '/root/inti-paquetes/inti-*.pkg.tar.zst' >/dev/null; then
+  if pacman -U --dbonly --noconfirm /root/inti-paquetes/inti-*.pkg.tar.zst >/dev/null 2>&1 ||
+     pacman -U --dbonly --noconfirm -dd /root/inti-paquetes/inti-*.pkg.tar.zst >/dev/null 2>&1; then
+    log "paquetes de Inti registrados: $(pacman -Qq | grep -c '^inti-')"
+  else
+    echo "AVISO: no se pudieron registrar los paquetes de Inti" >&2
+  fi
+  # La clave de Inti: si viene, se instala y se activa el repositorio [inti]
+  if compgen -G '/root/inti-paquetes/clave/inti-keyring-*.pkg.tar.zst' >/dev/null; then
+    pacman-key --init >/dev/null 2>&1 || true
+    if pacman -U --noconfirm /root/inti-paquetes/clave/inti-keyring-*.pkg.tar.zst >/dev/null 2>&1; then
+      sed -i 's/^#\(\[inti\]\)$/\1/; s/^#\(SigLevel = Required DatabaseOptional\)$/\1/; s|^#\(Server = https://github.com/12345678914-design/inti-repo/releases/download/paquetes\)$|\1|' /etc/pacman.conf
+      log "clave de Inti instalada: repositorio [inti] activado"
+    else
+      echo "AVISO: no se pudo instalar inti-keyring; [inti] queda desactivado" >&2
+    fi
+  else
+    log "sin clave de Inti: el repositorio [inti] queda desactivado"
+  fi
+  rm -rf /root/inti-paquetes
+else
+  log "sin paquetes de Inti: lo instalado no podra actualizar las apps de Inti"
+fi
+
 log "OK: ${TITAN_VERSION} lista"
 
 # Liberar montajes virtuales (efivars y sysfs) antes de salir del chroot para

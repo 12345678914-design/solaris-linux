@@ -166,3 +166,6 @@ apps/titan-greeter/helper/titan-usuarios-helper
 apps/titan-greeter/helper/Makefile
 apps/titan-greeter/helper/*.o
 apps/titan-greeter/helper/.qmake.stash
+
+# Paquetes de Inti que build-iso.sh copia al perfil (se generan)
+iso/titan/airootfs/root/inti-paquetes/

@@ -1,0 +1,20 @@
+# Clave pública con la que se firman los paquetes del repositorio [inti].
+# inti.gpg (pública) e inti-trusted (huella) los genera
+# scripts/crear-clave-inti.sh; la clave PRIVADA nunca sale del equipo de
+# quien publica.
+pkgname=inti-keyring
+pkgver=${INTI_VERSION:-1.8.0}
+pkgrel=1
+pkgdesc="Inti OS: clave para comprobar que las actualizaciones de Inti son auténticas"
+arch=('any')
+url="https://github.com/12345678914-design/inti-repo"
+license=('GPL-3.0-or-later')
+install=inti-keyring.install
+source=('inti.gpg' 'inti-trusted' 'inti-revoked')
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm644 inti.gpg "${pkgdir}/usr/share/pacman/keyrings/inti.gpg"
+  install -Dm644 inti-trusted "${pkgdir}/usr/share/pacman/keyrings/inti-trusted"
+  install -Dm644 inti-revoked "${pkgdir}/usr/share/pacman/keyrings/inti-revoked"
+}

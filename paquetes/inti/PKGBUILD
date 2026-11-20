@@ -1,0 +1,90 @@
+# Inti OS: paquetes de lo que hace el proyecto (repositorio [inti]).
+#
+# No compila nada: empaqueta lo que 'make apps' ya ha dejado en el perfil de
+# la ISO (iso/titan/airootfs), para que un sistema instalado pueda recibir
+# actualizaciones de las apps, plugins, herramientas y tema de Inti.
+# Lo usa scripts/construir-repo-inti.sh, que define INTI_RAIZ y la versión.
+#
+# Los ficheros quedan idénticos a los del perfil (sin strip ni compresión):
+# la ISO los registra con 'pacman -U --dbonly' sin volver a copiarlos.
+
+pkgbase=inti
+pkgname=(inti-apps inti-herramientas inti-wayfire-plugins inti-tema inti-os)
+pkgver=${INTI_VERSION:-1.8.0}
+pkgrel=1
+pkgdesc="Inti OS"
+arch=('x86_64')
+url="https://github.com/12345678914-design/inti-repo"
+license=('GPL-3.0-or-later')
+options=('!strip' '!debug' '!zipman' '!purge' '!lto')
+
+_raiz="${INTI_RAIZ:?Usa scripts/construir-repo-inti.sh}/iso/titan/airootfs"
+
+# Copia ficheros sueltos del perfil conservando la ruta; modo fijo
+_poner() { # _poner MODO ruta...
+  local modo=$1; shift
+  local f
+  for f in "$@"; do
+    install -Dm"${modo}" "${_raiz}/${f}" "${pkgdir}/${f}"
+  done
+}
+
+# ELF o no ELF: las apps compiladas van en inti-apps; los scripts, en herramientas
+_es_elf() { [[ "$(head -c4 "$1" | od -An -c | tr -d ' ')" == "177ELF" ]]; }
+
+package_inti-apps() {
+  pkgdesc="Inti OS: escritorio, Ajustes, Finder, Fotos, Música y el resto de apps propias"
+  depends=('qt6-declarative' 'qt6-wayland' 'inti-tema')
+  local f
+  cd "${_raiz}"
+  for f in usr/local/bin/*; do
+    _es_elf "$f" && _poner 755 "$f"
+  done
+  _poner 755 usr/lib/gtklock/titan-avisos-module.so
+}
+
+package_inti-herramientas() {
+  pkgdesc="Inti OS: herramientas del sistema (actualizar, idioma, cortafuegos, compartir...) y entradas del menú"
+  depends=('bash' 'pacman' 'polkit')
+  local f
+  cd "${_raiz}"
+  for f in usr/local/bin/*; do
+    _es_elf "$f" || _poner 755 "$f"
+  done
+  for f in usr/lib/titan/*; do _poner 755 "$f"; done
+  for f in usr/lib/tmpfiles.d/titan-*.conf usr/share/polkit-1/actions/*.policy \
+           usr/share/xdg-desktop-portal/*.conf; do
+    _poner 644 "$f"
+  done
+  # Entradas del menú propias (la de ONLYOFFICE es del paquete de ONLYOFFICE)
+  for f in usr/share/applications/titan-*.desktop usr/share/applications/mimeapps.list; do
+    _poner 644 "$f"
+  done
+}
+
+package_inti-wayfire-plugins() {
+  pkgdesc="Inti OS: plugins de Wayfire (bordes de ventana, gestos del panel táctil, sin gelatina al redimensionar)"
+  depends=('wayfire')
+  local f
+  cd "${_raiz}"
+  for f in usr/lib/wayfire/libtitan-*.so; do _poner 755 "$f"; done
+  for f in usr/share/wayfire/metadata/titan-*.xml; do _poner 644 "$f"; done
+  # Versión de Wayfire con la que se compilaron (la mira el actualizador)
+  _poner 644 usr/share/titan/wayfire-abi
+}
+
+package_inti-tema() {
+  pkgdesc="Inti OS: tema, iconos, fondos y logotipos"
+  local f
+  cd "${_raiz}"
+  while IFS= read -r -d '' f; do
+    _poner 644 "$f"
+  done < <(find usr/share/titan usr/share/themes usr/share/aurorae usr/share/color-schemes \
+                usr/share/plasma usr/share/pixmaps usr/share/fastfetch -type f \
+                ! -path usr/share/titan/wayfire-abi -print0 2>/dev/null)
+}
+
+package_inti-os() {
+  pkgdesc="Inti OS: todo lo propio del sistema (paquete que reúne los demás)"
+  depends=('inti-apps' 'inti-herramientas' 'inti-wayfire-plugins' 'inti-tema')
+}
