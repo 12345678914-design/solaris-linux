@@ -115,7 +115,7 @@ command -v gh >/dev/null || error "Falta 'gh' (GitHub CLI)"
 gh release view "${etiqueta}" --repo "${repo_gh}" >/dev/null 2>&1 ||
   gh release create "${etiqueta}" --repo "${repo_gh}" --title "Repositorio de paquetes de Inti OS" \
     --notes "Paquetes del repositorio [inti]. Los sistemas Inti OS los descargan solos al actualizar."
-mapfile -t nuevos < <(cd "${salida}" && ls -1 -- *.pkg.tar.zst *.sig inti.db inti.files 2>/dev/null)
+mapfile -t nuevos < <(cd "${salida}" && ls -1 -- *.pkg.tar.zst *.pkg.tar.zst.sig inti.db inti.db.sig inti.files inti.files.sig 2>/dev/null)
 ( cd "${salida}" && gh release upload "${etiqueta}" --repo "${repo_gh}" --clobber "${nuevos[@]}" )
 # Quitar de la Release los paquetes de versiones anteriores
 while IFS= read -r viejo; do
