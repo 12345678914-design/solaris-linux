@@ -327,6 +327,139 @@ ScrollView {
                 }
             }
 
+            // TIPO DE ACTUALIZACIONES: estables (Arch de hace 7 días) o al día
+            Rectangle {
+                width: parent.width
+                height: modoCol.implicitHeight + 24
+                radius: 10
+                color: theme.contentCardBg
+                border.color: theme.contentCardBorder
+                border.width: 1
+
+                Column {
+                    id: modoCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { id: "estable", titulo: "Estables (recomendado)",
+                              texto: "Llegan con una semana de margen: los fallos de los primeros días ya están arreglados." },
+                            { id: "al-dia", titulo: "Al día",
+                              texto: "Lo último de Arch Linux en cuanto sale. Más novedades, algo más de riesgo." }
+                        ]
+                        delegate: Item {
+                            id: opcionModo
+                            required property var modelData
+                            width: modoCol.width
+                            height: filaModo.implicitHeight
+                            Row {
+                                id: filaModo
+                                spacing: 10
+                                width: parent.width
+                                Rectangle {
+                                    width: 16; height: 16; radius: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: settingsBackend.updateMode === opcionModo.modelData.id ? theme.accent : "transparent"
+                                    border.color: settingsBackend.updateMode === opcionModo.modelData.id ? theme.accent : theme.contentTextSecondary
+                                    border.width: 1.5
+                                    Rectangle { anchors.centerIn: parent; width: 6; height: 6; radius: 3; color: "#ffffff"
+                                                visible: settingsBackend.updateMode === opcionModo.modelData.id }
+                                }
+                                Column {
+                                    width: parent.width - 26
+                                    Text { text: opcionModo.modelData.titulo; color: theme.contentTextPrimary; font.pixelSize: 12; font.bold: true }
+                                    Text { width: parent.width; text: opcionModo.modelData.texto; color: theme.contentTextSecondary
+                                           font.pixelSize: 10; wrapMode: Text.WordWrap }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: !settingsBackend.updateRunning
+                                onClicked: settingsBackend.setUpdateMode(opcionModo.modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // AVISOS DE ARCH antes de actualizar
+            Rectangle {
+                visible: settingsBackend.updateNews.length > 0
+                width: parent.width
+                height: avisosCol.implicitHeight + 32
+                radius: 10
+                color: theme.isDark ? Qt.rgba(1.0, 0.62, 0.04, 0.12) : Qt.rgba(1.0, 0.62, 0.04, 0.10)
+                border.color: "#ff9f0a"
+                border.width: 1.5
+
+                Column {
+                    id: avisosCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        width: parent.width
+                        text: "⚠️  Antes de actualizar: Arch Linux ha publicado avisos que afectan a este equipo"
+                        color: theme.contentTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "A veces una actualización necesita un paso a mano. Si no sabes qué hacer, lo más seguro es esperar unos días: Inti OS guarda una instantánea antes de actualizar por si algo sale mal."
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Repeater {
+                        model: settingsBackend.updateNews
+                        delegate: Row {
+                            required property var modelData
+                            spacing: 8
+                            width: avisosCol.width
+                            Text { text: modelData.fecha; color: theme.contentTextSecondary; font.pixelSize: 11; width: 70 }
+                            Text { text: modelData.titulo; color: theme.contentTextPrimary; font.pixelSize: 11
+                                   width: parent.width - 140; elide: Text.ElideRight }
+                            Text {
+                                text: "Leer"
+                                color: theme.accent
+                                font.pixelSize: 11
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: Qt.openUrlExternally(modelData.enlace) }
+                            }
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 12
+                        Rectangle {
+                            width: 110; height: 28; radius: 6
+                            color: esperarMouse.containsMouse ? (theme.isDark ? "#383c48" : "#d8d8de") : (theme.isDark ? "#282b34" : "#e8e8ed")
+                            border.color: theme.contentCardBorder
+                            Text { anchors.centerIn: parent; text: "Esperar"; color: theme.contentTextPrimary; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: esperarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.cancelUpdates() }
+                        }
+                        Rectangle {
+                            width: 160; height: 28; radius: 6
+                            color: igualMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Actualizar igualmente"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: igualMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.installUpdates(true) }
+                        }
+                    }
+                }
+            }
+
             // TARJETA DE CONFIRMACIÓN MODAL CUANDO HAY ACTUALIZACIONES ENCONTRADAS
             Rectangle {
                 visible: settingsBackend.updatePromptVisible

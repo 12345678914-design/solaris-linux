@@ -79,5 +79,19 @@ for carpeta in "${fuentes}"/*/; do
   compilar "$(basename "${carpeta}")" "${carpeta}"/*.cpp
 done
 
+# Version de ABI de Wayfire con la que se han compilado: titan-actualizar-sistema
+# retiene Wayfire si una actualizacion trae otra (los plugins no cargarian).
+for inc in "${cflags[@]}"; do
+  cabecera="${inc#-I}/wayfire/plugin.hpp"
+  [[ "${inc}" == -I* && -f "${cabecera}" ]] || continue
+  abi="$(sed -n "s/.*WAYFIRE_API_ABI_VERSION_MACRO[[:space:]]*\([0-9']*\).*/\1/p" "${cabecera}" | tr -d "'" | head -n 1)"
+  if [[ -n "${abi}" && "${destino}" == "${raiz}/iso/titan/airootfs/usr/lib/wayfire" ]]; then
+    install -d -m 0755 "${raiz}/iso/titan/airootfs/usr/share/titan"
+    printf '%s\n' "${abi}" > "${raiz}/iso/titan/airootfs/usr/share/titan/wayfire-abi"
+    echo "[wayfire-titan] ABI de Wayfire ${abi} -> usr/share/titan/wayfire-abi"
+  fi
+  break
+done
+
 # Un fallo de compilacion si se senala (es un error del codigo, no del entorno).
 exit "${estado}"

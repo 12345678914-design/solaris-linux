@@ -512,7 +512,8 @@ for unidad in cups.socket cups-browsed.service avahi-daemon.service \
               ufw.service titan-cortafuegos.service \
               apparmor.service systemd-oomd.service \
               switcheroo-control.service \
-              systemd-timesyncd.service fstrim.timer paccache.timer; do
+              systemd-timesyncd.service fstrim.timer paccache.timer \
+              titan-fecha-actualizaciones.timer; do
   if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
     systemctl enable "${unidad}"
   fi

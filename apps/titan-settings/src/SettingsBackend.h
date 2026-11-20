@@ -33,6 +33,10 @@ class SettingsBackend : public QObject
     Q_PROPERTY(QString updateLog READ updateLog NOTIFY updateLogChanged)
     Q_PROPERTY(QString updateResult READ updateResult NOTIFY updateProgressChanged)
     Q_PROPERTY(bool updateNeedsReboot READ updateNeedsReboot NOTIFY updateProgressChanged)
+    // Avisos de Arch que afectan a este equipo (antes de actualizar)
+    Q_PROPERTY(QVariantList updateNews READ updateNews NOTIFY updateNewsChanged)
+    // "estable" (Arch de hace 7 días) | "al-dia"
+    Q_PROPERTY(QString updateMode READ updateMode NOTIFY updateModeChanged)
 
     // Wi-Fi
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled WRITE setWifiEnabled NOTIFY wifiStatusChanged)
@@ -90,6 +94,8 @@ public:
     QString updateLog() const { return m_updateLogLines.join(QLatin1Char('\n')); }
     QString updateResult() const { return m_updateResult; }
     bool updateNeedsReboot() const { return m_updateNeedsReboot; }
+    QVariantList updateNews() const { return m_updateNews; }
+    QString updateMode() const { return m_updateMode; }
 
     // Wi-Fi
     bool wifiEnabled() const { return m_wifiEnabled; }
@@ -110,7 +116,9 @@ public:
     Q_INVOKABLE void setThemeMode(const QString &mode); // "light", "dark", "auto"
     Q_INVOKABLE void setWallpaper(const QString &path);
     Q_INVOKABLE void checkUpdates();
-    Q_INVOKABLE void installUpdates();
+    // Con avisos de Arch pendientes primero los enseña; ignorarAvisos = "Actualizar igualmente"
+    Q_INVOKABLE void installUpdates(bool ignorarAvisos = false);
+    Q_INVOKABLE void setUpdateMode(const QString &modo);
     Q_INVOKABLE void cancelUpdates();
     Q_INVOKABLE void rebootNow();
 
@@ -138,6 +146,8 @@ signals:
     void updateSizeChanged();
     void updateProgressChanged();
     void updateLogChanged();
+    void updateNewsChanged();
+    void updateModeChanged();
 
     void wifiStatusChanged();
     void wifiScanningChanged();
@@ -179,6 +189,10 @@ private:
     QByteArray m_updatePartial;
     int m_updateDownloads = 0;
     int m_updateIdle = 0;
+    QVariantList m_updateNews;
+    QString m_updateMode = QStringLiteral("estable");
+    void startUpdate();
+    void readUpdateMode();
     void followUpdate();
     void readUpdateLog();
     void appendUpdateLine(const QString &linea);

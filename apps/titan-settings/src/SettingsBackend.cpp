@@ -37,6 +37,7 @@ SettingsBackend::SettingsBackend(QObject *parent)
 
     // ¿Se cerró Ajustes con una actualización a medias? Se retoma la barra.
     QTimer::singleShot(300, this, [this]() {
+        readUpdateMode();
         QProcess e;
         e.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("estado")});
         if (e.waitForFinished(3000) && QString::fromUtf8(e.readAllStandardOutput()).trimmed() == QStringLiteral("en-curso"))
@@ -437,6 +438,8 @@ void SettingsBackend::checkUpdates()
 
 void SettingsBackend::cancelUpdates()
 {
+    m_updateNews.clear();
+    emit updateNewsChanged();
     m_updatePromptVisible = false;
     m_updateStatus = QStringLiteral("Actualización cancelada por el usuario");
     emit updatePromptVisibleChanged();
@@ -445,10 +448,69 @@ void SettingsBackend::cancelUpdates()
 
 // Actualizar sin preguntas: pkexec titan-actualizar-sistema iniciar lanza la
 // actualización como servicio del sistema y aquí se sigue su registro.
-void SettingsBackend::installUpdates()
+void SettingsBackend::installUpdates(bool ignorarAvisos)
 {
     if (m_updateRunning)
         return;
+    m_updateNews.clear();
+    emit updateNewsChanged();
+    if (ignorarAvisos) {
+        startUpdate();
+        return;
+    }
+    // Antes de nada: ¿ha publicado Arch algo que afecte a este equipo?
+    m_updatePromptVisible = false;
+    m_updateStatus = QStringLiteral("Comprobando los avisos de Arch Linux…");
+    emit updatePromptVisibleChanged();
+    emit updateStatusChanged();
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p]() {
+        p->deleteLater();
+        QVariantList avisos;
+        for (const QString &l : QString::fromUtf8(p->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const QStringList c = l.split(QLatin1Char('\t'));
+            if (c.size() >= 3)
+                avisos << QVariantMap{{QStringLiteral("fecha"), c[0]}, {QStringLiteral("titulo"), c[1]}, {QStringLiteral("enlace"), c[2]}};
+        }
+        if (avisos.isEmpty()) {
+            startUpdate();
+            return;
+        }
+        m_updateNews = avisos;
+        m_updateStatus = QStringLiteral("Arch Linux ha publicado avisos que afectan a este equipo");
+        emit updateNewsChanged();
+        emit updateStatusChanged();
+    });
+    p->start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("avisos")});
+}
+
+void SettingsBackend::readUpdateMode()
+{
+    QProcess p;
+    p.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("modo")});
+    if (p.waitForFinished(3000)) {
+        const QString m = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        if (!m.isEmpty() && m != m_updateMode) {
+            m_updateMode = m;
+            emit updateModeChanged();
+        }
+    }
+}
+
+void SettingsBackend::setUpdateMode(const QString &modo)
+{
+    if (modo == m_updateMode || (modo != QStringLiteral("estable") && modo != QStringLiteral("al-dia")))
+        return;
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p]() {
+        p->deleteLater();
+        readUpdateMode();
+    });
+    p->start(QStringLiteral("pkexec"), {binTitan(QStringLiteral("titan-actualizar-sistema")), QStringLiteral("modo"), modo});
+}
+
+void SettingsBackend::startUpdate()
+{
     m_updatePromptVisible = false;
     m_updateRunning = true;
     m_updateProgress = 0.01;

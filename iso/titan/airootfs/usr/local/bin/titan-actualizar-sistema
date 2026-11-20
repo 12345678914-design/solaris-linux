@@ -12,6 +12,18 @@
 #   titan-actualizar-sistema estado      en-curso | parado   (sin root)
 #   titan-actualizar-sistema registro    ruta del registro   (sin root)
 #   titan-actualizar-sistema trabajar    (lo lanza "iniciar"; hace el trabajo)
+#   titan-actualizar-sistema avisos      noticias de Arch que afectan a este
+#                                        equipo desde la última actualización (sin root)
+#   titan-actualizar-sistema modo [estable|al-dia]   (cambiarlo: root)
+#   titan-actualizar-sistema fijar-fecha (root; temporizador diario)
+#
+# Modo "estable" (el de serie): pacman usa el archivo oficial de Arch tal
+# como estaba hace 7 días (archive.archlinux.org/repos/AAAA/MM/DD). Los
+# fallos de los primeros días de una versión ya están arreglados cuando
+# llegan aquí. "al-dia": los espejos normales de Arch, sin margen.
+#
+# Wayfire se retiene si la versión nueva no es compatible con los plugins de
+# Inti (bordes de ventana, gestos): se comparan las versiones de ABI.
 #
 # El registro lleva líneas de control para Ajustes:
 #   @@ <porcentaje> <texto>     progreso y texto a mostrar
@@ -21,6 +33,92 @@ set -u
 export LC_ALL=C
 unidad=titan-actualizacion
 registro="${TITAN_REGISTRO_ACTUALIZACION:-/var/log/titan-actualizacion.log}"
+conf="${TITAN_CONF_ACTUALIZACION:-/etc/titan/actualizaciones.conf}"
+servidores="${TITAN_SERVIDORES:-/etc/pacman.d/titan-servidores}"
+ultima="${TITAN_ULTIMA:-/var/lib/titan/ultima-actualizacion}"
+abi_inti="${TITAN_WAYFIRE_ABI:-/usr/share/titan/wayfire-abi}"
+margen_dias=7
+
+leer_conf() { sed -n "s/^$1=//p" "$conf" 2>/dev/null | tail -n 1; }
+modo_actual() { m=$(leer_conf MODO); [ "$m" = al-dia ] && echo al-dia || echo estable; }
+
+poner_conf() { # poner_conf CLAVE VALOR
+    mkdir -p "$(dirname "$conf")"
+    touch "$conf"
+    sed -i "/^$1=/d" "$conf"
+    echo "$1=$2" >> "$conf"
+}
+
+# Escribe de dónde saca pacman los paquetes. En "estable", la fecha solo avanza
+# (nunca vuelve atrás: no se bajarían versiones viejas).
+fijar_fecha() {
+    [ -d /run/archiso ] && return 0
+    if [ "$(modo_actual)" = al-dia ]; then
+        printf '# Lo escribe titan-actualizar-sistema (modo: al dia)\nInclude = /etc/pacman.d/mirrorlist\n' > "$servidores"
+        return 0
+    fi
+    nueva=$(date -u -d "-$margen_dias days" +%Y/%m/%d)
+    vieja=$(leer_conf FECHA)
+    if [ -n "$vieja" ] && [ "$(echo "$vieja" | tr -d /)" -gt "$(echo "$nueva" | tr -d /)" ]; then
+        nueva=$vieja
+    fi
+    poner_conf FECHA "$nueva"
+    printf '# Lo escribe titan-actualizar-sistema (modo: estable, Arch del %s)\nServer = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' \
+        "$nueva" "$nueva" > "$servidores"
+}
+
+# ¿La versión de Wayfire que llegaría es compatible con los plugins de Inti?
+# Deja en $retener los paquetes que hay que retener (o nada) y lo explica.
+retener=""
+retener_wayfire() {
+    retener=""
+    pacman -Q wayfire >/dev/null 2>&1 || return 0
+    nueva=$(pacman -Sp --print-format %v wayfire 2>/dev/null | tail -n 1)
+    instalada=$(pacman -Q wayfire | cut -d' ' -f2)
+    [ -n "$nueva" ] && [ "$nueva" != "$instalada" ] || return 0
+    mio=$(cat "$abi_inti" 2>/dev/null)
+    pacman -Sw --noconfirm wayfire >/dev/null 2>&1
+    paquete=$(ls -t /var/cache/pacman/pkg/wayfire-"$nueva"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1)
+    suyo=""
+    [ -n "$paquete" ] && suyo=$(bsdtar -xOf "$paquete" usr/include/wayfire/plugin.hpp 2>/dev/null |
+        sed -n "s/.*WAYFIRE_API_ABI_VERSION_MACRO[[:space:]]*\([0-9']*\).*/\1/p" | tr -d "'")
+    if [ -n "$mio" ] && [ "$mio" = "$suyo" ]; then
+        return 0
+    fi
+    echo "Wayfire $nueva no es compatible con los plugins de Inti (bordes de ventana, gestos): se mantiene $instalada"
+    retener="wayfire,wf-config"
+}
+
+# Noticias de Arch desde la última actualización que nombran algo instalado
+avisos() {
+    rss=$(curl -fsL --max-time 15 https://archlinux.org/feeds/news/ 2>/dev/null) || return 0
+    desde=$(cat "$ultima" 2>/dev/null)
+    [ -n "$desde" ] || desde=$(( $(date +%s) - 30 * 86400 ))
+    instalados=$(pacman -Qq 2>/dev/null)
+    n=$(printf '%s' "$rss" | xmllint --xpath 'count(//item)' - 2>/dev/null) || return 0
+    i=1
+    while [ "$i" -le "${n:-0}" ]; do
+        titulo=$(printf '%s' "$rss" | xmllint --xpath "string(//item[$i]/title)" - 2>/dev/null)
+        enlace=$(printf '%s' "$rss" | xmllint --xpath "string(//item[$i]/link)" - 2>/dev/null)
+        fecha=$(printf '%s' "$rss" | xmllint --xpath "string(//item[$i]/pubDate)" - 2>/dev/null)
+        cuando=$(date -d "$fecha" +%s 2>/dev/null || echo 0)
+        i=$((i + 1))
+        [ "$cuando" -gt "$desde" ] || continue
+        # ¿Nombra un paquete instalado? (palabras del título, como nombres de paquete)
+        for palabra in $(printf '%s' "$titulo" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9+_.-' ' '); do
+            palabra=${palabra%.}
+            [ "${#palabra}" -ge 3 ] || continue
+            # Palabras inglesas que también son nombres de paquete
+            case " which less file time make patch more find sed tar gzip man info sudo screen dialog which xz git tree hello bc dash zip unzip expect " in
+                *" $palabra "*) continue ;;
+            esac
+            if printf '%s\n' "$instalados" | grep -qFx "$palabra"; then
+                printf '%s\t%s\t%s\n' "$(date -d "@$cuando" +%d/%m/%Y)" "$titulo" "$enlace"
+                break
+            fi
+        done
+    done
+}
 
 paso() { echo "@@ $1 $2"; }
 fin() { echo "@@FIN $1 $2"; exit 0; }
@@ -48,16 +146,27 @@ trabajar() {
         rm -f /var/lib/pacman/db.lck
     fi
 
+    fijar_fecha
+    if [ "$(modo_actual)" = estable ]; then
+        echo "Actualizaciones estables: Arch tal como estaba el $(leer_conf FECHA)"
+    fi
+    pacnew_antes=$(find /etc -name '*.pacnew' 2>/dev/null | sort)
+
     # 1. Claves de los repositorios primero: es el fallo más típico al actualizar
     paso 5 "Comprobando las firmas de los paquetes…"
     if ! pacman -Sy --needed --noconfirm archlinux-keyring; then
         fin error "No se pudo conectar con los repositorios. ¿Hay conexión a Internet?"
     fi
 
+    retener_wayfire
+    ignorar=""
+    [ -n "$retener" ] && ignorar="--ignore $retener"
+
     # 2. Todo lo demás. --ask=4 responde "sí" a "quitar un paquete que choca
     #    con otro" (pacman lo pregunta y, sin respuesta, se pararía).
     paso 10 "Descargando las actualizaciones…"
-    pacman -Su --noconfirm --ask=4 2>&1
+    # shellcheck disable=SC2086
+    pacman -Su --noconfirm --ask=4 $ignorar 2>&1
     r=$?
     if [ "$r" -ne 0 ]; then
         fin error "La actualización no terminó. El sistema sigue como estaba; mira los detalles."
@@ -70,8 +179,22 @@ trabajar() {
         flatpak uninstall --system --unused -y --noninteractive >/dev/null 2>&1 || true
     fi
 
+    # Configuración nueva que no se aplicó sola (.pacnew): queda apuntada
+    pacnew=$(find /etc -name '*.pacnew' 2>/dev/null | sort)
+    nuevos=$(printf '%s\n' "$pacnew" | grep -vxF -e "$pacnew_antes" -e '' 2>/dev/null)
+    if [ -n "$nuevos" ]; then
+        echo "Configuración nueva guardada aparte (se mantiene la actual):"
+        printf '  %s\n' $nuevos
+        mkdir -p /var/lib/titan && printf '%s\n' "$pacnew" > /var/lib/titan/pacnew.txt
+    fi
+
+    mkdir -p "$(dirname "$ultima")" && date +%s > "$ultima"
+
     # Núcleo nuevo: los módulos del que está en marcha ya no están
     [ -d "/usr/lib/modules/$(uname -r)" ] || echo "@@REINICIAR"
+    if [ -n "$retener" ]; then
+        fin ok "El sistema está actualizado. Wayfire se mantiene en su versión hasta que Inti OS lo prepare."
+    fi
     fin ok "El sistema está actualizado."
 }
 
@@ -96,6 +219,17 @@ case "${1:-estado}" in
                 "$0" trabajar ;;
     trabajar)
         trabajar ;;
+    avisos)
+        avisos ;;
+    modo)
+        if [ -z "${2:-}" ]; then modo_actual; exit 0; fi
+        case "$2" in estable|al-dia) ;; *) echo "Modo no válido" >&2; exit 2 ;; esac
+        [ "$(id -u)" -eq 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+        poner_conf MODO "$2"
+        fijar_fecha ;;
+    fijar-fecha)
+        [ "$(id -u)" -eq 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+        fijar_fecha ;;
     *)
-        echo "uso: titan-actualizar-sistema iniciar|estado|registro" >&2; exit 2 ;;
+        echo "uso: titan-actualizar-sistema iniciar|estado|registro|avisos|modo|fijar-fecha" >&2; exit 2 ;;
 esac
