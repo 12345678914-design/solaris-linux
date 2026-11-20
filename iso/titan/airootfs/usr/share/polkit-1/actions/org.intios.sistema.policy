@@ -15,6 +15,17 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-cortafuegos</annotate>
   </action>
+  <action id="org.intios.actualizar">
+    <description>Actualizar el sistema</description>
+    <message>Para actualizar el sistema hace falta la contraseña de administrador.</message>
+    <icon_name>system-software-update</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-actualizar-sistema</annotate>
+  </action>
   <action id="org.intios.huella">
     <description>Usar la huella para entrar</description>
     <message>Para usar el lector de huellas al entrar hace falta la contraseña de administrador.</message>

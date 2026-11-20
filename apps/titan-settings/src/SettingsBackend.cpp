@@ -5,11 +5,18 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QTimer>
 #include <QStorageInfo>
+
+// Programas de Inti (en pruebas, TITAN_BIN apunta a otros)
+static QString binTitan(const QString &nombre)
+{
+    return qEnvironmentVariable("TITAN_BIN", QStringLiteral("/usr/local/bin/")) + nombre;
+}
 
 SettingsBackend::SettingsBackend(QObject *parent)
     : QObject(parent)
@@ -24,6 +31,14 @@ SettingsBackend::SettingsBackend(QObject *parent)
     connect(tm, &ThemeManager::wallpapersChanged, this, &SettingsBackend::wallpapersChanged);
 
     updateNetworkStatus();
+
+    // ¿Se cerró Ajustes con una actualización a medias? Se retoma la barra.
+    QTimer::singleShot(300, this, [this]() {
+        QProcess e;
+        e.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("estado")});
+        if (e.waitForFinished(3000) && QString::fromUtf8(e.readAllStandardOutput()).trimmed() == QStringLiteral("en-curso"))
+            followUpdate();
+    });
     QTimer *netTimer = new QTimer(this);
     connect(netTimer, &QTimer::timeout, this, &SettingsBackend::updateNetworkStatus);
     netTimer->start(8000);
@@ -402,31 +417,209 @@ void SettingsBackend::cancelUpdates()
     emit updateStatusChanged();
 }
 
+// Actualizar sin preguntas: pkexec titan-actualizar-sistema iniciar lanza la
+// actualización como servicio del sistema y aquí se sigue su registro.
 void SettingsBackend::installUpdates()
 {
+    if (m_updateRunning)
+        return;
     m_updatePromptVisible = false;
-    m_updateStatus = QStringLiteral("Instalando actualizaciones en la terminal...");
+    m_updateRunning = true;
+    m_updateProgress = 0.01;
+    m_updateResult.clear();
+    m_updateNeedsReboot = false;
+    m_updateStatus = QStringLiteral("Esperando la contraseña de administrador…");
+    m_updateLogLines.clear();
     emit updatePromptVisibleChanged();
+    emit updateProgressChanged();
     emit updateStatusChanged();
+    emit updateLogChanged();
 
-    // Buscar terminal
-    QString term = QStringLiteral("titan-terminal");
-    if (!QStandardPaths::findExecutable(term).isEmpty() || QFile::exists(QStringLiteral("/usr/local/bin/titan-terminal"))) {
-        term = QStringLiteral("/usr/local/bin/titan-terminal");
-    } else if (!QStandardPaths::findExecutable(QStringLiteral("kitty")).isEmpty()) {
-        term = QStringLiteral("kitty");
-    } else if (!QStandardPaths::findExecutable(QStringLiteral("foot")).isEmpty()) {
-        term = QStringLiteral("foot");
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p](int codigo, QProcess::ExitStatus) {
+        const QString error = QString::fromUtf8(p->readAllStandardError()).trimmed();
+        p->deleteLater();
+        if (codigo == 126 || codigo == 127) {   // ventana cerrada / sin permiso
+            m_updateRunning = false;
+            m_updatePromptVisible = m_updateCount > 0;
+            m_updateStatus = codigo == 126 ? QStringLiteral("Actualización cancelada: no se ha cambiado nada.")
+                                           : QStringLiteral("Tu cuenta no puede actualizar el sistema.");
+            emit updatePromptVisibleChanged();
+            emit updateProgressChanged();
+            emit updateStatusChanged();
+            return;
+        }
+        if (codigo != 0) {
+            finishUpdate(false, QStringLiteral("No se pudo empezar la actualización. ") + error);
+            return;
+        }
+        followUpdate();
+    });
+    p->start(QStringLiteral("pkexec"), {binTitan(QStringLiteral("titan-actualizar-sistema")), QStringLiteral("iniciar")});
+}
+
+// Empieza (o retoma, si se volvió a abrir Ajustes) la lectura del registro.
+void SettingsBackend::followUpdate()
+{
+    m_updateRunning = true;
+    m_updateOffset = 0;
+    m_updatePartial.clear();
+    m_updateDownloads = 0;
+    m_updateIdle = 0;
+    m_updateLogLines.clear();
+    m_updateStatus = QStringLiteral("Actualizando el sistema…");
+    emit updateProgressChanged();
+    emit updateStatusChanged();
+    if (!m_updateTimer) {
+        m_updateTimer = new QTimer(this);
+        m_updateTimer->setInterval(400);
+        connect(m_updateTimer, &QTimer::timeout, this, &SettingsBackend::readUpdateLog);
+    }
+    m_updateTimer->start();
+}
+
+void SettingsBackend::readUpdateLog()
+{
+    QProcess ruta;
+    static QString fichero;
+    if (fichero.isEmpty()) {
+        ruta.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("registro")});
+        ruta.waitForFinished(3000);
+        fichero = QString::fromUtf8(ruta.readAllStandardOutput()).trimmed();
+    }
+    QFile f(fichero);
+    if (f.open(QIODevice::ReadOnly)) {
+        if (f.size() < m_updateOffset)   // se empezó otra: desde el principio
+            m_updateOffset = 0;
+        f.seek(m_updateOffset);
+        m_updatePartial += f.readAll();
+        m_updateOffset = f.pos();
+    }
+    bool cambio = false;
+    int fin;
+    while (m_updateRunning && (fin = m_updatePartial.indexOf('\n')) >= 0) {
+        // pacman sin terminal también separa con \r al descargar
+        const QString linea = QString::fromUtf8(m_updatePartial.left(fin)).section(QLatin1Char('\r'), -1);
+        m_updatePartial.remove(0, fin + 1);
+        appendUpdateLine(linea);
+        cambio = true;
+    }
+    if (cambio)
+        emit updateLogChanged();
+
+    // El servicio terminó sin escribir @@FIN (se cortó la luz, lo pararon...)
+    if (m_updateRunning) {
+        QProcess estado;
+        estado.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("estado")});
+        estado.waitForFinished(3000);
+        if (QString::fromUtf8(estado.readAllStandardOutput()).trimmed() == QStringLiteral("parado")) {
+            if (++m_updateIdle >= 5)   // dos segundos sin servicio ni final
+                finishUpdate(false, QStringLiteral("La actualización se interrumpió. Vuelve a intentarlo."));
+        } else {
+            m_updateIdle = 0;
+        }
+    }
+}
+
+void SettingsBackend::appendUpdateLine(const QString &linea)
+{
+    static const QRegularExpression reInstalar(QStringLiteral("^\\(\\s*(\\d+)/(\\d+)\\)\\s+(upgrading|installing|reinstalling|removing|downgrading)\\s+(\\S+)"));
+    static const QRegularExpression reDescarga(QStringLiteral("^\\s*(\\S+)\\s+downloading\\.\\.\\."));
+
+    if (linea.startsWith(QStringLiteral("@@FIN "))) {
+        const QString resto = linea.mid(6);
+        finishUpdate(resto.section(QLatin1Char(' '), 0, 0) == QStringLiteral("ok"), resto.section(QLatin1Char(' '), 1));
+        return;
+    }
+    if (linea == QStringLiteral("@@REINICIAR")) {
+        m_updateNeedsReboot = true;
+        return;
+    }
+    if (linea.startsWith(QStringLiteral("@@ "))) {
+        m_updateProgress = qMax(m_updateProgress, linea.section(QLatin1Char(' '), 1, 1).toDouble() / 100.0);
+        m_updateStatus = linea.section(QLatin1Char(' '), 2);
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        return;
     }
 
-    QString script = QStringLiteral("echo '=== Inti OS - Actualizar el sistema ==='; echo; "
-                                    "sudo pacman -Syu; r=$?; "
-                                    "if command -v flatpak >/dev/null; then echo; echo '=== Apps de la Tienda (Flatpak) ==='; flatpak update -y; fi; "
-                                    "echo; if [ $r -eq 0 ]; then echo 'Listo: el sistema está actualizado.'; "
-                                    "else echo 'La actualización no terminó (código '$r'). Revisa los mensajes de arriba.'; fi; "
-                                    "read -p 'Pulsa Intro para cerrar...'");
+    m_updateLogLines << linea;
+    if (m_updateLogLines.size() > 4000)
+        m_updateLogLines.erase(m_updateLogLines.begin(), m_updateLogLines.begin() + 500);
 
-    QProcess::startDetached(term, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << script);
+    const auto inst = reInstalar.match(linea);
+    if (inst.hasMatch()) {
+        const double i = inst.captured(1).toDouble(), n = qMax(1.0, inst.captured(2).toDouble());
+        m_updateProgress = qMax(m_updateProgress, 0.40 + 0.50 * i / n);
+        const QString op = inst.captured(3);
+        const QString verbo = op == QStringLiteral("removing") ? QStringLiteral("Quitando")
+                            : op == QStringLiteral("installing") ? QStringLiteral("Instalando")
+                                                                 : QStringLiteral("Actualizando");
+        m_updateStatus = QStringLiteral("%1 %2 (%3 de %4)").arg(verbo, inst.captured(4), inst.captured(1), inst.captured(2));
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        return;
+    }
+    const auto desc = reDescarga.match(linea);
+    if (desc.hasMatch()) {
+        ++m_updateDownloads;
+        const double total = qMax(m_updateDownloads + 1, m_updateCount);
+        m_updateProgress = qMax(m_updateProgress, 0.10 + 0.28 * m_updateDownloads / total);
+        m_updateStatus = QStringLiteral("Descargando %1").arg(desc.captured(1));
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+    } else if (linea.startsWith(QStringLiteral(":: Running pre-transaction hooks"))) {
+        m_updateStatus = QStringLiteral("Guardando una instantánea del sistema…");
+        emit updateStatusChanged();
+    } else if (linea.startsWith(QStringLiteral(":: Running post-transaction hooks"))) {
+        m_updateStatus = QStringLiteral("Terminando de configurar…");
+        emit updateStatusChanged();
+    }
+}
+
+void SettingsBackend::finishUpdate(bool ok, const QString &texto)
+{
+    if (m_updateTimer)
+        m_updateTimer->stop();
+    auto terminar = [this, ok, texto]() {
+        m_updateRunning = false;
+        m_updateResult = ok ? QStringLiteral("ok") : QStringLiteral("error");
+        m_updateProgress = ok ? 1.0 : m_updateProgress;
+        m_updateStatus = ok && m_updateNeedsReboot
+                             ? QStringLiteral("Actualizado. Reinicia para usar el sistema nuevo.")
+                             : texto;
+        if (ok) {
+            m_updateCount = 0;
+            emit updateCountChanged();
+        }
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        emit updateLogChanged();
+    };
+    // Las apps de la Tienda instaladas solo para esta cuenta, sin contraseña
+    if (ok && !QStandardPaths::findExecutable(QStringLiteral("flatpak")).isEmpty()) {
+        m_updateStatus = QStringLiteral("Actualizando tus apps de la Tienda…");
+        m_updateProgress = qMax(m_updateProgress, 0.95);
+        emit updateStatusChanged();
+        emit updateProgressChanged();
+        auto *fp = new QProcess(this);
+        fp->setProcessChannelMode(QProcess::MergedChannels);
+        connect(fp, &QProcess::finished, this, [this, fp, terminar]() {
+            for (const QString &l : QString::fromUtf8(fp->readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+                m_updateLogLines << l.section(QLatin1Char('\r'), -1);
+            fp->deleteLater();
+            terminar();
+        });
+        fp->start(QStringLiteral("flatpak"), {QStringLiteral("update"), QStringLiteral("--user"), QStringLiteral("-y"),
+                                              QStringLiteral("--noninteractive")});
+        return;
+    }
+    terminar();
+}
+
+void SettingsBackend::rebootNow()
+{
+    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("reboot")});
 }
 
 void SettingsBackend::updateNetworkStatus()

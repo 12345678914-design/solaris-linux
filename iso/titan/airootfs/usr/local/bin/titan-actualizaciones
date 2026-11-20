@@ -32,6 +32,6 @@ accion="$(timeout 3600 notify-send -a "Actualizaciones" -i system-software-updat
     -A actualizar=Actualizar --wait \
     "$texto" "Inti OS se mantiene al día con las versiones de Arch Linux." 2>/dev/null)"
 if [ "$accion" = actualizar ]; then
-    setsid titan-settings --seccion General >/dev/null 2>&1 &
+    setsid titan-settings --actualizar >/dev/null 2>&1 &
 fi
 exit 0

@@ -1,0 +1,101 @@
+#!/bin/sh
+# Inti OS - actualizar el sistema sin preguntas (Ajustes > General).
+#
+# Como en Garuda o Ubuntu: se pulsa "Actualizar", se pone la contraseña una
+# vez y el resto va solo. Ajustes enseña "Actualizando el sistema..." con una
+# barra y, dentro de "Mostrar detalles", el registro de lo que va pasando.
+#
+# La actualización corre como servicio del sistema (systemd-run), no dentro
+# de Ajustes: si se cierra la ventana a mitad, pacman no se corta.
+#
+#   titan-actualizar-sistema iniciar     (root; Ajustes lo pide con pkexec)
+#   titan-actualizar-sistema estado      en-curso | parado   (sin root)
+#   titan-actualizar-sistema registro    ruta del registro   (sin root)
+#   titan-actualizar-sistema trabajar    (lo lanza "iniciar"; hace el trabajo)
+#
+# El registro lleva líneas de control para Ajustes:
+#   @@ <porcentaje> <texto>     progreso y texto a mostrar
+#   @@REINICIAR                 hace falta reiniciar (núcleo nuevo...)
+#   @@FIN ok|error <texto>      terminó
+set -u
+export LC_ALL=C
+unidad=titan-actualizacion
+registro="${TITAN_REGISTRO_ACTUALIZACION:-/var/log/titan-actualizacion.log}"
+
+paso() { echo "@@ $1 $2"; }
+fin() { echo "@@FIN $1 $2"; exit 0; }
+
+trabajar() {
+    paso 2 "Preparando la actualización…"
+    if [ -d /run/archiso ]; then
+        fin error "En la sesión en vivo no se actualiza: instala Inti OS primero."
+    fi
+
+    # Con batería baja, una actualización cortada puede dejar el sistema sin arrancar
+    for b in /sys/class/power_supply/BAT*; do
+        [ -r "$b/capacity" ] || continue
+        if [ "$(cat "$b/status" 2>/dev/null)" = Discharging ] && [ "$(cat "$b/capacity")" -lt 25 ]; then
+            fin error "Batería baja ($(cat "$b/capacity") %): conecta el cargador y vuelve a intentarlo."
+        fi
+    done
+
+    # Un bloqueo de pacman que quedó de un corte de luz o de un cierre a la fuerza
+    if [ -e /var/lib/pacman/db.lck ]; then
+        if pgrep -x pacman >/dev/null 2>&1; then
+            fin error "Ya se está instalando algo (otra app o la Tienda). Espera a que termine."
+        fi
+        echo "Quitando un bloqueo antiguo de pacman"
+        rm -f /var/lib/pacman/db.lck
+    fi
+
+    # 1. Claves de los repositorios primero: es el fallo más típico al actualizar
+    paso 5 "Comprobando las firmas de los paquetes…"
+    if ! pacman -Sy --needed --noconfirm archlinux-keyring; then
+        fin error "No se pudo conectar con los repositorios. ¿Hay conexión a Internet?"
+    fi
+
+    # 2. Todo lo demás. --ask=4 responde "sí" a "quitar un paquete que choca
+    #    con otro" (pacman lo pregunta y, sin respuesta, se pararía).
+    paso 10 "Descargando las actualizaciones…"
+    pacman -Su --noconfirm --ask=4 2>&1
+    r=$?
+    if [ "$r" -ne 0 ]; then
+        fin error "La actualización no terminó. El sistema sigue como estaba; mira los detalles."
+    fi
+
+    # 3. Apps de la Tienda instaladas para todo el equipo
+    if command -v flatpak >/dev/null 2>&1; then
+        paso 92 "Actualizando las apps de la Tienda…"
+        flatpak update --system -y --noninteractive 2>&1 || echo "Aviso: no se pudieron actualizar algunas apps de la Tienda"
+        flatpak uninstall --system --unused -y --noninteractive >/dev/null 2>&1 || true
+    fi
+
+    # Núcleo nuevo: los módulos del que está en marcha ya no están
+    [ -d "/usr/lib/modules/$(uname -r)" ] || echo "@@REINICIAR"
+    fin ok "El sistema está actualizado."
+}
+
+case "${1:-estado}" in
+    estado)
+        if systemctl is-active --quiet "$unidad" 2>/dev/null; then echo en-curso; else echo parado; fi ;;
+    registro)
+        echo "$registro" ;;
+    iniciar)
+        [ "$(id -u)" -eq 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+        systemctl is-active --quiet "$unidad" 2>/dev/null && exit 0
+        mkdir -p "$(dirname "$registro")"
+        : > "$registro"
+        chmod 0644 "$registro"
+        systemctl reset-failed "$unidad" 2>/dev/null
+        systemd-run --unit="$unidad" --collect --quiet \
+            --description="Inti OS: actualizar el sistema" \
+            --property=StandardOutput="append:$registro" \
+            --property=StandardError="append:$registro" \
+            systemd-inhibit --what=shutdown:sleep:idle --who="Inti OS" \
+                --why="Actualizando el sistema" --mode=block \
+                "$0" trabajar ;;
+    trabajar)
+        trabajar ;;
+    *)
+        echo "uso: titan-actualizar-sistema iniciar|estado|registro" >&2; exit 2 ;;
+esac

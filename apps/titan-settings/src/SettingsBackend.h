@@ -1,6 +1,7 @@
 #ifndef SETTINGSBACKEND_H
 #define SETTINGSBACKEND_H
 
+class QTimer;
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -25,6 +26,12 @@ class SettingsBackend : public QObject
     Q_PROPERTY(bool updatePromptVisible READ updatePromptVisible NOTIFY updatePromptVisibleChanged)
     Q_PROPERTY(int updateCount READ updateCount NOTIFY updateCountChanged)
     Q_PROPERTY(QString updateSize READ updateSize NOTIFY updateSizeChanged)
+    // Actualización en curso (titan-actualizar-sistema): barra, registro, reinicio
+    Q_PROPERTY(bool updateRunning READ updateRunning NOTIFY updateProgressChanged)
+    Q_PROPERTY(double updateProgress READ updateProgress NOTIFY updateProgressChanged)
+    Q_PROPERTY(QString updateLog READ updateLog NOTIFY updateLogChanged)
+    Q_PROPERTY(QString updateResult READ updateResult NOTIFY updateProgressChanged)
+    Q_PROPERTY(bool updateNeedsReboot READ updateNeedsReboot NOTIFY updateProgressChanged)
 
     // Wi-Fi
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled WRITE setWifiEnabled NOTIFY wifiStatusChanged)
@@ -76,6 +83,11 @@ public:
     bool updatePromptVisible() const { return m_updatePromptVisible; }
     int updateCount() const { return m_updateCount; }
     QString updateSize() const { return m_updateSize; }
+    bool updateRunning() const { return m_updateRunning; }
+    double updateProgress() const { return m_updateProgress; }
+    QString updateLog() const { return m_updateLogLines.join(QLatin1Char('\n')); }
+    QString updateResult() const { return m_updateResult; }
+    bool updateNeedsReboot() const { return m_updateNeedsReboot; }
 
     // Wi-Fi
     bool wifiEnabled() const { return m_wifiEnabled; }
@@ -98,6 +110,7 @@ public:
     Q_INVOKABLE void checkUpdates();
     Q_INVOKABLE void installUpdates();
     Q_INVOKABLE void cancelUpdates();
+    Q_INVOKABLE void rebootNow();
 
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password = QString());
@@ -121,6 +134,8 @@ signals:
     void updatePromptVisibleChanged();
     void updateCountChanged();
     void updateSizeChanged();
+    void updateProgressChanged();
+    void updateLogChanged();
 
     void wifiStatusChanged();
     void wifiScanningChanged();
@@ -149,6 +164,20 @@ private:
     bool m_updatePromptVisible = false;
     int m_updateCount = 0;
     QString m_updateSize = QStringLiteral("0 MB");
+    bool m_updateRunning = false;
+    double m_updateProgress = 0;
+    QString m_updateResult;          // "" | "ok" | "error"
+    bool m_updateNeedsReboot = false;
+    QStringList m_updateLogLines;
+    QTimer *m_updateTimer = nullptr;
+    qint64 m_updateOffset = 0;
+    QByteArray m_updatePartial;
+    int m_updateDownloads = 0;
+    int m_updateIdle = 0;
+    void followUpdate();
+    void readUpdateLog();
+    void appendUpdateLine(const QString &linea);
+    void finishUpdate(bool ok, const QString &texto);
 
     // Wi-Fi
     bool m_wifiEnabled = true;

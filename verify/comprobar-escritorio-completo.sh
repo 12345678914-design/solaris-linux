@@ -460,6 +460,11 @@ contiene iso/titan/airootfs/root/customize_airootfs.sh 'titan-avisos-fallos.serv
 contiene iso/titan/airootfs/usr/local/bin/titan-escritorio-remoto 'enable_pam=true' "escritorio remoto cifrado y con la contrasena de la cuenta"
 contiene iso/titan/airootfs/usr/local/bin/titan-cortafuegos '5900/tcp' "el cortafuegos abre el escritorio remoto solo si se comparte"
 contiene apps/titan-settings/qml/CompartirView.qml 'setEscritorioRemoto' "Ajustes > Compartir"
+contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'noconfirm --ask=4' "actualizar sin preguntas"
+contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'systemd-run' "la actualizacion sigue aunque se cierre Ajustes"
+contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy 'titan-actualizar-sistema' "permiso para actualizar con contrasena en ventana"
+contiene apps/titan-settings/qml/GeneralView.qml 'Mostrar detalles' "Ajustes: barra de progreso y registro de la actualizacion"
+contiene iso/titan/airootfs/usr/local/bin/titan-actualizaciones 'titan-settings --actualizar' "el aviso de actualizaciones empieza a actualizar al pulsar"
 
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"

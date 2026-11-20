@@ -274,7 +274,7 @@ ScrollView {
                     }
 
                     Text {
-                        text: settingsBackend.updateStatus
+                        text: settingsBackend.updateRunning ? "Hay una actualización en marcha" : settingsBackend.updateStatus
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -295,7 +295,7 @@ ScrollView {
                            updateMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.08) : (theme.isDark ? "#2c303c" : "#f0f0f4")
                     border.color: Qt.rgba(0, 0, 0, 0.15)
                     border.width: 1
-                    opacity: settingsBackend.updateChecking ? 0.6 : 1.0
+                    opacity: settingsBackend.updateChecking || settingsBackend.updateRunning ? 0.6 : 1.0
 
                     Text {
                         id: updateBtnText
@@ -309,7 +309,7 @@ ScrollView {
                     MouseArea {
                         id: updateMouse
                         anchors.fill: parent
-                        enabled: !settingsBackend.updateChecking
+                        enabled: !settingsBackend.updateChecking && !settingsBackend.updateRunning
                         hoverEnabled: true
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: settingsBackend.checkUpdates()
@@ -355,7 +355,7 @@ ScrollView {
                             }
 
                             Text {
-                                text: "¿Deseas instalar esta actualización del sistema ahora en la terminal?"
+                                text: "Se instala sola, sin preguntas: pones la contraseña una vez y puedes seguir usando el equipo."
                                 color: theme.contentTextSecondary
                                 font.pixelSize: 11
                             }
@@ -377,7 +377,7 @@ ScrollView {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Cancelar"
+                                text: "Ahora no"
                                 color: theme.contentTextPrimary
                                 font.pixelSize: 11
                                 font.bold: true
@@ -401,7 +401,7 @@ ScrollView {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Instalar actualización"
+                                text: "Actualizar"
                                 color: "#ffffff"
                                 font.pixelSize: 11
                                 font.bold: true
@@ -414,6 +414,140 @@ ScrollView {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: settingsBackend.installUpdates()
                             }
+                        }
+                    }
+                }
+            }
+
+            // ACTUALIZANDO: mensaje, barra y, dentro, el registro (como Garuda,
+            // pero sin terminal ni preguntas)
+            Rectangle {
+                id: tarjetaActualizando
+                visible: settingsBackend.updateRunning || settingsBackend.updateResult !== ""
+                property bool detalles: false
+                width: parent.width
+                height: cuerpoAct.implicitHeight + 32
+                radius: 10
+                color: theme.contentCardBg
+                border.color: settingsBackend.updateResult === "error" ? "#ff453a" : theme.contentCardBorder
+                border.width: 1
+
+                Column {
+                    id: cuerpoAct
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 10
+
+                    Text {
+                        width: parent.width
+                        text: settingsBackend.updateRunning ? "Actualizando el sistema"
+                              : settingsBackend.updateResult === "ok" ? "✓ Actualización terminada"
+                              : "No se pudo terminar la actualización"
+                        color: settingsBackend.updateResult === "error" ? "#ff453a" : theme.contentTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+                    Text {
+                        width: parent.width
+                        text: settingsBackend.updateStatus
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                    // Barra de progreso
+                    Rectangle {
+                        width: parent.width
+                        height: 6
+                        radius: 3
+                        color: theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+                        visible: settingsBackend.updateResult !== "error"
+                        Rectangle {
+                            width: Math.max(6, parent.width * settingsBackend.updateProgress)
+                            height: parent.height
+                            radius: 3
+                            color: theme.accent
+                            Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                    Text {
+                        visible: settingsBackend.updateRunning
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Puedes seguir usando el equipo y cerrar esta ventana: la actualización sigue. No apagues el equipo hasta que termine."
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 10
+                    }
+
+                    Row {
+                        spacing: 12
+                        // Mostrar / ocultar el registro
+                        Text {
+                            text: (tarjetaActualizando.detalles ? "▾ Ocultar detalles" : "▸ Mostrar detalles")
+                            color: theme.accent
+                            font.pixelSize: 11
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tarjetaActualizando.detalles = !tarjetaActualizando.detalles
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        visible: tarjetaActualizando.detalles
+                        width: parent.width
+                        height: 220
+                        radius: 8
+                        color: theme.isDark ? "#101114" : "#f4f4f6"
+                        border.color: theme.contentCardBorder
+                        clip: true
+                        Flickable {
+                            id: desplazaRegistro
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            contentWidth: width
+                            contentHeight: textoRegistro.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            // Siempre en la última línea, salvo que se haya subido a leer
+                            property bool alFinal: true
+                            onMovementEnded: alFinal = contentY >= contentHeight - height - 4
+                            onContentHeightChanged: if (alFinal) contentY = Math.max(0, contentHeight - height)
+                            TextEdit {
+                                id: textoRegistro
+                                width: desplazaRegistro.width
+                                text: settingsBackend.updateLog
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.WrapAnywhere
+                                color: theme.contentTextSecondary
+                                font.family: "monospace"
+                                font.pixelSize: 10
+                            }
+                        }
+                    }
+
+                    // Botones al terminar
+                    Row {
+                        visible: !settingsBackend.updateRunning
+                        anchors.right: parent.right
+                        spacing: 12
+                        Rectangle {
+                            visible: settingsBackend.updateResult === "error"
+                            width: 110; height: 28; radius: 6
+                            color: reintentarMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Reintentar"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: reintentarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.installUpdates() }
+                        }
+                        Rectangle {
+                            visible: settingsBackend.updateNeedsReboot && settingsBackend.updateResult === "ok"
+                            width: 130; height: 28; radius: 6
+                            color: reiniciarMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Reiniciar ahora"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: reiniciarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.rebootNow() }
                         }
                     }
                 }

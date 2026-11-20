@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QTimer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -43,6 +44,14 @@ int main(int argc, char *argv[])
         // --seccion=X o --seccion X (asi la abre el aviso de actualizaciones)
         if (arg == QStringLiteral("--seccion") && i + 1 < argc)
             arg = QStringLiteral("--seccion=") + QString::fromLocal8Bit(argv[++i]);
+        // --actualizar: el botón "Actualizar" del aviso empieza ya, sin más preguntas
+        if (arg == QStringLiteral("--actualizar")) {
+            backend.setCurrentSection(QStringLiteral("General"));
+            QTimer::singleShot(800, &backend, [&backend]() {
+                if (!backend.updateRunning())
+                    backend.installUpdates();
+            });
+        }
         if (arg.startsWith(QStringLiteral("--seccion="))) {
             QString sec = arg.mid(10);
             if (sec == QStringLiteral("wallpaper") || sec == QStringLiteral("fondo")) {
