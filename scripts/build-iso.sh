@@ -775,10 +775,13 @@ info "${entradas_total} entradas de arranque sin resolucion fija"
 # mismos ficheros recién compilados y la ISO los registra en la base de datos
 # de pacman sin volver a copiarlos (customize_airootfs.sh: pacman -U --dbonly).
 # Así un sistema instalado sabe que son paquetes y puede actualizarlos desde
-# el repositorio [inti]. makepkg no funciona como root: va con SUDO_USER.
+# el repositorio [inti]. makepkg no funciona como root: va con el usuario.
 rm -rf -- "${PROFILE}/airootfs/root/inti-paquetes"
 if [[ "${TITAN_PAQUETES_INTI:-1}" == "1" ]]; then
+  # makepkg no corre como root: se usa el dueño del proyecto. Con 'sudo make
+  # iso' el Makefile vuelve a llamar a sudo y SUDO_USER llega como root.
   usuario="${SUDO_USER:-}"
+  [[ -z "${usuario}" || "${usuario}" == "root" ]] && usuario="$(stat -c %U "${DISTRO}")"
   if [[ -n "${usuario}" && "${usuario}" != "root" ]] && command -v makepkg >/dev/null; then
     install -d -o "${usuario}" -m 0755 "${DISTRO}/build"
     # Sin firmar: la ISO los instala desde su propio disco (LocalFileSigLevel
@@ -794,12 +797,15 @@ if [[ "${TITAN_PAQUETES_INTI:-1}" == "1" ]]; then
       fi
       info "paquetes de Inti listos ($(ls "${PROFILE}/airootfs/root/inti-paquetes" | wc -l)); repositorio en build/inti-repo"
     else
-      yel "No se pudieron hacer los paquetes de Inti (registro: ${WORK_DIR}/inti-paquetes.log)."
-      yel "La ISO funciona igual, pero los sistemas instalados no podrán actualizar las apps de Inti."
-      tail -n 5 "${WORK_DIR}/inti-paquetes.log" >&2 || true
+      red "No se pudieron hacer los paquetes de Inti (registro: ${WORK_DIR}/inti-paquetes.log):"
+      tail -n 15 "${WORK_DIR}/inti-paquetes.log" >&2 || true
+      red "Sin ellos los equipos instalados no recibirian actualizaciones de Inti. Se para aqui."
+      exit 1
     fi
   else
-    yel "Sin SUDO_USER (o sin makepkg): la ISO sale sin registrar los paquetes de Inti."
+    red "No se pueden hacer los paquetes de Inti (proyecto de root o sin makepkg)."
+    red "La ISO saldria sin [inti]: los equipos instalados no recibirian actualizaciones de Inti."
+    exit 1
   fi
 fi
 
