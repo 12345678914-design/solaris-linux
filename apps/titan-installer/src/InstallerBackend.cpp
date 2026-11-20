@@ -16,6 +16,7 @@
 #include <QDebug>
 #include <sys/sysinfo.h>
 #include <unistd.h>
+#include <pwd.h>
 
 // Tabla de particiones de un disco segun 'parted -m ... unit MiB print free'.
 namespace {
@@ -583,11 +584,29 @@ public slots:
                 lFile.write("LANG=es_ES.UTF-8\nLC_COLLATE=C\n");
                 lFile.close();
             }
+            // keymap es la distribucion XKB del escritorio ("es", "latam",
+            // "us"); la consola usa otros nombres ("latam" no existe en kbd).
+            const QString xkb = keymap.isEmpty() ? QStringLiteral("es") : keymap;
+            QString consola = xkb;
+            if (xkb == QStringLiteral("latam"))
+                consola = QStringLiteral("la-latin1");
             QFile vFile(QStringLiteral("/mnt/etc/vconsole.conf"));
             if (vFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-                QString km = keymap.isEmpty() ? QStringLiteral("es") : keymap;
-                vFile.write("KEYMAP=" + km.toUtf8() + "\n");
+                vFile.write("KEYMAP=" + consola.toUtf8() + "\n");
                 vFile.close();
+            }
+            // Escritorio y pantalla de inicio: lo leen titan-distribucion y
+            // 15-titan-grafico.sh (antes Wayfire se quedaba siempre en "us").
+            QDir().mkpath(QStringLiteral("/mnt/etc/X11/xorg.conf.d"));
+            QFile xFile(QStringLiteral("/mnt/etc/X11/xorg.conf.d/00-keyboard.conf"));
+            if (xFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                xFile.write("# Inti OS - distribucion del teclado (la elegida al instalar)\n"
+                            "Section \"InputClass\"\n"
+                            "        Identifier \"system-keyboard\"\n"
+                            "        MatchIsKeyboard \"on\"\n"
+                            "        Option \"XkbLayout\" \"" + xkb.toUtf8() + "\"\n"
+                            "EndSection\n");
+                xFile.close();
             }
         }
 
@@ -1782,6 +1801,29 @@ void InstallerBackend::rebootSystem()
 void InstallerBackend::closeInstaller()
 {
     QCoreApplication::quit();
+}
+
+// Al elegir la distribucion se aplica en el live, como en Ubuntu: el campo
+// "Escribe aqui para probar" escribe ya con ella. El instalador corre como
+// root (sudo): titan-distribucion se lanza como la persona del live.
+void InstallerBackend::probarDistribucion(const QString &xkb)
+{
+    static const QRegularExpression valida(QStringLiteral("^[a-z]{2,8}$"));
+    if (!valida.match(xkb).hasMatch())
+        return;
+    const QByteArray usuario = qgetenv("SUDO_USER");
+    if (geteuid() == 0 && !usuario.isEmpty()) {
+        const struct passwd *pw = getpwnam(usuario.constData());
+        if (!pw)
+            return;
+        QProcess::startDetached(QStringLiteral("runuser"),
+            {QStringLiteral("-u"), QString::fromLocal8Bit(usuario), QStringLiteral("--"),
+             QStringLiteral("env"), QStringLiteral("-u"), QStringLiteral("XDG_CONFIG_HOME"),
+             QStringLiteral("HOME=") + QString::fromLocal8Bit(pw->pw_dir),
+             QStringLiteral("/usr/local/bin/titan-distribucion"), xkb});
+    } else if (geteuid() != 0) {
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-distribucion"), {xkb});
+    }
 }
 
 #include "InstallerBackend.moc"

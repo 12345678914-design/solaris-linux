@@ -316,6 +316,7 @@ TitanWindow {
         "Privacidad y seguridad": seguridadComponent,
         "Accesibilidad": accesibilidadComponent,
         "Teclado": tecladoComponent,
+        "Ratón y panel táctil": ratonComponent,
         "Impresoras y escáneres": impresorasComponent,
         "Restaurar sistema": restaurarComponent,
         "VPN": vpnComponent,
@@ -342,6 +343,7 @@ TitanWindow {
     Component { id: seguridadComponent; SeguridadView {} }
     Component { id: accesibilidadComponent; AccesibilidadView {} }
     Component { id: tecladoComponent; TecladoView {} }
+    Component { id: ratonComponent; RatonView {} }
     Component { id: impresorasComponent; ImpresorasView {} }
     Component { id: restaurarComponent; RestaurarView {} }
     Component { id: vpnComponent; VpnView {} }

@@ -786,6 +786,8 @@ TitanWindow {
                     onActivated: {
                         window.selectedKeymap = currentValue
                         window.selectedKeymapLabel = currentText
+                        if (typeof installerBackend !== "undefined" && installerBackend.probarDistribucion)
+                            installerBackend.probarDistribucion(currentValue)
                     }
                 }
                 Campo {

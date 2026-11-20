@@ -37,6 +37,9 @@ class Sistema : public QObject
     Q_PROPERTY(bool tecladoPantalla READ tecladoPantalla NOTIFY cambiado)
     Q_PROPERTY(bool metodosEntrada READ metodosEntrada NOTIFY cambiado)
     Q_PROPERTY(QString distribucionTeclado READ distribucionTeclado NOTIFY cambiado)
+    // Ratón y panel táctil ([input] de wayfire.ini)
+    Q_PROPERTY(QVariantMap raton READ raton NOTIFY cambiado)
+    Q_PROPERTY(bool hayPanelTactil READ hayPanelTactil NOTIFY cambiado)
     // Impresoras, instantaneas, VPN, discos
     Q_PROPERTY(QVariantList impresoras READ impresoras NOTIFY cambiado)
     Q_PROPERTY(QString tipoInstantaneas READ tipoInstantaneas NOTIFY cambiado)
@@ -67,6 +70,8 @@ public:
     bool tecladoPantalla() const { return m_tecladoPantalla; }
     bool metodosEntrada() const { return m_entrada; }
     QString distribucionTeclado() const { return m_teclado; }
+    QVariantMap raton() const { return m_raton; }
+    bool hayPanelTactil() const { return m_panelTactil; }
     QVariantList impresoras() const { return m_impresoras; }
     QString tipoInstantaneas() const { return m_tipoInst; }
     QVariantList instantaneas() const { return m_instantaneas; }
@@ -93,6 +98,9 @@ public:
     Q_INVOKABLE void setLector(bool activo);
     Q_INVOKABLE void setTecladoPantalla(bool activo);
     Q_INVOKABLE void setMetodosEntrada(bool activo);
+    // "es", "latam", "us"... y variante ("intl", "" ...): al momento
+    Q_INVOKABLE void setDistribucion(const QString &capa, const QString &variante);
+    Q_INVOKABLE void setRaton(const QString &clave, const QVariant &valor);
 
     Q_INVOKABLE void crearInstantanea(const QString &descripcion);
     Q_INVOKABLE void borrarInstantanea(int numero);
@@ -121,6 +129,7 @@ private:
     void leerSeguridad();
     void leerAccesibilidad();
     void leerTeclado();
+    void leerRaton();
     void leerImpresoras();
     void leerInstantaneas();
     void leerVpns();
@@ -144,6 +153,8 @@ private:
     bool m_tecladoPantalla = false;
     bool m_entrada = false;
     QString m_teclado;
+    QVariantMap m_raton;
+    bool m_panelTactil = false;
     QVariantList m_impresoras;
     QString m_tipoInst;
     QVariantList m_instantaneas;

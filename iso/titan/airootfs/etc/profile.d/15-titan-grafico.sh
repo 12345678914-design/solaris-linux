@@ -292,6 +292,31 @@ if [ -f "${HOME}/.config/labwc/rc.xml" ] && ! grep -q -- '--tecla' "${HOME}/.con
   rm -f "${HOME}/.config/labwc/.teclas-titan"
 fi
 
+# 4c'. Panel tactil: sin clics con la palma al escribir (Wayfire lo traia
+#      desactivado). Solo si la persona no lo ha elegido en Ajustes.
+if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q '^disable_touchpad_while_typing' "${HOME}/.config/wayfire.ini"; then
+  if grep -q '^\[input\]' "${HOME}/.config/wayfire.ini"; then
+    sed -i '/^\[input\]/a disable_touchpad_while_typing = true' "${HOME}/.config/wayfire.ini"
+  else
+    printf '\n[input]\ndisable_touchpad_while_typing = true\n' >> "${HOME}/.config/wayfire.ini"
+  fi
+fi
+
+# 4c. Distribucion del teclado (2026-11): la del sistema (la que se eligio al
+#     instalar) si la persona no ha elegido otra en Ajustes > Teclado. Antes
+#     Wayfire usaba siempre "us" y labwc la de XKB_DEFAULT_* (ninguna).
+if command -v titan-distribucion >/dev/null 2>&1; then
+  if [ ! -f "${HOME}/.config/wayfire.ini" ] || ! grep -q '^xkb_layout' "${HOME}/.config/wayfire.ini"; then
+    # shellcheck disable=SC2046
+    titan-distribucion $(titan-distribucion --sistema) 2>/dev/null || true
+  fi
+  # labwc y Xwayland la toman del entorno
+  set -- $(titan-distribucion)
+  export XKB_DEFAULT_LAYOUT="${1:-us}"
+  [ -n "${2:-}" ] && export XKB_DEFAULT_VARIANT="$2"
+  set --
+fi
+
 # 5. Compositor: Wayfire (inmersivo) solo con aceleracion 3D real; necesita
 #    OpenGL ES y no tiene renderizado por software como labwc (pixman).
 COMPOSITOR="labwc"

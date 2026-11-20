@@ -269,6 +269,9 @@ libva-intel-driver
 
 # --- Aplicaciones incluidas en la ISO ---
 firefox
+# Firefox en español (como Ubuntu: sin esto sale en inglés)
+firefox-i18n-es-es
+firefox-i18n-es-mx
 
 
 
@@ -339,6 +342,9 @@ btrfs-assistant
 timeshift
 # Fuentes para todos los idiomas (sin ellas el chino, japones o arabe son cuadros)
 noto-fonts
+# Métricas de Calibri y Cambria: los .docx de clase no se descolocan (Ubuntu/Fedora las traen)
+ttf-carlito
+ttf-caladea
 noto-fonts-cjk
 # Carpetas Documentos, Descargas, Imagenes... en el idioma del sistema
 xdg-user-dirs

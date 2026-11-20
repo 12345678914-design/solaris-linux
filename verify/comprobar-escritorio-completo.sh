@@ -51,7 +51,8 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           openboard xournalpp libreoffice-fresh libreoffice-fresh-es pdfarranger obs-studio
           kdenlive auto-multiple-choice joplin-desktop obsidian anki calibre kalzium kstars
           kmplot kig geogebra stellarium gcompris-qt gutenprint foomatic-db
-          foomatic-db-engine foomatic-db-ppds hplip switcheroo-control qemu-guest-agent)
+          foomatic-db-engine foomatic-db-ppds hplip switcheroo-control qemu-guest-agent
+          firefox-i18n-es-es firefox-i18n-es-mx ttf-carlito ttf-caladea)
 faltan=()
 for p in "${paquetes[@]}"; do
     grep -qxF "$p" iso/titan/packages.x86_64 || faltan+=("$p")
@@ -424,6 +425,25 @@ contiene "$SH/src/LauncherBackend.cpp" 'QCollator' "Launchpad: orden alfabetico"
 contiene apps/titan-common/TitanTinte.h 'id.mid\(barra\)\.startsWith' "icono tintado desde el disco (App Store en el Dock)"
 contiene "$SH/src/DockModel.cpp" 'org.kde.discover"\)\) \{' "Dock: App Store guardada pasa al icono interno"
 contiene iso/titan/airootfs/root/customize_airootfs.sh 'switcheroo-control.service' "switcheroo-control activado"
+
+echo -e "${AZUL}--- Comparado con Ubuntu/Fedora (2026-11-19): hora, TRIM, teclado, raton ---${SC}"
+CA=iso/titan/airootfs/root/customize_airootfs.sh
+contiene "$CA" 'systemd-timesyncd.service' "hora en punto por NTP (timesyncd)"
+contiene "$CA" 'fstrim.timer' "TRIM semanal de los SSD"
+contiene "$CA" 'paccache.timer' "limpieza de la cache de pacman"
+TD=iso/titan/airootfs/usr/local/bin/titan-distribucion
+if [[ -x "$TD" ]] && bash -n "$TD"; then ok "titan-distribucion (teclado del escritorio)"; else fallo "titan-distribucion falta o no es valido"; fi
+contiene iso/titan/airootfs/etc/X11/xorg.conf.d/00-keyboard.conf 'XkbLayout' "distribucion del teclado del live"
+contiene apps/titan-installer/src/InstallerBackend.cpp '00-keyboard.conf' "el instalador guarda el teclado del escritorio"
+contiene apps/titan-installer/src/InstallerBackend.cpp 'la-latin1' "latam en consola es la-latin1"
+contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'titan-distribucion --sistema' "la sesion aplica el teclado del sistema"
+contiene iso/titan/airootfs/usr/lib/titan/titan-greeter-sesion 'XKB_DEFAULT_LAYOUT' "pantalla de inicio con el teclado del sistema"
+contiene apps/titan-settings/qml/TecladoView.qml 'setDistribucion' "Ajustes: cambiar la distribucion"
+contiene apps/titan-settings/resources.qrc 'qml/RatonView.qml' "Ajustes: Raton y panel tactil"
+contiene "$WI" '^disable_touchpad_while_typing = true' "panel tactil sin clics de la palma"
+contiene apps/titan-common/ThemeManager.cpp 'leerTemaDelDisco' "modo claro/oscuro a GTK/Firefox sin carreras"
+contiene apps/titan-common/TitanIconoApp.h 'desktopDeAppId' "mismo icono en lanzador, Dock y escritorio"
+contiene "$SH/src/DesktopBackend.cpp" 'X-Flatpak' "quitar del escritorio las apps desinstaladas"
 
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"

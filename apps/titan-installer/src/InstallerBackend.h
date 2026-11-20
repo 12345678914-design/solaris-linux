@@ -84,6 +84,8 @@ public:
     QStringList resumenManual() const;
     QString tipoTablaManual() const { return m_tablaNueva ? (m_isUefi ? QStringLiteral("gpt") : QStringLiteral("msdos")) : m_tipoTabla; }
     Q_INVOKABLE void leerTablaManual();
+    // Cambia ya la distribucion del teclado del live (para probarla en el campo)
+    Q_INVOKABLE void probarDistribucion(const QString &xkb);
     // Solo información (no toca el disco): punto de montaje, formatear y formato.
     Q_INVOKABLE void editarParticion(int fila, const QString &montaje, bool formatear, const QString &fs);
     // Cambios en la tabla: quedan pendientes hasta aplicarCambios().

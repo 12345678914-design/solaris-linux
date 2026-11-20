@@ -1,0 +1,81 @@
+#!/bin/sh
+# Inti OS - distribución del teclado en el escritorio (como en Ubuntu, la
+# que se elige al instalar o en Ajustes > Teclado).
+#   titan-distribucion                 muestra la actual ("es", "us intl"...)
+#   titan-distribucion es [variante]   la cambia al momento
+#   titan-distribucion --sistema       la del sistema (instalador / live)
+#
+# Wayfire la lee de ~/.config/wayfire.ini ([input] xkb_layout/xkb_variant) y
+# la aplica en caliente; labwc, de XKB_DEFAULT_* en ~/.config/labwc/environment.
+# La del sistema está en /etc/X11/xorg.conf.d/00-keyboard.conf (formato de
+# localectl); si no, se deduce de KEYMAP en /etc/vconsole.conf.
+set -u
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+wf="$dir/wayfire.ini"
+env_labwc="$dir/labwc/environment"
+
+sistema() {
+    capa=$(sed -n 's/.*Option[[:space:]]*"XkbLayout"[[:space:]]*"\([^"]*\)".*/\1/p' \
+           /etc/X11/xorg.conf.d/00-keyboard.conf 2>/dev/null | head -n 1)
+    var=$(sed -n 's/.*Option[[:space:]]*"XkbVariant"[[:space:]]*"\([^"]*\)".*/\1/p' \
+           /etc/X11/xorg.conf.d/00-keyboard.conf 2>/dev/null | head -n 1)
+    if [ -z "$capa" ]; then
+        km=$(sed -n 's/^KEYMAP=//p' /etc/vconsole.conf 2>/dev/null | tr -d '"' | head -n 1)
+        case "$km" in
+            la-latin1|latam) capa=latam ;;
+            es|es-*) capa=es ;;
+            us-acentos) capa=us; var=intl ;;
+            "") capa=us ;;
+            *) capa=$(printf '%s' "$km" | sed 's/-.*//') ;;
+        esac
+    fi
+    printf '%s %s\n' "$capa" "${var:-}"
+}
+
+actual() {
+    awk -F= '/^\[/{s=($0=="[input]")} s&&$1~/^[ \t]*xkb_layout[ \t]*$/{gsub(/[ \t]/,"",$2);l=$2}
+             s&&$1~/^[ \t]*xkb_variant[ \t]*$/{gsub(/[ \t]/,"",$2);v=$2}
+             END{if(l!="")print l" "v}' "$wf" 2>/dev/null
+}
+
+# poner_ini fichero seccion clave valor: cambia o añade la clave en la sección
+poner_ini() {
+    f=$1; sec=$2; k=$3; v=$4
+    [ -f "$f" ] || : > "$f"
+    awk -v sec="[$sec]" -v k="$k" -v v="$v" '
+        BEGIN { hecho = 0; dentro = 0; vista = 0 }
+        /^\[/ {
+            if (dentro && !hecho) { print k " = " v; hecho = 1 }
+            dentro = ($0 == sec); if (dentro) vista = 1
+        }
+        dentro && $0 ~ "^[ \t]*" k "[ \t]*=" { if (!hecho) print k " = " v; hecho = 1; next }
+        { print }
+        END {
+            if (!hecho) { if (!vista) print "\n" sec; print k " = " v }
+        }' "$f" > "$f.nuevo" && mv "$f.nuevo" "$f"
+}
+
+case "${1:-}" in
+    "") a=$(actual); [ -n "$a" ] && echo "$a" || sistema; exit 0 ;;
+    --sistema) sistema; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+esac
+
+capa=$1
+var=${2:-}
+case "$capa" in *[!a-z]*) echo "Distribución no válida: $capa" >&2; exit 1 ;; esac
+case "$var" in *[!a-z0-9_]*) echo "Variante no válida: $var" >&2; exit 1 ;; esac
+
+mkdir -p "$dir/labwc"
+poner_ini "$wf" input xkb_layout "$capa"
+poner_ini "$wf" input xkb_variant "$var"
+
+# labwc: variables de entorno (se leen al reconfigurar)
+touch "$env_labwc"
+sed -i '/^XKB_DEFAULT_LAYOUT=/d; /^XKB_DEFAULT_VARIANT=/d' "$env_labwc"
+printf 'XKB_DEFAULT_LAYOUT=%s\n' "$capa" >> "$env_labwc"
+[ -n "$var" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "$var" >> "$env_labwc"
+if [ "${XDG_CURRENT_DESKTOP:-}" = "Titan:labwc" ] && command -v labwc >/dev/null 2>&1; then
+    labwc --reconfigure 2>/dev/null || true
+fi
+exit 0

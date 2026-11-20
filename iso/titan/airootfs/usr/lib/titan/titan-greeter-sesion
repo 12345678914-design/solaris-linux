@@ -10,6 +10,12 @@ export XDG_SESSION_TYPE=wayland
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export LANG="${LANG:-es_ES.UTF-8}"
+# Teclado de la pantalla de inicio: la distribucion del sistema (contrasenas con ñ, @, €...)
+if command -v titan-distribucion >/dev/null 2>&1; then
+  read -r XKB_DEFAULT_LAYOUT XKB_DEFAULT_VARIANT <<< "$(titan-distribucion --sistema)"
+  export XKB_DEFAULT_LAYOUT
+  [ -n "${XKB_DEFAULT_VARIANT}" ] && export XKB_DEFAULT_VARIANT || unset XKB_DEFAULT_VARIANT
+fi
 # 'greeter' no tiene carpeta personal: cache de Qt y fontconfig en /tmp.
 export HOME="/tmp/titan-greeter-${UID}"
 export XDG_CACHE_HOME="${HOME}/cache"

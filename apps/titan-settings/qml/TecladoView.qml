@@ -7,17 +7,43 @@ PaginaAjustes {
 
     Component.onCompleted: sistema.refrescar("Teclado")
 
+    // Como Ubuntu: la que se eligió al instalar, y se cambia aquí al momento
+    readonly property var distribuciones: [
+        { valor: "es", texto: "Español (España)" },
+        { valor: "latam", texto: "Español (Latinoamérica)" },
+        { valor: "us", texto: "Inglés (EE. UU.)" },
+        { valor: "us intl", texto: "Inglés (internacional, con acentos)" },
+        { valor: "gb", texto: "Inglés (Reino Unido)" },
+        { valor: "pt", texto: "Portugués (Portugal)" },
+        { valor: "br", texto: "Portugués (Brasil)" },
+        { valor: "fr", texto: "Francés" },
+        { valor: "de", texto: "Alemán" },
+        { valor: "it", texto: "Italiano" }
+    ]
+
     Grupo {
         etiqueta: "Distribución"
+        nota: "Se aplica al momento en todas las apps."
+        Fila {
+            titulo: "Distribución del teclado"
+            Desplegable {
+                anchors.verticalCenter: parent.verticalCenter
+                ancho: 260
+                opciones: vista.distribuciones
+                valor: sistema.distribucionTeclado
+                onElegido: (v) => {
+                    var p = String(v).split(" ")
+                    sistema.setDistribucion(p[0], p.length > 1 ? p[1] : "")
+                }
+            }
+        }
         Fila {
             separador: false
-            titulo: "Distribución del teclado"
-            detalle: "La que eligió el instalador. Se cambia en ~/.config/wayfire.ini ([input] xkb_layout)."
-            Text {
-                text: sistema.distribucionTeclado
-                color: tema.contentTextPrimary
-                font.pixelSize: 12
-                font.bold: true
+            titulo: "Pruébala"
+            Campo {
+                anchors.verticalCenter: parent.verticalCenter
+                ancho: 260
+                pista: "ñ, á, @, #, €…"
             }
         }
     }

@@ -63,6 +63,7 @@ void SettingsBackend::initSections()
     add(QStringLiteral("Privacidad y seguridad"), QStringLiteral("Privacidad y seguridad"), QStringLiteral("🛡️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Usuarios y grupos"), QStringLiteral("Usuarios y grupos"), QStringLiteral("👤"), QStringLiteral("#007aff"));
     add(QStringLiteral("Teclado"), QStringLiteral("Teclado"), QStringLiteral("⌨️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Ratón y panel táctil"), QStringLiteral("Ratón y panel táctil"), QStringLiteral("🖱️"), QStringLiteral("#8e8e93"));
     add(QStringLiteral("Impresoras y escáneres"), QStringLiteral("Impresoras y escáneres"), QStringLiteral("🖨️"), QStringLiteral("#8e8e93"));
     add(QStringLiteral("Almacenamiento"), QStringLiteral("Almacenamiento"), QStringLiteral("💽"), QStringLiteral("#8e8e93"));
     add(QStringLiteral("Restaurar sistema"), QStringLiteral("Restaurar sistema"), QStringLiteral("🕘"), QStringLiteral("#34c759"));

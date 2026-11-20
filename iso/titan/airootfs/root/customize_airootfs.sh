@@ -503,13 +503,16 @@ log "escritorio completo: impresion, energia, cortafuegos, llavero, mDNS"
 # (reglas en /etc/systemd/system/user@.service.d/10-titan-oomd.conf).
 # Lo que sigue de este comentario:
 # el build, lo detecta verify/comprobar-escritorio-completo.sh.
+# Como Ubuntu/Fedora: hora en punto por NTP (timesyncd), TRIM semanal de los
+# SSD (fstrim.timer) y limpieza semanal de la cache de pacman (paccache.timer).
 # (grub-btrfsd y los temporizadores de snapper no: el live no tiene btrfs; el
 # instalador los activa si el disco va en btrfs.)
 for unidad in cups.socket cups-browsed.service avahi-daemon.service \
               power-profiles-daemon.service ModemManager.service \
               ufw.service titan-cortafuegos.service \
               apparmor.service systemd-oomd.service \
-              switcheroo-control.service; do
+              switcheroo-control.service \
+              systemd-timesyncd.service fstrim.timer paccache.timer; do
   if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
     systemctl enable "${unidad}"
   fi

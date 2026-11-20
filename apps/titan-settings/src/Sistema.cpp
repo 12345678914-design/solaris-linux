@@ -17,7 +17,8 @@
 #include <unistd.h>
 
 namespace {
-const QString kBin = QStringLiteral("/usr/local/bin/");
+// TITAN_BIN: solo para pruebas (programas de Inti fuera de /usr/local/bin)
+const QString kBin = qEnvironmentVariable("TITAN_BIN", QStringLiteral("/usr/local/bin/"));
 
 QString leerFichero(const QString &ruta)
 {
@@ -193,6 +194,8 @@ void Sistema::refrescar(const QString &seccion)
         leerAccesibilidad();
     } else if (seccion == QStringLiteral("Teclado")) {
         leerTeclado();
+    } else if (seccion == QStringLiteral("Ratón y panel táctil")) {
+        leerRaton();
     } else if (seccion == QStringLiteral("Impresoras y escáneres")) {
         leerImpresoras();
     } else if (seccion == QStringLiteral("Restaurar sistema")) {
@@ -476,31 +479,144 @@ void Sistema::setLector(bool activo)
 void Sistema::leerTeclado()
 {
     m_entrada = leerConf(QStringLiteral("entrada.conf")).value(QStringLiteral("ACTIVO")).toString() == QStringLiteral("1");
-    // Distribucion: la de Wayfire (la que se usa de verdad) o la del sistema.
-    QString capa;
-    QFile wf(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/wayfire.ini"));
+    // "es", "latam", "us intl"...: la de esta persona o, si no eligió, la del sistema
+    correr(kBin + QStringLiteral("titan-distribucion"), {}, [this](int, const QString &o, const QString &) {
+        m_teclado = o.trimmed().isEmpty() ? QStringLiteral("us") : o.trimmed();
+        emit cambiado();
+    }, 5000);
+}
+
+void Sistema::setDistribucion(const QString &capa, const QString &variante)
+{
+    m_teclado = (capa + QLatin1Char(' ') + variante).trimmed();
+    emit cambiado();
+    correr(kBin + QStringLiteral("titan-distribucion"), {capa, variante},
+           [this](int codigo, const QString &, const QString &err) {
+        if (codigo != 0)
+            avisar(QStringLiteral("No se pudo cambiar la distribución: ") + err.trimmed());
+        leerTeclado();
+    }, 5000);
+}
+
+// ---------------------------------------------------------------- ratón y panel táctil
+
+static QString rutaWayfireIni()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/wayfire.ini");
+}
+
+// Claves de [input] de Wayfire que se ven en Ajustes, con su valor por defecto
+static const QList<QPair<QString, QString>> &clavesRaton()
+{
+    static const QList<QPair<QString, QString>> c = {
+        {QStringLiteral("mouse_cursor_speed"), QStringLiteral("0")},
+        {QStringLiteral("mouse_natural_scroll"), QStringLiteral("false")},
+        {QStringLiteral("left_handed_mode"), QStringLiteral("false")},
+        {QStringLiteral("touchpad_cursor_speed"), QStringLiteral("0")},
+        {QStringLiteral("natural_scroll"), QStringLiteral("false")},
+        {QStringLiteral("tap_to_click"), QStringLiteral("true")},
+        {QStringLiteral("disable_touchpad_while_typing"), QStringLiteral("false")},
+    };
+    return c;
+}
+
+void Sistema::leerRaton()
+{
+    QVariantMap m;
+    for (const auto &c : clavesRaton())
+        m.insert(c.first, c.second);
+    QFile wf(rutaWayfireIni());
     if (wf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         bool enInput = false;
         QTextStream in(&wf);
         while (!in.atEnd()) {
             const QString l = in.readLine().trimmed();
-            if (l.startsWith(QLatin1Char('[')))
+            if (l.startsWith(QLatin1Char('['))) {
                 enInput = l == QStringLiteral("[input]");
-            else if (enInput && l.startsWith(QStringLiteral("xkb_layout")))
-                capa = l.section(QLatin1Char('='), 1).trimmed();
+                continue;
+            }
+            const int igual = l.indexOf(QLatin1Char('='));
+            if (!enInput || igual <= 0)
+                continue;
+            const QString k = l.left(igual).trimmed();
+            if (m.contains(k))
+                m.insert(k, l.mid(igual + 1).trimmed());
         }
     }
-    if (!capa.isEmpty()) {
-        m_teclado = capa;
-        emit cambiado();
-        return;
+    // Interruptores como bool y velocidades como número (-1 lento .. 1 rápido)
+    for (auto it = m.begin(); it != m.end(); ++it) {
+        const QString v = it.value().toString();
+        if (it.key().endsWith(QStringLiteral("_speed")))
+            it.value() = v.toDouble();
+        else
+            it.value() = (v == QStringLiteral("true") || v == QStringLiteral("1"));
     }
-    correr(QStringLiteral("localectl"), {QStringLiteral("status")}, [this](int, const QString &o, const QString &) {
-        static const QRegularExpression re(QStringLiteral("X11 Layout:\\s*(\\S+)"));
-        const auto m = re.match(o);
-        m_teclado = m.hasMatch() ? m.captured(1) : QStringLiteral("us");
-        emit cambiado();
-    }, 5000);
+    m_raton = m;
+
+    // ¿Hay panel táctil? (como Ubuntu: si no, no se enseña su grupo)
+    m_panelTactil = false;
+    QFile disp(QStringLiteral("/proc/bus/input/devices"));
+    if (disp.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString t = QString::fromUtf8(disp.readAll()).toLower();
+        m_panelTactil = t.contains(QStringLiteral("touchpad")) || t.contains(QStringLiteral("trackpad"))
+                        || t.contains(QStringLiteral("synaptics")) || t.contains(QStringLiteral("glidepoint"));
+    }
+    emit cambiado();
+}
+
+// Cambia una clave de [input] en wayfire.ini; Wayfire la aplica al momento.
+void Sistema::setRaton(const QString &clave, const QVariant &valor)
+{
+    bool conocida = false;
+    for (const auto &c : clavesRaton())
+        conocida = conocida || c.first == clave;
+    if (!conocida)
+        return;
+    QString texto;
+    if (clave.endsWith(QStringLiteral("_speed")))
+        texto = QString::number(qBound(-1.0, valor.toDouble(), 1.0), 'f', 2);
+    else
+        texto = valor.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+
+    QStringList lineas;
+    QFile f(rutaWayfireIni());
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        lineas = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+        f.close();
+    }
+    if (!lineas.isEmpty() && lineas.last().isEmpty())
+        lineas.removeLast();
+    int inicio = -1, fin = lineas.size();
+    for (int i = 0; i < lineas.size(); ++i) {
+        const QString l = lineas.at(i).trimmed();
+        if (!l.startsWith(QLatin1Char('[')))
+            continue;
+        if (inicio >= 0) { fin = i; break; }
+        if (l == QStringLiteral("[input]"))
+            inicio = i;
+    }
+    const QString nueva = clave + QStringLiteral(" = ") + texto;
+    if (inicio < 0) {
+        lineas << QString() << QStringLiteral("[input]") << nueva;
+    } else {
+        bool hecho = false;
+        for (int i = inicio + 1; i < fin; ++i) {
+            const QString l = lineas.at(i).trimmed();
+            const int igual = l.indexOf(QLatin1Char('='));
+            if (igual > 0 && l.left(igual).trimmed() == clave) {
+                lineas[i] = nueva;
+                hecho = true;
+                break;
+            }
+        }
+        if (!hecho)
+            lineas.insert(fin, nueva);
+    }
+    QDir().mkpath(QFileInfo(rutaWayfireIni()).absolutePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        f.write((lineas.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+    m_raton.insert(clave, clave.endsWith(QStringLiteral("_speed")) ? QVariant(texto.toDouble()) : QVariant(valor.toBool()));
+    emit cambiado();
 }
 
 void Sistema::setMetodosEntrada(bool activo)
