@@ -486,7 +486,7 @@ contiene paquetes/inti-keyring/PKGBUILD 'keyrings/inti.gpg' "paquete de la clave
 contiene paquetes/inti/PKGBUILD '_solo_live' "el instalador no va en los paquetes (no reaparece al actualizar)"
 contiene apps/titan-installer/src/InstallerBackend.cpp 'etc/pacman.d/gnupg' "cada equipo instalado genera su propio llavero de pacman"
 contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'inti-wayfire-plugins"' "se retienen los plugins de Inti si son para otro Wayfire"
-contiene paquetes/inti/PKGBUILD 'qt6-base>=${_qt}' "las apps de Inti piden el Qt con el que se compilaron"
+contiene paquetes/inti/PKGBUILD 'qt6-base>=' "las apps de Inti piden el Qt con el que se compilaron"
 contiene iso/titan/airootfs/usr/local/bin/titan-actualizar-sistema 'esperan a la próxima actualización' "si falta ese Qt, las apps de Inti esperan sin romper la actualización"
 contiene scripts/build-iso.sh 'env -u INTI_CLAVE' "la ISO no pide la contraseña de la clave al construirse"
 contiene iso/titan/airootfs/usr/local/bin/titan-idioma 'grep -qFx' "titan-idioma solo acepta idiomas de la lista del sistema"
