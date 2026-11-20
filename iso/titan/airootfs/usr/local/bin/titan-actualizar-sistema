@@ -70,31 +70,59 @@ fijar_fecha() {
 # ¿La versión de Wayfire que llegaría es compatible con los plugins de Inti?
 # Deja en $retener los paquetes que hay que retener (o nada) y lo explica.
 retener=""
+# ABI de Wayfire en una cabecera plugin.hpp (de stdin)
+abi_cabecera() {
+    sed -n "s/.*WAYFIRE_API_ABI_VERSION_MACRO[[:space:]]*\([0-9']*\).*/\1/p" | tr -d "'"
+}
+
+# Paquete descargado a la caché (sin la firma)
+en_cache() { # en_cache nombre version
+    pacman -Sw --noconfirm "$1" >/dev/null 2>&1
+    ls -t "${TITAN_CACHE_PKG:-/var/cache/pacman/pkg}"/"$1"-"$2"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1
+}
+
+# Los plugins de Inti solo funcionan con el Wayfire para el que se compilaron.
+# Wayfire y los plugins llegan por caminos distintos (Arch y [inti]): si tras
+# actualizar no coincidieran, se retiene Wayfire o los plugins nuevos.
 retener_wayfire() {
     retener=""
     pacman -Q wayfire >/dev/null 2>&1 || return 0
-    nueva=$(pacman -Sp --print-format %v wayfire 2>/dev/null | tail -n 1)
-    instalada=$(pacman -Q wayfire | cut -d' ' -f2)
-    [ -n "$nueva" ] && [ "$nueva" != "$instalada" ] || return 0
-    mio=$(cat "$abi_inti" 2>/dev/null)
-    # Si el repositorio [inti] trae plugins nuevos, cuentan los nuevos
-    plug_nueva=$(pacman -Sp --print-format %v inti-wayfire-plugins 2>/dev/null | tail -n 1)
-    plug_instalada=$(pacman -Q inti-wayfire-plugins 2>/dev/null | cut -d' ' -f2)
-    if [ -n "$plug_nueva" ] && [ "$plug_nueva" != "$plug_instalada" ]; then
-        pacman -Sw --noconfirm inti-wayfire-plugins >/dev/null 2>&1
-        plug=$(ls -t /var/cache/pacman/pkg/inti-wayfire-plugins-"$plug_nueva"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1)
-        [ -n "$plug" ] && mio=$(bsdtar -xOf "$plug" usr/share/titan/wayfire-abi 2>/dev/null)
+    wf_inst=$(pacman -Q wayfire | cut -d' ' -f2)
+    wf_nueva=$(pacman -Sp --print-format %v wayfire 2>/dev/null | tail -n 1)
+    [ "$wf_nueva" = "$wf_inst" ] && wf_nueva=""
+    pl_inst=$(pacman -Q inti-wayfire-plugins 2>/dev/null | cut -d' ' -f2)
+    pl_nueva=$(pacman -Sp --print-format %v inti-wayfire-plugins 2>/dev/null | tail -n 1)
+    [ "$pl_nueva" = "$pl_inst" ] && pl_nueva=""
+    [ -n "$wf_nueva" ] || [ -n "$pl_nueva" ] || return 0
+
+    abi_wf_inst=$(abi_cabecera < "${TITAN_WAYFIRE_CABECERA:-/usr/include/wayfire/plugin.hpp}" 2>/dev/null)
+    abi_pl_inst=$(cat "$abi_inti" 2>/dev/null)
+    abi_wf_nueva=$abi_wf_inst
+    if [ -n "$wf_nueva" ]; then
+        p=$(en_cache wayfire "$wf_nueva")
+        abi_wf_nueva=""
+        [ -n "$p" ] && abi_wf_nueva=$(bsdtar -xOf "$p" usr/include/wayfire/plugin.hpp 2>/dev/null | abi_cabecera)
     fi
-    pacman -Sw --noconfirm wayfire >/dev/null 2>&1
-    paquete=$(ls -t /var/cache/pacman/pkg/wayfire-"$nueva"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n 1)
-    suyo=""
-    [ -n "$paquete" ] && suyo=$(bsdtar -xOf "$paquete" usr/include/wayfire/plugin.hpp 2>/dev/null |
-        sed -n "s/.*WAYFIRE_API_ABI_VERSION_MACRO[[:space:]]*\([0-9']*\).*/\1/p" | tr -d "'")
-    if [ -n "$mio" ] && [ "$mio" = "$suyo" ]; then
-        return 0
+    abi_pl_nueva=$abi_pl_inst
+    if [ -n "$pl_nueva" ]; then
+        p=$(en_cache inti-wayfire-plugins "$pl_nueva")
+        abi_pl_nueva=""
+        [ -n "$p" ] && abi_pl_nueva=$(bsdtar -xOf "$p" usr/share/titan/wayfire-abi 2>/dev/null)
     fi
-    echo "Wayfire $nueva no es compatible con los plugins de Inti (bordes de ventana, gestos): se mantiene $instalada"
-    retener="wayfire,wf-config"
+
+    # Todo nuevo y compatible: adelante
+    [ -n "$abi_pl_nueva" ] && [ "$abi_pl_nueva" = "$abi_wf_nueva" ] && return 0
+
+    if [ -n "$wf_nueva" ]; then
+        echo "Wayfire $wf_nueva no es compatible con los plugins de Inti (bordes de ventana, gestos): se mantiene $wf_inst"
+        retener="wayfire,wf-config"
+    fi
+    # Con el Wayfire que se queda, ¿valen los plugins nuevos?
+    if [ -n "$pl_nueva" ] && [ "$abi_pl_nueva" != "$abi_wf_inst" ]; then
+        echo "Los plugins de Inti $pl_nueva son para otro Wayfire: se mantienen los actuales"
+        retener="${retener:+$retener,}inti-wayfire-plugins"
+    fi
+    return 0
 }
 
 # Noticias de Arch desde la última actualización que nombran algo instalado
@@ -170,6 +198,20 @@ trabajar() {
     fi
 
     retener_wayfire
+    # Las apps de Inti piden una versión mínima de Qt (la de donde se
+    # compilaron). Si este equipo aún no la puede tener (modo estable, Arch
+    # unos días por detrás), pacman no podría resolverlo y no actualizaría
+    # nada: entonces las apps de Inti esperan y el resto se actualiza.
+    # shellcheck disable=SC2086
+    if ! pacman -Sup --noconfirm --ask=4 ${retener:+--ignore $retener} >/dev/null 2>&1; then
+        inti=$(pacman -Qq 2>/dev/null | grep '^inti-' | grep -vx inti-keyring | paste -sd, -)
+        # shellcheck disable=SC2086
+        if [ -n "$inti" ] &&
+           pacman -Sup --noconfirm --ask=4 --ignore "${retener:+$retener,}$inti" >/dev/null 2>&1; then
+            echo "Las apps de Inti nuevas necesitan una versión de Qt que aún no ha llegado: esperan a la próxima actualización"
+            retener="${retener:+$retener,}$inti"
+        fi
+    fi
     ignorar=""
     [ -n "$retener" ] && ignorar="--ignore $retener"
 

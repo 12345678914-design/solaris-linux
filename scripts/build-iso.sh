@@ -781,7 +781,9 @@ if [[ "${TITAN_PAQUETES_INTI:-1}" == "1" ]]; then
   usuario="${SUDO_USER:-}"
   if [[ -n "${usuario}" && "${usuario}" != "root" ]] && command -v makepkg >/dev/null; then
     install -d -o "${usuario}" -m 0755 "${DISTRO}/build"
-    if runuser -u "${usuario}" -- env INTI_CLAVE="${INTI_CLAVE:-}" \
+    # Sin firmar: la ISO los instala desde su propio disco (LocalFileSigLevel
+    # Optional) y pedir la contraseña de la clave bajo sudo podría colgarla.
+    if runuser -u "${usuario}" -- env -u INTI_CLAVE \
          "${DISTRO}/scripts/construir-repo-inti.sh" >"${WORK_DIR}/inti-paquetes.log" 2>&1; then
       install -d -m 0755 "${PROFILE}/airootfs/root/inti-paquetes"
       install -m 0644 "${DISTRO}"/build/inti-repo/inti-*.pkg.tar.zst "${PROFILE}/airootfs/root/inti-paquetes/"

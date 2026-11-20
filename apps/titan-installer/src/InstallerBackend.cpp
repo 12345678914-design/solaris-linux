@@ -1323,6 +1323,18 @@ public slots:
         QFile::remove(QStringLiteral("/mnt/root/Desktop/instalar.desktop"));
         QDir(QStringLiteral("/mnt/root/instalador")).removeRecursively();
 
+        // Llavero de pacman propio de este equipo. El del live se creó al
+        // construir la ISO y es igual en todas las copias (incluida su llave
+        // maestra privada): cada sistema instalado genera la suya y vuelve a
+        // cargar las claves de Arch y de Inti (inti-keyring), con las que se
+        // comprueban las actualizaciones.
+        QDir(QStringLiteral("/mnt/etc/pacman.d/gnupg")).removeRecursively();
+        runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("pacman-key"), QStringLiteral("--init")});
+        runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("pacman-key"), QStringLiteral("--populate")});
+        // El gpg-agent que arranca pacman-key dejaría /mnt ocupado al desmontar
+        runCmd(QStringLiteral("arch-chroot"), {QStringLiteral("/mnt"), QStringLiteral("gpgconf"), QStringLiteral("--homedir"),
+                                               QStringLiteral("/etc/pacman.d/gnupg"), QStringLiteral("--kill"), QStringLiteral("all")});
+
         // Configuración para que Flatpak y Wayland reconozcan las aplicaciones instaladas de la tienda
         {
             QDir().mkpath(QStringLiteral("/mnt/etc/profile.d"));

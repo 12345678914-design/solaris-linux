@@ -29,15 +29,30 @@ _poner() { # _poner MODO ruta...
   done
 }
 
+# Solo del live: el instalador los borra del disco instalado, así que no
+# pueden ir en un paquete (una actualización los volvería a poner)
+_solo_live() {
+  case "$1" in
+    usr/local/bin/titan-installer|usr/local/bin/instalar|usr/share/applications/titan-instalar.desktop) return 0 ;;
+  esac
+  return 1
+}
+
+# Versión de Qt de este equipo (6.12.0-5.1 -> 6.12)
+_qt="$(pacman -Q qt6-base 2>/dev/null | awk '{split($2, v, "."); print v[1] "." v[2]}')"
+_qt="${_qt:-6}"
+
 # ELF o no ELF: las apps compiladas van en inti-apps; los scripts, en herramientas
 _es_elf() { [[ "$(head -c4 "$1" | od -An -c | tr -d ' ')" == "177ELF" ]]; }
 
 package_inti-apps() {
   pkgdesc="Inti OS: escritorio, Ajustes, Finder, Fotos, Música y el resto de apps propias"
-  depends=('qt6-declarative' 'qt6-wayland' 'inti-tema')
+  # Qt como mínimo el de donde se compilaron (si no, las apps no abren)
+  depends=("qt6-base>=${_qt}" "qt6-declarative>=${_qt}" 'qt6-wayland' 'inti-tema')
   local f
   cd "${_raiz}"
   for f in usr/local/bin/*; do
+    _solo_live "$f" && continue
     _es_elf "$f" && _poner 755 "$f"
   done
   _poner 755 usr/lib/gtklock/titan-avisos-module.so
@@ -49,6 +64,7 @@ package_inti-herramientas() {
   local f
   cd "${_raiz}"
   for f in usr/local/bin/*; do
+    _solo_live "$f" && continue
     _es_elf "$f" || _poner 755 "$f"
   done
   for f in usr/lib/titan/*; do _poner 755 "$f"; done
@@ -58,6 +74,7 @@ package_inti-herramientas() {
   done
   # Entradas del menú propias (la de ONLYOFFICE es del paquete de ONLYOFFICE)
   for f in usr/share/applications/titan-*.desktop usr/share/applications/mimeapps.list; do
+    _solo_live "$f" && continue
     _poner 644 "$f"
   done
 }
