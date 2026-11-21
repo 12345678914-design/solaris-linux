@@ -2,12 +2,12 @@
     "KPlugin": {
         "Authors": [
             {
-                "Name": "Solaris Linux Team"
+                "Name": "Inti OS Team"
             }
         ],
-        "Description": "Tema de bienvenida e inicio Solaris para KDE Plasma",
+        "Description": "Tema de bienvenida e inicio Inti OS para KDE Plasma",
         "Id": "org.solaris.desktop",
-        "Name": "Solaris",
+        "Name": "Inti OS",
         "ServiceTypes": [
             "Plasma/LookAndFeel"
         ],

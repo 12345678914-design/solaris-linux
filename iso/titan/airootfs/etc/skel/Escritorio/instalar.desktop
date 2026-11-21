@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Instalar Solaris Linux
-Name[es]=Instalar Solaris Linux
-Comment=Instalar Solaris Linux en el disco duro con Calamares
-Comment[es]=Instalar Solaris Linux en el disco duro con Calamares
+Name=Instalar Inti OS
+Name[es]=Instalar Inti OS
+Comment=Instalar Inti OS en el disco duro con Calamares
+Comment[es]=Instalar Inti OS en el disco duro con Calamares
 Exec=instalar
 Icon=system-software-install
 Terminal=false

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# titan-audio-setup - Configuración y desmuteo de audio en hardware real y emulado
+set -euo pipefail
+
+# 1. Desmutear y ajustar volumen en todas las tarjetas de sonido físicas ALSA
+if [[ -d /proc/asound ]]; then
+  for card_dir in /proc/asound/card[0-9]*; do
+    [[ -d "$card_dir" ]] || continue
+    card="${card_dir##*card}"
+    amixer -c "$card" sset Master unmute 80% 2>/dev/null || true
+    amixer -c "$card" sset Speaker unmute 80% 2>/dev/null || true
+    amixer -c "$card" sset Headphone unmute 80% 2>/dev/null || true
+    amixer -c "$card" sset PCM unmute 80% 2>/dev/null || true
+    amixer -c "$card" sset "Auto-Mute Mode" Disabled 2>/dev/null || true
+    amixer -c "$card" sset "Bass Speaker" unmute 80% 2>/dev/null || true
+    amixer -c "$card" sset "Digital" unmute 80% 2>/dev/null || true
+  done
+fi
+
+# 2. Desmutear nodo predeterminado de WirePlumber / PipeWire
+if command -v wpctl >/dev/null 2>&1; then
+  wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true
+  wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.8 2>/dev/null || true
+fi
+

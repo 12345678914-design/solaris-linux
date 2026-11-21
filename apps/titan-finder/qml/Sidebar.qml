@@ -73,7 +73,7 @@ Item {
 
                     Image {
                         visible: modelData.icon.indexOf("color:") !== 0
-                        source: modelData.icon.indexOf("color:") !== 0 ? modelData.icon : ""
+                        source: modelData.icon.indexOf("color:") !== 0 ? theme.tinte(modelData.icon) : ""
                         width: 17
                         height: 17
                         anchors.centerIn: parent

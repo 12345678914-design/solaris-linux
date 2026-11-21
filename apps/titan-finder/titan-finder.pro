@@ -1,4 +1,4 @@
-QT += quick quickcontrols2 gui
+QT += quick quickcontrols2 gui concurrent network
 CONFIG += c++17 warn_on release
 QMAKE_CXXFLAGS_RELEASE += -O3 -pipe -fno-plt
 QMAKE_LFLAGS_RELEASE += -Wl,-O1,--as-needed
@@ -12,6 +12,7 @@ INCLUDEPATH += src ../titan-common
 SOURCES += \
     src/main.cpp \
     src/FinderBackend.cpp \
+    src/Operaciones.cpp \
     ../titan-common/ThemeManager.cpp
 
 HEADERS += \

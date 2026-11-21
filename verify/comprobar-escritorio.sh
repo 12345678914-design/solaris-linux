@@ -73,14 +73,18 @@ else
 fi
 
 # 7. Comprobación de titan-acerca
-if out=$(apps/titan-acerca/titan-acerca --comprobar 2>&1); then
+cmd_acerca="apps/titan-acerca/titan-acerca"
+[ -f "apps/titan-acerca/build/titan-acerca" ] && [ ! -f "$cmd_acerca" -o "apps/titan-acerca/build/titan-acerca" -nt "$cmd_acerca" ] && cmd_acerca="apps/titan-acerca/build/titan-acerca"
+if out=$("$cmd_acerca" --comprobar 2>&1); then
     reportar_ok "titan-acerca" "Acerca de este Mac/Sistema verificado"
 else
     reportar_fallo "titan-acerca" "Fallo al inicializar: ${out}"
 fi
 
 # 8. Comprobación de titan-desktop
-if out=$(apps/titan-desktop/titan-desktop --comprobar 2>&1); then
+cmd_desktop="apps/titan-desktop/titan-desktop"
+[ -f "apps/titan-desktop/build/titan-desktop" ] && [ ! -f "$cmd_desktop" -o "apps/titan-desktop/build/titan-desktop" -nt "$cmd_desktop" ] && cmd_desktop="apps/titan-desktop/build/titan-desktop"
+if out=$("$cmd_desktop" --comprobar 2>&1); then
     reportar_ok "titan-desktop" "Configuración y backend de escritorio validados"
 else
     reportar_fallo "titan-desktop" "Fallo al inicializar: ${out}"
@@ -114,7 +118,7 @@ else
     reportar_fallo "titan-video" "Fallo al inicializar: ${out}"
 fi
 
-# 13. Comprobación de titan-installer (Instalador Nativo Solaris Linux)
+# 13. Comprobación de titan-installer (Instalador Nativo Inti OS)
 if out=$(apps/titan-installer/titan-installer --comprobar 2>&1); then
     reportar_ok "titan-installer" "Instalador nativo gráfico QML validado offscreen"
 else

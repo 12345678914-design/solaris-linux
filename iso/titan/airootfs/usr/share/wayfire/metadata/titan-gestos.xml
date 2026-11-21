@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="titan-gestos">
+		<_short>Titan: gestos del panel táctil</_short>
+		<_long>Gestos de 3 y 4 dedos como en Ubuntu, Fedora y macOS: ver las ventanas, mostrar el escritorio, Launchpad y ver los escritorios. Acciones: "ipc metodo", "comando programa" o "none". Parte de Inti OS.</_long>
+		<category>Desktop</category>
+		<option name="activado" type="bool">
+			<_short>Gestos activados</_short>
+			<default>true</default>
+		</option>
+		<option name="recorrido" type="double">
+			<_short>Recorrido mínimo del gesto</_short>
+			<default>70.0</default>
+			<min>10.0</min>
+			<max>1000.0</max>
+		</option>
+		<option name="arriba_3" type="string">
+			<_short>3 dedos arriba</_short>
+			<default>ipc scale/toggle</default>
+		</option>
+		<option name="abajo_3" type="string">
+			<_short>3 dedos abajo</_short>
+			<default>comando titan-shell --tecla escritorio</default>
+		</option>
+		<option name="arriba_4" type="string">
+			<_short>4 dedos arriba</_short>
+			<default>comando titan-shell --toggle-launcher</default>
+		</option>
+		<option name="abajo_4" type="string">
+			<_short>4 dedos abajo</_short>
+			<default>ipc expo/toggle</default>
+		</option>
+		<option name="izquierda_4" type="string">
+			<_short>4 dedos a la izquierda</_short>
+			<default>none</default>
+		</option>
+		<option name="derecha_4" type="string">
+			<_short>4 dedos a la derecha</_short>
+			<default>none</default>
+		</option>
+		<option name="pellizcar_4" type="string">
+			<_short>Pellizcar con 4 dedos</_short>
+			<default>comando titan-shell --toggle-launcher</default>
+		</option>
+		<option name="separar_4" type="string">
+			<_short>Separar 4 dedos</_short>
+			<default>comando titan-shell --tecla escritorio</default>
+		</option>
+	</plugin>
+</wayfire>

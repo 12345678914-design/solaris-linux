@@ -47,9 +47,16 @@ else
   fi
 fi
 
+# El arranque real esta en /usr/local/bin/titan-sesion, comun a labwc (su
+# autostart lo llama) y a Wayfire ([autostart] de wayfire.ini).
+sesion="${raiz}/iso/titan/airootfs/usr/local/bin/titan-sesion"
+skel="${raiz}/iso/titan/airootfs/etc/skel/.config"
 if grep -q '/usr/local/bin/titan-desktop --escritorio' "${fichero}" || \
-   grep -q '/usr/local/bin/titan-desktop --escritorio' "${raiz}/iso/titan/airootfs/etc/skel/.config/labwc/autostart"; then
-  ok 'autostart del escritorio' 'ruta absoluta'
+   grep -q '/usr/local/bin/titan-desktop --escritorio' "${skel}/labwc/autostart" || \
+   { grep -q '/usr/local/bin/titan-desktop --escritorio' "${sesion}" && \
+     grep -q '/usr/local/bin/titan-sesion' "${skel}/labwc/autostart" && \
+     grep -q '/usr/local/bin/titan-sesion' "${skel}/wayfire.ini"; }; then
+  ok 'autostart del escritorio' 'ruta absoluta (titan-sesion)'
 else
   fallo 'autostart del escritorio' 'no crea la orden esperada'
 fi

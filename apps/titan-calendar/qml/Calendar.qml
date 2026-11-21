@@ -4,6 +4,30 @@ import QtQuick.Controls 2.15
 TitanWindow {
     id: calWindow
 
+    // Índice del evento que se está editando en el formulario (-1 = evento nuevo)
+    property int editingIndex: -1
+
+    function guardarEvento() {
+        if (eventTitleInput.text.trim().length === 0) return
+        if (calendarBackend.timeError(eventTimeInput.text) !== "") return
+        if (calWindow.editingIndex >= 0)
+            calendarBackend.updateEvent(calWindow.editingIndex, eventTitleInput.text, eventTimeInput.text, "")
+        else
+            calendarBackend.addEvent(eventTitleInput.text, eventTimeInput.text, "")
+        calWindow.cancelarEdicion()
+    }
+    function cancelarEdicion() {
+        calWindow.editingIndex = -1
+        eventTitleInput.text = ""
+        eventTimeInput.text = ""
+    }
+
+    // Al cambiar de día no se puede seguir editando un evento de otro día
+    Connections {
+        target: calendarBackend
+        function onSelectedDateChanged() { calWindow.cancelarEdicion() }
+    }
+
     title: "Calendario"
     width: 780
     height: 520
@@ -292,9 +316,23 @@ TitanWindow {
                             width: eventsList.width
                             height: 48
                             radius: 8
-                            color: theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)
-                            border.color: theme.glassBorder
+                            color: calWindow.editingIndex === index
+                                   ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18)
+                                   : (theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04))
+                            border.color: calWindow.editingIndex === index ? theme.accent : theme.glassBorder
                             border.width: 1
+
+                            // Clic en el evento: cargarlo en el formulario para editarlo
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    calWindow.editingIndex = index
+                                    eventTitleInput.text = modelData.title
+                                    eventTimeInput.text = modelData.time === "Todo el día" ? "" : modelData.time
+                                    eventTitleInput.forceActiveFocus()
+                                }
+                            }
 
                             Row {
                                 anchors.fill: parent
@@ -346,7 +384,10 @@ TitanWindow {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: calendarBackend.deleteEvent(index)
+                                        onClicked: {
+                                            if (calWindow.editingIndex === index) calWindow.cancelarEdicion()
+                                            calendarBackend.deleteEvent(index)
+                                        }
                                     }
                                 }
                             }
@@ -373,11 +414,13 @@ TitanWindow {
                             width: parent.width
                             height: 26
                             placeholderText: "Título del evento..."
+                            onAccepted: calWindow.guardarEvento()
+                            Keys.onEscapePressed: calWindow.cancelarEdicion()
                             font.pixelSize: 11
                             color: theme.headerText
                             background: Rectangle {
                                 radius: 4
-                                color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(255, 255, 255, 0.6)
+                                color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(1, 1, 1, 0.6)
                                 border.color: theme.glassBorder
                                 border.width: 1
                             }
@@ -391,12 +434,14 @@ TitanWindow {
                                 id: eventTimeInput
                                 width: parent.width - 76
                                 height: 26
-                                placeholderText: "Hora (ej. 14:00)"
+                                placeholderText: "Hora (ej. 14:00, vacía = todo el día)"
+                                onAccepted: calWindow.guardarEvento()
+                                Keys.onEscapePressed: calWindow.cancelarEdicion()
                                 font.pixelSize: 11
                                 color: theme.headerText
                                 background: Rectangle {
                                     radius: 4
-                                    color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(255, 255, 255, 0.6)
+                                    color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(1, 1, 1, 0.6)
                                     border.color: theme.glassBorder
                                     border.width: 1
                                 }
@@ -410,7 +455,7 @@ TitanWindow {
 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "Agregar"
+                                    text: calWindow.editingIndex >= 0 ? "Guardar" : "Agregar"
                                     color: "#ffffff"
                                     font.pixelSize: 11
                                     font.weight: Font.Medium
@@ -421,13 +466,30 @@ TitanWindow {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (eventTitleInput.text.trim().length > 0) {
-                                            calendarBackend.addEvent(eventTitleInput.text, eventTimeInput.text, "");
-                                            eventTitleInput.text = "";
-                                            eventTimeInput.text = "";
-                                        }
-                                    }
+                                    onClicked: calWindow.guardarEvento()
+                                }
+                            }
+                        }
+
+                        Row {
+                            width: parent.width
+                            spacing: 10
+                            Text {
+                                readonly property string err: calendarBackend.timeError(eventTimeInput.text)
+                                visible: err !== ""
+                                text: err
+                                color: "#ff453a"
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                visible: calWindow.editingIndex >= 0
+                                text: "Cancelar edición"
+                                color: theme.accent
+                                font.pixelSize: 10
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: calWindow.cancelarEdicion()
                                 }
                             }
                         }

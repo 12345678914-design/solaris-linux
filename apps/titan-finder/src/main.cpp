@@ -1,3 +1,4 @@
+#include "TitanTinte.h"
 #include "FinderBackend.h"
 #include "ThemeManager.h"
 
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
     }
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("tinte"), new TitanTinte); // carpetas con el acento
     engine.rootContext()->setContextProperty(QStringLiteral("finderBackend"), &finderBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
 

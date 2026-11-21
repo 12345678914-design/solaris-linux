@@ -1,0 +1,24 @@
+#!/bin/sh
+# Inti OS - vuelve a aplicar la configuracion de pantallas guardada en Ajustes
+# (~/.config/titan/pantallas.conf: una linea de argumentos de wlr-randr por
+# pantalla). La lanza titan-sesion al entrar. Si una pantalla ya no esta
+# conectada, wlr-randr falla en esa linea y se sigue con las demas.
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/titan/pantallas.conf"
+[ -r "$conf" ] || exit 0
+command -v wlr-randr >/dev/null 2>&1 || exit 0
+
+# Esperar a que el compositor publique las salidas.
+i=0
+until wlr-randr >/dev/null 2>&1 || [ "$i" -ge 20 ]; do
+    sleep 0.25; i=$((i + 1))
+done
+
+conectadas=$(wlr-randr 2>/dev/null | awk '/^[^ ]/ {print $1}')
+while IFS= read -r linea; do
+    case "$linea" in ''|'#'*) continue ;; esac
+    # La primera palabra tras --output es el nombre de la pantalla.
+    nombre=$(printf '%s\n' "$linea" | awk '{for (i = 1; i < NF; i++) if ($i == "--output") {print $(i + 1); exit}}')
+    printf '%s\n' "$conectadas" | grep -qxF "$nombre" || continue
+    # shellcheck disable=SC2086  # son argumentos separados por espacios
+    wlr-randr $linea || echo "titan-pantallas: no se pudo aplicar: $linea" >&2
+done < "$conf"

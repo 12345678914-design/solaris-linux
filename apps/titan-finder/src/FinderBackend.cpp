@@ -1,4 +1,5 @@
 #include "FinderBackend.h"
+#include "TitanDesktopEntry.h"
 
 #include <QDir>
 #include <QFile>
@@ -65,6 +66,9 @@ FinderBackend::FinderBackend(QObject *parent)
     m_deviceTimer->setInterval(2000);
     connect(m_deviceTimer, &QTimer::timeout, this, &FinderBackend::refreshDevices);
     m_deviceTimer->start();
+
+    // Lo que copian otras apps también cuenta para "Pegar".
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FinderBackend::clipboardChanged);
 
     refreshDevices();
     initFavorites();
@@ -601,9 +605,8 @@ void FinderBackend::openItem(const QString &path)
 
     // Si es un lanzador .desktop
     if (info.suffix() == QStringLiteral("desktop")) {
-        QSettings desktop(info.absoluteFilePath(), QSettings::IniFormat);
-        desktop.beginGroup(QStringLiteral("Desktop Entry"));
-        QString exec = desktop.value(QStringLiteral("Exec")).toString();
+        // QSettings no sirve para .desktop: con una coma el valor sale vacío.
+        QString exec = titan::leerDesktop(info.absoluteFilePath()).value(QStringLiteral("Exec"));
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
         if (!exec.isEmpty()) {
@@ -661,6 +664,11 @@ void FinderBackend::openTerminal(const QString &path)
 
 bool FinderBackend::createFolder(const QString &name)
 {
+    if (!puedeEscribir()) {
+        ponerAviso(enPapelera() ? QStringLiteral("En la Papelera no se crean carpetas")
+                                : QStringLiteral("No tienes permiso para crear carpetas aquí"));
+        return false;
+    }
     QString base = name.trimmed().isEmpty() ? QStringLiteral("Nueva carpeta") : name.trimmed();
     QDir dir(m_currentPath);
     QString candidate = base;
@@ -675,27 +683,7 @@ bool FinderBackend::createFolder(const QString &name)
 
 bool FinderBackend::deleteItem(const QString &path)
 {
-    QFileInfo info(path);
-    if (!info.exists()) return false;
-
-    QString trashFiles = QDir::homePath() + QStringLiteral("/.local/share/Trash/files");
-    QDir().mkpath(trashFiles);
-
-    QString dest = trashFiles + QStringLiteral("/") + info.fileName();
-    if (QFile::exists(dest)) {
-        dest = trashFiles + QStringLiteral("/") + QString::number(QDateTime::currentMSecsSinceEpoch()) + QStringLiteral("_") + info.fileName();
-    }
-
-    bool ok = QFile::rename(path, dest);
-    if (!ok) {
-        if (info.isDir()) {
-            ok = QDir(path).removeRecursively();
-        } else {
-            ok = QFile::remove(path);
-        }
-    }
-    if (ok) refresh();
-    return ok;
+    return deleteItems(QStringList{path});
 }
 
 bool FinderBackend::renameItem(const QString &oldPath, const QString &newName)
@@ -783,6 +771,8 @@ bool FinderBackend::sendToDesktop(const QString &path)
 
 void FinderBackend::startDrag(const QString &path)
 {
+    arrastrar(QStringList{path});
+    return;
     if (path.isEmpty()) return;
     QString local = path;
     if (local.startsWith(QLatin1String("file://"))) {
@@ -892,112 +882,82 @@ void FinderBackend::copyItems(const QStringList &paths)
     }
     mime->setUrls(urls);
     mime->setText(paths.join(QLatin1Char('\n')));
+    QByteArray gnome("copy");
+    for (const QUrl &u : std::as_const(urls))
+        gnome += '\n' + u.toEncoded();
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnome);
     QGuiApplication::clipboard()->setMimeData(mime);
     emit clipboardChanged();
+    ponerAviso(urls.size() == 1 ? QStringLiteral("Copiado") : QStringLiteral("%1 elementos copiados").arg(urls.size()));
 }
 
 bool FinderBackend::deleteItems(const QStringList &paths)
 {
-    bool allOk = true;
-    for (const QString &p : paths) {
-        if (!deleteItem(p)) {
-            allOk = false;
+    // A la Papelera de verdad (con su .trashinfo, para poder recuperar).
+    // Si no se puede, NO se borra para siempre: se avisa.
+    int n = 0, protegidas = 0;
+    QString fallo;
+    for (const QString &p0 : paths) {
+        const QString p = p0.startsWith(QStringLiteral("file:")) ? QUrl(p0).toLocalFile() : p0;
+        if (!QFileInfo::exists(p) && !QFileInfo(p).isSymLink())
+            continue;
+        if (esProtegida(p)) {
+            ++protegidas;
+            continue;
         }
+        if (QFile::moveToTrash(p))
+            ++n;
+        else if (fallo.isEmpty())
+            fallo = QFileInfo(p).fileName();
     }
     refresh();
-    return allOk;
+    if (!fallo.isEmpty())
+        ponerAviso(QStringLiteral("«%1» no se pudo mover a la Papelera (¿sin permiso?)").arg(fallo));
+    else if (protegidas > 0 && n == 0)
+        ponerAviso(QStringLiteral("Las carpetas principales de tu carpeta personal no se tiran"));
+    else if (n > 0)
+        ponerAviso(n == 1 ? QStringLiteral("Movido a la Papelera") : QStringLiteral("%1 elementos movidos a la Papelera").arg(n));
+    return fallo.isEmpty() && n > 0;
 }
 
 bool FinderBackend::moveItems(const QStringList &paths, const QString &targetDir)
 {
-    QString destDir = targetDir.isEmpty() ? m_currentPath : targetDir;
-    QFileInfo destInfo(destDir);
-    if (!destInfo.isDir()) destDir = m_currentPath;
-
-    bool allOk = true;
-    for (const QString &p : paths) {
-        QFileInfo fi(p);
-        if (!fi.exists()) continue;
-        QString destPath = destDir + QLatin1Char('/') + fi.fileName();
-        if (destPath != p) {
-            if (!QFile::rename(p, destPath)) {
-                if (copyPathRecursively(p, destPath)) {
-                    deleteItem(p);
-                } else {
-                    allOk = false;
-                }
-            }
-        }
-    }
-    refresh();
-    return allOk;
+    QVariantList urls;
+    for (const QString &p : paths)
+        urls << p;
+    soltar(urls, targetDir.isEmpty() ? m_currentPath : targetDir, false);
+    return true;
 }
 
 bool FinderBackend::paste(const QString &destinationDir)
 {
     QString destDir = destinationDir.isEmpty() ? m_currentPath : destinationDir;
-    QFileInfo destDirInfo(destDir);
-    if (!destDirInfo.isDir()) {
+    if (!QFileInfo(destDir).isDir())
         destDir = m_currentPath;
+    if (enPapelera() && destinationDir.isEmpty()) {
+        ponerAviso(QStringLiteral("No se puede pegar en la Papelera"));
+        return false;
     }
-
     const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+    QVariantList urls;
     if (mime && mime->hasUrls()) {
-        bool anyPasted = false;
-        for (const QUrl &url : mime->urls()) {
-            QString srcPath = url.toLocalFile();
-            if (srcPath.isEmpty() || (!QFile::exists(srcPath) && !QDir(srcPath).exists())) continue;
-
-            QFileInfo srcInfo(srcPath);
-            QString baseName = srcInfo.completeBaseName();
-            QString suffix = srcInfo.suffix();
-            QString destName = srcInfo.fileName();
-            QString target = destDir + QLatin1Char('/') + destName;
-
-            int counter = 1;
-            while (QFile::exists(target) || QDir(target).exists()) {
-                if (srcInfo.isDir() || suffix.isEmpty()) {
-                    destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
-                } else {
-                    destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
-                }
-                target = destDir + QLatin1Char('/') + destName;
-                counter++;
-            }
-
-            if (copyPathRecursively(srcPath, target)) {
-                anyPasted = true;
-            }
-        }
-        if (anyPasted) {
-            refresh();
-            return true;
-        }
+        for (const QUrl &u : mime->urls())
+            if (u.isLocalFile())
+                urls << u.toLocalFile();
+    } else if (!m_clipboardPath.isEmpty()) {
+        urls << m_clipboardPath;
     }
-
-    if (m_clipboardPath.isEmpty()) return false;
-    QFileInfo srcInfo(m_clipboardPath);
-    if (!srcInfo.exists()) return false;
-
-    QString baseName = srcInfo.completeBaseName();
-    QString suffix = srcInfo.suffix();
-    QString destName = srcInfo.fileName();
-    QString target = destDir + QLatin1Char('/') + destName;
-
-    int counter = 1;
-    while (QFile::exists(target) || QDir(target).exists()) {
-        if (srcInfo.isDir() || suffix.isEmpty()) {
-            destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
-        } else {
-            destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
-        }
-        target = destDir + QLatin1Char('/') + destName;
-        counter++;
+    if (urls.isEmpty())
+        return false;
+    const bool cortado = portapapelesCortado();
+    soltar(urls, destDir, !cortado);
+    if (cortado) {
+        // Lo cortado se pega una vez: luego el portapapeles queda vacío.
+        QGuiApplication::clipboard()->clear();
+        m_clipboardPath.clear();
+        emit clipboardChanged();
     }
-
-    bool ok = copyPathRecursively(m_clipboardPath, target);
-    if (ok) refresh();
-    return ok;
+    return true;
 }
 
 QVariantMap FinderBackend::getFileProperties(const QString &path)

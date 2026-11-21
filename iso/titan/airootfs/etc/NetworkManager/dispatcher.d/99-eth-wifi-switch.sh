@@ -1,5 +1,5 @@
 #!/bin/sh
-# Solaris Linux - Conmutacion inteligente Ethernet vs Wi-Fi
+# Inti OS - Conmutacion inteligente Ethernet vs Wi-Fi
 # Desactiva Wi-Fi al conectar el cable Ethernet y lo reactiva al desconectarlo.
 
 IFACE="$1"

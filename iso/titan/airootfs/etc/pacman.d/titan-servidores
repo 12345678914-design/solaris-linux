@@ -1,0 +1,2 @@
+# Lo escribe titan-actualizar-sistema. En vivo y hasta la primera vez: los espejos.
+Include = /etc/pacman.d/mirrorlist

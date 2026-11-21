@@ -1,6 +1,7 @@
 #ifndef SETTINGSBACKEND_H
 #define SETTINGSBACKEND_H
 
+class QTimer;
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -17,6 +18,7 @@ class SettingsBackend : public QObject
     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY wallpaperChanged)
     Q_PROPERTY(QVariantList wallpapers READ wallpapers NOTIFY wallpapersChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    Q_PROPERTY(QString languageStatus READ languageStatus NOTIFY languageChanged)
     Q_PROPERTY(bool dockEnabled READ dockEnabled WRITE setDockEnabled NOTIFY shellSettingsChanged)
     Q_PROPERTY(bool topBarEnabled READ topBarEnabled WRITE setTopBarEnabled NOTIFY shellSettingsChanged)
     Q_PROPERTY(QVariantMap systemInfo READ systemInfo CONSTANT)
@@ -25,6 +27,16 @@ class SettingsBackend : public QObject
     Q_PROPERTY(bool updatePromptVisible READ updatePromptVisible NOTIFY updatePromptVisibleChanged)
     Q_PROPERTY(int updateCount READ updateCount NOTIFY updateCountChanged)
     Q_PROPERTY(QString updateSize READ updateSize NOTIFY updateSizeChanged)
+    // Actualización en curso (titan-actualizar-sistema): barra, registro, reinicio
+    Q_PROPERTY(bool updateRunning READ updateRunning NOTIFY updateProgressChanged)
+    Q_PROPERTY(double updateProgress READ updateProgress NOTIFY updateProgressChanged)
+    Q_PROPERTY(QString updateLog READ updateLog NOTIFY updateLogChanged)
+    Q_PROPERTY(QString updateResult READ updateResult NOTIFY updateProgressChanged)
+    Q_PROPERTY(bool updateNeedsReboot READ updateNeedsReboot NOTIFY updateProgressChanged)
+    // Avisos de Arch que afectan a este equipo (antes de actualizar)
+    Q_PROPERTY(QVariantList updateNews READ updateNews NOTIFY updateNewsChanged)
+    // "estable" (Arch de hace 7 días) | "al-dia"
+    Q_PROPERTY(QString updateMode READ updateMode NOTIFY updateModeChanged)
 
     // Wi-Fi
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled WRITE setWifiEnabled NOTIFY wifiStatusChanged)
@@ -62,6 +74,7 @@ public:
     QVariantList wallpapers() const;
 
     QString language() const { return m_language; }
+    QString languageStatus() const { return m_languageStatus; }
     void setLanguage(const QString &lang);
 
     bool dockEnabled() const { return m_dockEnabled; }
@@ -76,6 +89,13 @@ public:
     bool updatePromptVisible() const { return m_updatePromptVisible; }
     int updateCount() const { return m_updateCount; }
     QString updateSize() const { return m_updateSize; }
+    bool updateRunning() const { return m_updateRunning; }
+    double updateProgress() const { return m_updateProgress; }
+    QString updateLog() const { return m_updateLogLines.join(QLatin1Char('\n')); }
+    QString updateResult() const { return m_updateResult; }
+    bool updateNeedsReboot() const { return m_updateNeedsReboot; }
+    QVariantList updateNews() const { return m_updateNews; }
+    QString updateMode() const { return m_updateMode; }
 
     // Wi-Fi
     bool wifiEnabled() const { return m_wifiEnabled; }
@@ -96,8 +116,11 @@ public:
     Q_INVOKABLE void setThemeMode(const QString &mode); // "light", "dark", "auto"
     Q_INVOKABLE void setWallpaper(const QString &path);
     Q_INVOKABLE void checkUpdates();
-    Q_INVOKABLE void installUpdates();
+    // Con avisos de Arch pendientes primero los enseña; ignorarAvisos = "Actualizar igualmente"
+    Q_INVOKABLE void installUpdates(bool ignorarAvisos = false);
+    Q_INVOKABLE void setUpdateMode(const QString &modo);
     Q_INVOKABLE void cancelUpdates();
+    Q_INVOKABLE void rebootNow();
 
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password = QString());
@@ -121,6 +144,10 @@ signals:
     void updatePromptVisibleChanged();
     void updateCountChanged();
     void updateSizeChanged();
+    void updateProgressChanged();
+    void updateLogChanged();
+    void updateNewsChanged();
+    void updateModeChanged();
 
     void wifiStatusChanged();
     void wifiScanningChanged();
@@ -141,6 +168,9 @@ private:
     QString m_searchQuery;
     QVariantList m_allSections;
     QString m_language = QStringLiteral("auto");
+    QString m_languageStatus;
+    bool m_languageBusy = false;
+    void applyUserLanguage(const QString &lang, const QString &codigo);
     bool m_dockEnabled = true;
     bool m_topBarEnabled = true;
     QVariantMap m_systemInfo;
@@ -149,6 +179,24 @@ private:
     bool m_updatePromptVisible = false;
     int m_updateCount = 0;
     QString m_updateSize = QStringLiteral("0 MB");
+    bool m_updateRunning = false;
+    double m_updateProgress = 0;
+    QString m_updateResult;          // "" | "ok" | "error"
+    bool m_updateNeedsReboot = false;
+    QStringList m_updateLogLines;
+    QTimer *m_updateTimer = nullptr;
+    qint64 m_updateOffset = 0;
+    QByteArray m_updatePartial;
+    int m_updateDownloads = 0;
+    int m_updateIdle = 0;
+    QVariantList m_updateNews;
+    QString m_updateMode = QStringLiteral("estable");
+    void startUpdate();
+    void readUpdateMode();
+    void followUpdate();
+    void readUpdateLog();
+    void appendUpdateLine(const QString &linea);
+    void finishUpdate(bool ok, const QString &texto);
 
     // Wi-Fi
     bool m_wifiEnabled = true;

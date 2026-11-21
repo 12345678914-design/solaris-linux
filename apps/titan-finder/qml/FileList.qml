@@ -1,187 +1,305 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
 
+// Lista de archivos del Finder.
+//  - Selección: clic, Ctrl+clic (añadir/quitar), Mayús+clic (rango) y
+//    recuadro arrastrando en el fondo (con Ctrl se suma a lo que había).
+//  - Mantener pulsado sobre lo seleccionado lo AGRUPA en un montón con el
+//    número de elementos; al arrastrar se mueven todos juntos.
+//  - Soltar sobre una carpeta (o en el fondo) mueve; con Ctrl, copia.
+//    Mover solo dentro de la carpeta personal (lo demás se copia).
+//  - Ctrl+C / Ctrl+X / Ctrl+V con uno o con muchos.
 Rectangle {
     id: fileListRoot
 
     TitanTheme { id: theme }
 
     color: theme.contentBackground
-
     focus: true
 
-    property string selectedPath: ""
+    // Selección
+    property var selectedPaths: []
+    property string selectedPath: ""      // el último pulsado (renombrar, propiedades)
     property string selectedName: ""
     property bool selectedIsDir: false
+    property int ancla: -1
     property var itemProperties: ({})
 
-    // Selección múltiple (Recuadro azul / Rubberband)
-    property var selectedPaths: []
-    property bool rubberBandActive: false
-    property real rbStartX: 0
-    property real rbStartY: 0
-    property real rbCurrentX: 0
-    property real rbCurrentY: 0
+    // Recuadro de selección (coordenadas del contenido de la vista)
+    property bool rbActivo: false
+    property var rbVista: null
+    property var rbBase: []
+    property real rbX0: 0
+    property real rbY0: 0
+    property real rbX1: 0
+    property real rbY1: 0
+    property real rbRaton: 0
+
+    // Pulsación sobre un elemento (para arrastrar o agrupar)
+    property bool pActivo: false
+    property string pPath: ""
+    property real pX: 0
+    property real pY: 0
+    property bool agrupando: false
+    property bool arrastrando: false
 
     property bool ctxVisible: false
     property real ctxX: 0
     property real ctxY: 0
 
-    // Atajos de teclado para selección múltiple
-    Keys.onPressed: (event) => {
-        if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) {
-            if (selectedPaths.length > 0) {
-                finderBackend.copyItems(selectedPaths)
-            } else if (selectedPath.length > 0) {
-                finderBackend.copyItem(selectedPath)
-            }
-            event.accepted = true
-        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
-            finderBackend.paste()
-            event.accepted = true
-        } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
-            if (selectedPaths.length > 0) {
-                finderBackend.deleteItems(selectedPaths)
-                selectedPaths = []
-                selectedPath = ""
-            } else if (selectedPath.length > 0) {
-                finderBackend.deleteItem(selectedPath)
-                selectedPath = ""
-            }
-            event.accepted = true
+    readonly property int nSel: selectedPaths.length
+    readonly property var vistaActiva: finderBackend.viewMode === "grid" ? gridView : listView
+
+    // ------------------------------------------------------------ selección
+    function estaSeleccionado(p) { return selectedPaths.indexOf(p) !== -1 }
+    function indiceDe(p) {
+        var e = finderBackend.entries
+        for (var i = 0; i < e.length; ++i) if (e[i].path === p) return i
+        return -1
+    }
+    function fijarActual(p) {
+        var i = indiceDe(p)
+        var e = i >= 0 ? finderBackend.entries[i] : null
+        selectedPath = p
+        selectedName = e ? e.name : ""
+        selectedIsDir = e ? e.isDir : false
+    }
+    function seleccionarSolo(p) {
+        selectedPaths = p ? [p] : []
+        ancla = indiceDe(p)
+        if (p) fijarActual(p); else { selectedPath = ""; selectedName = "" }
+    }
+    function limpiarSeleccion() { seleccionarSolo("") }
+    function alternar(p) {
+        var s = selectedPaths.slice()
+        var k = s.indexOf(p)
+        if (k >= 0) s.splice(k, 1); else s.push(p)
+        selectedPaths = s
+        ancla = indiceDe(p)
+        if (s.length > 0) fijarActual(s[s.length - 1]); else { selectedPath = ""; selectedName = "" }
+    }
+    function rango(p) {
+        var i = indiceDe(p)
+        var a = ancla >= 0 ? ancla : i
+        var e = finderBackend.entries, s = []
+        for (var k = Math.min(a, i); k <= Math.max(a, i); ++k) s.push(e[k].path)
+        selectedPaths = s
+        fijarActual(p)
+    }
+    function seleccionarTodo() {
+        var e = finderBackend.entries, s = []
+        for (var i = 0; i < e.length; ++i) s.push(e[i].path)
+        selectedPaths = s
+        if (s.length > 0) fijarActual(s[0])
+    }
+    // Lo que afecta una acción: la selección (o nada)
+    function objetivo() { return selectedPaths.length > 0 ? selectedPaths.slice() : (selectedPath ? [selectedPath] : []) }
+
+    // ------------------------------------------------------------ acciones
+    function copiar() { var o = objetivo(); if (o.length > 0) finderBackend.copyItems(o) }
+    function cortar() { var o = objetivo(); if (o.length > 0) finderBackend.cortar(o) }
+    // Ctrl+V pega en la carpeta abierta; "Pegar dentro" (menú) en la carpeta seleccionada.
+    function pegar() { finderBackend.paste() }
+    function pegarDentro() { if (selectedPaths.length === 1 && selectedIsDir) finderBackend.paste(selectedPaths[0]) }
+    function eliminar(definitivo) {
+        var o = objetivo()
+        if (o.length === 0) return
+        if (definitivo || finderBackend.enPapelera) {
+            confirmar(o.length === 1 ? "¿Eliminar «" + nombreDe(o[0]) + "» para siempre?" : "¿Eliminar " + o.length + " elementos para siempre?",
+                      "No se podrán recuperar.", "Eliminar", function () { finderBackend.eliminarDefinitivamente(o); limpiarSeleccion() })
+        } else {
+            finderBackend.deleteItems(o)
+            limpiarSeleccion()
         }
     }
-
-    function updateRubberBandSelection() {
-        var rx = Math.min(rbStartX, rbCurrentX)
-        var ry = Math.min(rbStartY, rbCurrentY)
-        var rw = Math.abs(rbCurrentX - rbStartX)
-        var rh = Math.abs(rbCurrentY - rbStartY)
-
-        var newSel = []
-        var view = (finderBackend.viewMode === "grid") ? gridView : listView
-        if (view && view.contentItem) {
-            var items = view.contentItem.children
-            for (var i = 0; i < items.length; ++i) {
-                var it = items[i]
-                if (!it || !it.itemPath || it.itemPath.length === 0) continue
-                var pt = it.mapToItem(fileListRoot, 0, 0)
-                if (rx < pt.x + it.width && rx + rw > pt.x && ry < pt.y + it.height && ry + rh > pt.y) {
-                    newSel.push(it.itemPath)
-                }
-            }
-        }
-        selectedPaths = newSel
-        if (newSel.length > 0) {
-            selectedPath = newSel[0]
-        }
+    function vaciarPapelera() {
+        confirmar("¿Vaciar la Papelera?", "Todo lo que hay en la Papelera se eliminará para siempre.", "Vaciar Papelera",
+                  function () { finderBackend.vaciarPapelera(); limpiarSeleccion() })
     }
-
-    function showContextMenu(posX, posY) {
-        ctxX = Math.max(10, Math.min(fileListRoot.width - 230, posX))
-        ctxY = Math.max(10, Math.min(fileListRoot.height - 250, posY))
-        ctxVisible = true
+    function nombreDe(p) { var i = p.lastIndexOf("/"); return i >= 0 ? p.substring(i + 1) : p }
+    function renombrar() {
+        if (!selectedPath) return
+        renameField.text = selectedName
+        renameDialog.open()
+        renameField.forceActiveFocus()
+        renameField.selectAll()
     }
-
+    function confirmar(titulo, texto, boton, accion) {
+        dlgConfirmar.titulo = titulo
+        dlgConfirmar.texto = texto
+        dlgConfirmar.boton = boton
+        dlgConfirmar.accion = accion
+        dlgConfirmar.open()
+    }
     function openProperties(path) {
-        var target = path && path.length > 0 ? path : (fileListRoot.selectedPath.length > 0 ? fileListRoot.selectedPath : finderBackend.currentPath);
-        itemProperties = finderBackend.getFileProperties(target);
-        propertiesDialog.open();
+        var target = path && path.length > 0 ? path : (selectedPath.length > 0 ? selectedPath : finderBackend.currentPath)
+        itemProperties = finderBackend.getFileProperties(target)
+        propertiesDialog.open()
     }
-
     function openNewFolderDialog() {
+        if (!finderBackend.puedeEscribir) {
+            finderBackend.createFolder("") // solo para el aviso
+            return
+        }
         folderNameField.text = "Nueva carpeta"
         newFolderDialog.open()
         folderNameField.forceActiveFocus()
         folderNameField.selectAll()
     }
+    // El menú va en su propia ventana emergente (ver ctxPopup): se abre en el
+    // puntero y, si no cabe, el sistema lo da la vuelta o lo desplaza para que
+    // se vea entero, aunque salga de la ventana del Finder (como en Windows).
+    function showContextMenu(posX, posY) {
+        ctxX = posX
+        ctxY = posY
+        ctxVisible = true
+    }
+    onCtxVisibleChanged: ctxVisible ? ctxPopup.open() : ctxPopup.close()
 
-    // Área de recepción de archivos arrastrados hacia Finder
+    Connections {
+        target: finderBackend
+        function onCurrentPathChanged() { fileListRoot.limpiarSeleccion(); fileListRoot.ctxVisible = false }
+        function onAvisoChanged() { if (finderBackend.aviso !== "") avisoTimer.restart() }
+    }
+
+    Keys.onPressed: (event) => {
+        var ctrl = event.modifiers & Qt.ControlModifier
+        if (ctrl && event.key === Qt.Key_A) { seleccionarTodo(); event.accepted = true }
+        else if (ctrl && event.key === Qt.Key_C) { copiar(); event.accepted = true }
+        else if (ctrl && event.key === Qt.Key_X) { cortar(); event.accepted = true }
+        else if (ctrl && event.key === Qt.Key_V) { pegar(); event.accepted = true }
+        else if (event.key === Qt.Key_Delete) { eliminar(event.modifiers & Qt.ShiftModifier); event.accepted = true }
+        else if (event.key === Qt.Key_F2) { renombrar(); event.accepted = true }
+        else if (event.key === Qt.Key_Escape) { limpiarSeleccion(); ctxVisible = false; event.accepted = true }
+        else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && selectedPaths.length === 1) {
+            finderBackend.openItem(selectedPaths[0]); event.accepted = true
+        }
+    }
+
+    // ------------------------------------------------------------ pulsar sobre un elemento
+    function alPresionar(mouse, entrada, item) {
+        fileListRoot.forceActiveFocus()
+        ctxVisible = false
+        var p = entrada.path
+        if (mouse.button === Qt.RightButton) {
+            if (!estaSeleccionado(p)) seleccionarSolo(p); else fijarActual(p)
+            var q = item.mapToItem(fileListRoot, mouse.x, mouse.y)
+            showContextMenu(q.x, q.y)
+            return
+        }
+        if (mouse.modifiers & Qt.ControlModifier) { alternar(p); return }
+        if (mouse.modifiers & Qt.ShiftModifier) { rango(p); return }
+        if (!estaSeleccionado(p)) seleccionarSolo(p); else fijarActual(p)
+        var r = item.mapToItem(fileListRoot, mouse.x, mouse.y)
+        pActivo = true
+        pPath = p
+        pX = r.x
+        pY = r.y
+    }
+    function alMover(mouse, item) {
+        if (!pActivo || !(mouse.buttons & Qt.LeftButton)) return
+        var r = item.mapToItem(fileListRoot, mouse.x, mouse.y)
+        if (Math.abs(r.x - pX) + Math.abs(r.y - pY) > 8) {
+            pActivo = false
+            var paths = estaSeleccionado(pPath) ? selectedPaths.slice() : [pPath]
+            arrastrando = true
+            finderBackend.arrastrar(paths)   // bloquea hasta soltar
+            arrastrando = false
+            agrupando = false
+        }
+    }
+    function alMantener() {
+        // Mantener pulsado con varios seleccionados: se juntan en un montón.
+        if (pActivo && selectedPaths.length > 1 && estaSeleccionado(pPath)) agrupando = true
+    }
+    function alSoltarRaton(mouse, entrada) {
+        if (pActivo && !agrupando && !(mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))
+                && selectedPaths.length > 1 && mouse.button === Qt.LeftButton)
+            seleccionarSolo(entrada.path)
+        pActivo = false
+        agrupando = false
+    }
+
+    // ------------------------------------------------------------ recuadro en el fondo
+    function fondoPresionado(mouse, vista) {
+        fileListRoot.forceActiveFocus()
+        ctxVisible = false
+        if (mouse.button === Qt.RightButton) {
+            limpiarSeleccion()
+            var q = vista.mapToItem(fileListRoot, mouse.x, mouse.y)
+            showContextMenu(q.x, q.y)
+            return
+        }
+        var sumar = mouse.modifiers & Qt.ControlModifier
+        rbBase = sumar ? selectedPaths.slice() : []
+        if (!sumar) limpiarSeleccion()
+        rbVista = vista
+        rbX0 = rbX1 = mouse.x + vista.contentX
+        rbY0 = rbY1 = mouse.y + vista.contentY
+        rbRaton = mouse.y
+        rbActivo = false
+    }
+    function fondoMovido(mouse, vista) {
+        if (!(mouse.buttons & Qt.LeftButton) || rbVista !== vista) return
+        rbRaton = mouse.y
+        rbX1 = Math.max(0, Math.min(vista.width, mouse.x)) + vista.contentX
+        rbY1 = mouse.y + vista.contentY
+        if (!rbActivo && Math.abs(rbX1 - rbX0) + Math.abs(rbY1 - rbY0) > 5) rbActivo = true
+        if (rbActivo) actualizarRecuadro()
+    }
+    function fondoSoltado() { rbActivo = false; rbVista = null }
+
+    function actualizarRecuadro() {
+        var v = rbVista
+        if (!v) return
+        var x1 = Math.min(rbX0, rbX1), x2 = Math.max(rbX0, rbX1)
+        var y1 = Math.min(rbY0, rbY1), y2 = Math.max(rbY0, rbY1)
+        var e = finderBackend.entries
+        var s = rbBase.slice()
+        var i
+        if (v === gridView) {
+            var cw = gridView.cellWidth, ch = gridView.cellHeight
+            var cols = Math.max(1, Math.floor(gridView.width / cw))
+            for (i = 0; i < e.length; ++i) {
+                var cx = (i % cols) * cw + 6, cy = Math.floor(i / cols) * ch + 6
+                if (cx < x2 && cx + cw - 12 > x1 && cy < y2 && cy + ch - 12 > y1 && s.indexOf(e[i].path) === -1)
+                    s.push(e[i].path)
+            }
+        } else {
+            var desde = Math.max(0, Math.floor(y1 / 30)), hasta = Math.min(e.length - 1, Math.floor(y2 / 30))
+            for (i = desde; i <= hasta; ++i) if (s.indexOf(e[i].path) === -1) s.push(e[i].path)
+        }
+        selectedPaths = s
+        if (s.length > 0) fijarActual(s[s.length - 1])
+    }
+
+    // Desplazar solo si el recuadro llega al borde
+    Timer {
+        interval: 30
+        repeat: true
+        running: fileListRoot.rbActivo && fileListRoot.rbVista !== null
+                 && (fileListRoot.rbRaton < 24 || fileListRoot.rbRaton > fileListRoot.rbVista.height - 24)
+        onTriggered: {
+            var v = fileListRoot.rbVista
+            var paso = fileListRoot.rbRaton < 24 ? -14 : 14
+            var max = Math.max(0, v.contentHeight - v.height)
+            var nuevo = Math.max(0, Math.min(max, v.contentY + paso))
+            fileListRoot.rbY1 += nuevo - v.contentY
+            v.contentY = nuevo
+            fileListRoot.actualizarRecuadro()
+        }
+    }
+
+    // Soltar en el fondo = a la carpeta actual
     DropArea {
-        id: finderDropArea
         anchors.fill: parent
         keys: ["text/uri-list"]
+        onEntered: (drag) => { if (finderBackend.enPapelera && !fileListRoot.arrastrando) drag.accepted = true }
         onDropped: (drop) => {
-            if (drop.hasUrls) {
-                for (var i = 0; i < drop.urls.length; ++i) {
-                    finderBackend.importFile(drop.urls[i], finderBackend.currentPath)
-                }
-                drop.acceptProposedAction()
-            }
+            if (!drop.hasUrls) return
+            finderBackend.soltar(drop.urls.map(u => u.toString()), finderBackend.currentPath, drop.proposedAction === Qt.CopyAction)
+            drop.accept(Qt.CopyAction)
         }
-    }
-
-    function handleBgPress(mouse, srcItem) {
-        fileListRoot.forceActiveFocus()
-        fileListRoot.ctxVisible = false
-        fileListRoot.selectedPaths = []
-        fileListRoot.selectedPath = ""
-        fileListRoot.selectedName = ""
-        if (mouse.button === Qt.LeftButton) {
-            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
-            fileListRoot.rbStartX = pt.x
-            fileListRoot.rbStartY = pt.y
-            fileListRoot.rbCurrentX = pt.x
-            fileListRoot.rbCurrentY = pt.y
-            fileListRoot.rubberBandActive = false
-        }
-    }
-
-    function handleBgMove(mouse, srcItem) {
-        if (mouse.buttons & Qt.LeftButton) {
-            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
-            if (!fileListRoot.rubberBandActive) {
-                if (Math.abs(pt.x - fileListRoot.rbStartX) > 4 || Math.abs(pt.y - fileListRoot.rbStartY) > 4) {
-                    fileListRoot.rubberBandActive = true
-                }
-            }
-            if (fileListRoot.rubberBandActive) {
-                fileListRoot.rbCurrentX = pt.x
-                fileListRoot.rbCurrentY = pt.y
-                fileListRoot.updateRubberBandSelection()
-            }
-        }
-    }
-
-    function handleBgRelease(mouse) {
-        fileListRoot.rubberBandActive = false
-    }
-
-    function handleBgClick(mouse, srcItem) {
-        if (mouse.button === Qt.RightButton) {
-            var pt = srcItem ? srcItem.mapToItem(fileListRoot, mouse.x, mouse.y) : Qt.point(mouse.x, mouse.y)
-            fileListRoot.selectedPaths = []
-            fileListRoot.selectedPath = ""
-            fileListRoot.showContextMenu(pt.x, pt.y)
-        }
-    }
-
-    // Fondo para recuadro azul de selección múltiple y deselección al hacer clic
-    MouseArea {
-        id: bgMouseArea
-        anchors.fill: parent
-        z: 0
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-
-        onPressed: (mouse) => fileListRoot.handleBgPress(mouse, null)
-        onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, null)
-        onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
-        onClicked: (mouse) => fileListRoot.handleBgClick(mouse, null)
-    }
-
-    // Recuadro azul de selección múltiple (Rubberband selector)
-    Rectangle {
-        id: finderRubberBand
-        visible: fileListRoot.rubberBandActive
-        x: Math.min(fileListRoot.rbStartX, fileListRoot.rbCurrentX)
-        y: Math.min(fileListRoot.rbStartY, fileListRoot.rbCurrentY)
-        width: Math.abs(fileListRoot.rbCurrentX - fileListRoot.rbStartX)
-        height: Math.abs(fileListRoot.rbCurrentY - fileListRoot.rbStartY)
-        color: Qt.rgba(0.0, 0.48, 1.0, 0.22)
-        border.color: Qt.rgba(0.1, 0.55, 1.0, 0.88)
-        border.width: 1.5
-        radius: 3
-        z: 60
     }
 
     // Diálogo para renombrar archivo o carpeta estilo macOS
@@ -298,7 +416,7 @@ Rectangle {
                     width: 86
                     height: 28
                     radius: 6
-                    color: okRenameMouse.pressed ? "#005bb5" : okRenameMouse.containsMouse ? "#0077ed" : "#0071e3"
+                    color: okRenameMouse.pressed ? Qt.darker(theme.accent, 1.25) : okRenameMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -440,7 +558,7 @@ Rectangle {
                     width: 86
                     height: 28
                     radius: 6
-                    color: okFolderMouse.pressed ? "#005bb5" : okFolderMouse.containsMouse ? "#0077ed" : "#0071e3"
+                    color: okFolderMouse.pressed ? Qt.darker(theme.accent, 1.25) : okFolderMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -598,7 +716,7 @@ Rectangle {
                 width: 90
                 height: 28
                 radius: 6
-                color: closePropsMouse.pressed ? "#005bb5" : closePropsMouse.containsMouse ? "#0077ed" : "#0071e3"
+                color: closePropsMouse.pressed ? Qt.darker(theme.accent, 1.25) : closePropsMouse.containsMouse ? Qt.lighter(theme.accent, 1.08) : theme.accent
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Text {
@@ -620,46 +738,133 @@ Rectangle {
         }
     }
 
-    // Capa para cerrar el menú contextual al hacer clic fuera
-    MouseArea {
-        anchors.fill: parent
-        visible: fileListRoot.ctxVisible
-        z: 95
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: fileListRoot.ctxVisible = false
+
+    // ------------------------------------------------------------ confirmar
+    Dialog {
+        id: dlgConfirmar
+        property string titulo: ""
+        property string texto: ""
+        property string boton: "Aceptar"
+        property var accion: null
+        anchors.centerIn: parent
+        width: 380
+        modal: true
+        padding: 22
+        header: null
+        footer: null
+        background: Rectangle {
+            color: theme.isDark ? "#24252a" : "#ffffff"
+            radius: 14
+            border.color: theme.glassBorder
+        }
+        contentItem: Column {
+            spacing: 10
+            Text { width: parent.width; text: dlgConfirmar.titulo; wrapMode: Text.Wrap; color: theme.contentTextPrimary; font.pixelSize: 15; font.bold: true }
+            Text { width: parent.width; text: dlgConfirmar.texto; wrapMode: Text.Wrap; color: theme.contentTextSecondary; font.pixelSize: 12 }
+            Item { width: 1; height: 6 }
+            Row {
+                anchors.right: parent.right
+                spacing: 10
+                Button { text: "Cancelar"; onClicked: dlgConfirmar.close() }
+                Button {
+                    text: dlgConfirmar.boton
+                    highlighted: true
+                    palette.highlight: "#ff3b30"
+                    onClicked: { dlgConfirmar.close(); if (dlgConfirmar.accion) dlgConfirmar.accion() }
+                }
+            }
+        }
     }
 
-    // Menú contextual estilo macOS Liquid Glass
-    Rectangle {
-        id: contextMenu
-        visible: fileListRoot.ctxVisible
+    // ------------------------------------------------------------ menú contextual
+    function nombreCorto(ruta) {
+        var n = ruta.substring(ruta.lastIndexOf("/") + 1)
+        return n.length > 18 ? n.substring(0, 16) + "…" : n
+    }
+    function opcionesMenu() {
+        var n = selectedPaths.length
+        var cuantos = n > 1 ? " (" + n + ")" : ""
+        var o = []
+        var pap = finderBackend.enPapelera
+        if (n > 0) {
+            if (pap) {
+                o.push({ t: "Recuperar" + cuantos, i: "↩", a: function () { finderBackend.restaurar(fileListRoot.objetivo()); fileListRoot.limpiarSeleccion() } })
+                o.push({ sep: true })
+                o.push({ t: "Eliminar para siempre" + cuantos + "…", i: "✕", peligro: true, k: "⌦", a: function () { fileListRoot.eliminar(true) } })
+                return o
+            }
+            if (n === 1) {
+                o.push({ t: "Abrir", i: "↗", k: "↵", a: function () { finderBackend.openItem(fileListRoot.selectedPaths[0]) } })
+                if (selectedIsDir) o.push({ t: "Abrir en Terminal", i: ">_", a: function () { finderBackend.openTerminal(fileListRoot.selectedPaths[0]) } })
+                o.push({ sep: true })
+            }
+            o.push({ t: "Copiar" + cuantos, i: "⧉", k: "Ctrl+C", a: fileListRoot.copiar })
+            var movibles = true
+            for (var i = 0; i < n; ++i) if (!finderBackend.dentroDeCasa(selectedPaths[i]) || finderBackend.esProtegida(selectedPaths[i])) movibles = false
+            if (movibles) o.push({ t: "Cortar" + cuantos, i: "✂", k: "Ctrl+X", a: fileListRoot.cortar })
+            if (n === 1 && selectedIsDir && finderBackend.hasClipboard)
+                o.push({ t: "Pegar dentro" + (finderBackend.portapapelesCantidad > 1 ? " (" + finderBackend.portapapelesCantidad + ")" : ""), i: "📥", a: fileListRoot.pegarDentro })
+            if (finderBackend.puedeEscribir)
+                o.push({ t: "Duplicar" + cuantos, i: "⊕", a: function () { finderBackend.soltar(fileListRoot.objetivo(), finderBackend.currentPath, true) } })
+            if (finderBackend.puedeEscribir) {
+                if (n === 1 && finderBackend.esComprimido(selectedPaths[0]))
+                    o.push({ t: "Extraer aquí", i: "⇲", a: function () { finderBackend.extraer(fileListRoot.selectedPaths[0]) } })
+                o.push({ t: (n === 1 ? "Comprimir «" + fileListRoot.nombreCorto(selectedPaths[0]) + "»" : "Comprimir " + n + " elementos"), i: "⊞",
+                         a: function () { finderBackend.comprimir(fileListRoot.objetivo()) } })
+            }
+            o.push({ t: (movibles ? "Mover al Escritorio" : "Copiar al Escritorio") + cuantos, i: "🖥",
+                     a: function () { finderBackend.soltar(fileListRoot.objetivo(), finderBackend.escritorio(), !movibles); fileListRoot.limpiarSeleccion() } })
+            o.push({ sep: true })
+            if (n === 1) {
+                o.push({ t: "Cambiar nombre…", i: "✎", k: "F2", a: fileListRoot.renombrar })
+                o.push({ t: "Ver propiedades", i: "ℹ", k: "Ctrl+I", a: function () { fileListRoot.openProperties(fileListRoot.selectedPath) } })
+                o.push({ sep: true })
+            }
+            o.push({ t: "Mover a la Papelera" + cuantos, i: "🗑", k: "Supr", peligro: true, a: function () { fileListRoot.eliminar(false) } })
+            return o
+        }
+        // Fondo vacío
+        if (pap) {
+            if (!finderBackend.papeleraVacia) o.push({ t: "Vaciar Papelera…", i: "🗑", peligro: true, a: fileListRoot.vaciarPapelera })
+            if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
+            return o
+        }
+        if (finderBackend.puedeEscribir) o.push({ t: "Nueva carpeta", i: "📁", k: "Ctrl+Mayús+N", a: fileListRoot.openNewFolderDialog })
+        if (finderBackend.hasClipboard && finderBackend.puedeEscribir) {
+            var c = finderBackend.portapapelesCantidad
+            o.push({ t: (finderBackend.portapapelesCortado ? "Mover aquí" : "Pegar") + (c > 1 ? " (" + c + ")" : ""), i: "📥", k: "Ctrl+V", a: fileListRoot.pegar })
+        }
+        if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
+        o.push({ sep: true })
+        o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+T", a: function () { finderBackend.openTerminal() } })
+        o.push({ t: finderBackend.showHiddenFiles ? "Ocultar archivos ocultos" : "Mostrar archivos ocultos", i: ".*", k: "Ctrl+H",
+                 a: function () { finderBackend.showHiddenFiles = !finderBackend.showHiddenFiles } })
+        o.push({ t: "Propiedades de la carpeta", i: "ℹ", a: function () { fileListRoot.openProperties(finderBackend.currentPath) } })
+        return o
+    }
+
+    Popup {
+        id: ctxPopup
+        popupType: Popup.Window
         x: fileListRoot.ctxX
         y: fileListRoot.ctxY
-        width: 220
-        height: ctxCol.implicitHeight + 14
-        radius: 10
-        z: 100
-        opacity: visible ? 1.0 : 0.0
-        scale: visible ? 1.0 : 0.94
-        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
+        // Si el sistema no admite ventanas emergentes, al menos dentro de la ventana
+        margins: 8
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: null
+        onClosed: fileListRoot.ctxVisible = false
 
+    contentItem: Rectangle {
+        id: contextMenu
+        implicitWidth: 240
+        implicitHeight: ctxCol.implicitHeight + 14
+        radius: 10
         gradient: Gradient {
             GradientStop { position: 0.0; color: theme.isDark ? Qt.rgba(0.18, 0.19, 0.25, 0.97) : Qt.rgba(0.97, 0.97, 0.99, 0.97) }
             GradientStop { position: 1.0; color: theme.isDark ? Qt.rgba(0.13, 0.14, 0.19, 0.97) : Qt.rgba(0.92, 0.93, 0.96, 0.97) }
         }
         border.color: theme.glassBorder
-        border.width: 1
-
-        // Brillo superior
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 16
-            height: 1
-            color: theme.specularGlow
-        }
 
         Column {
             id: ctxCol
@@ -667,896 +872,473 @@ Rectangle {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: 7
-            spacing: 2
-
-            // 1. COPIAR (Orden estricto solicitado: copiar-mover-eliminar)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
-                color: copyMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📋"; color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text {
-                        text: fileListRoot.selectedPaths.length > 1 ? ("Copiar (" + fileListRoot.selectedPaths.length + ")") : "Copiar"
-                        color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
+            spacing: 1
+            Repeater {
+                model: fileListRoot.ctxVisible ? fileListRoot.opcionesMenu() : []
+                delegate: Item {
+                    required property var modelData
+                    width: ctxCol.width
+                    height: modelData.sep ? 9 : 28
+                    Rectangle {
+                        visible: !!modelData.sep
+                        anchors.centerIn: parent
+                        width: parent.width - 12
+                        height: 1
+                        color: theme.glassBorder
                     }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌘C"
-                    color: copyMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: copyMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        if (fileListRoot.selectedPaths.length > 0) {
-                            finderBackend.copyItems(fileListRoot.selectedPaths)
-                        } else {
-                            finderBackend.copyItem(fileListRoot.selectedPath)
+                    Rectangle {
+                        visible: !modelData.sep
+                        anchors.fill: parent
+                        radius: 6
+                        color: opZona.containsMouse ? (modelData.peligro ? "#ff3b30" : theme.accent) : "transparent"
+                        Text {
+                            id: opIcono
+                            x: 8
+                            width: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData.i || ""
+                            color: opZona.containsMouse ? "#ffffff" : (modelData.peligro ? "#ff3b30" : theme.contentTextPrimary)
+                            font.pixelSize: 11
                         }
-                    }
-                }
-            }
-
-            // 2. MOVER (Orden estricto solicitado: copiar-mover-eliminar)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
-                color: moveMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📦"; color: moveMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text {
-                        text: fileListRoot.selectedPaths.length > 1 ? ("Mover al Escritorio (" + fileListRoot.selectedPaths.length + ")") : "Mover al Escritorio"
-                        color: moveMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                    }
-                }
-
-                MouseArea {
-                    id: moveMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        var desktopDir = "/home/" + (finderBackend.currentPath.split('/')[2] || "titan") + "/Escritorio"
-                        if (fileListRoot.selectedPaths.length > 0) {
-                            finderBackend.moveItems(fileListRoot.selectedPaths, desktopDir)
-                            fileListRoot.selectedPaths = []
-                        } else {
-                            finderBackend.moveItems([fileListRoot.selectedPath], desktopDir)
+                        Text {
+                            anchors.left: opIcono.right
+                            anchors.leftMargin: 8
+                            anchors.right: opAtajo.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.t || ""
+                            color: opZona.containsMouse ? "#ffffff" : (modelData.peligro ? "#ff3b30" : theme.contentTextPrimary)
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
                         }
-                        fileListRoot.selectedPath = ""
-                    }
-                }
-            }
-
-            // 3. ELIMINAR (Orden estricto solicitado: copiar-mover-eliminar)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length > 0 || fileListRoot.selectedPath.length > 0
-                color: deleteMouse.containsMouse ? Qt.rgba(0.9, 0.15, 0.15, 0.25) : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Image {
-                        source: "qrc:/icons/trash.png"
-                        width: 15
-                        height: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                    }
-                    Text {
-                        text: fileListRoot.selectedPaths.length > 1 ? ("Eliminar (" + fileListRoot.selectedPaths.length + ")") : "Eliminar (envía a la papelera)"
-                        color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextPrimary
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌫"
-                    color: deleteMouse.containsMouse ? "#ff4d4d" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: deleteMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        if (fileListRoot.selectedPaths.length > 0) {
-                            finderBackend.deleteItems(fileListRoot.selectedPaths)
-                            fileListRoot.selectedPaths = []
-                        } else {
-                            finderBackend.deleteItem(fileListRoot.selectedPath)
+                        Text {
+                            id: opAtajo
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.k || ""
+                            color: opZona.containsMouse ? "#ffffff" : theme.contentTextSecondary
+                            font.pixelSize: 10
                         }
-                        fileListRoot.selectedPath = ""
-                    }
-                }
-            }
-
-            // Separador si hay elementos seleccionados
-            Rectangle {
-                width: parent.width - 12
-                height: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: theme.glassBorder
-                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
-            }
-
-            // Abrir (para elemento individual)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
-                color: openMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "↗"; color: openMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Abrir"; color: openMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                MouseArea {
-                    id: openMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.openItem(fileListRoot.selectedPath)
-                        fileListRoot.selectedPaths = []
-                        fileListRoot.selectedPath = ""
-                    }
-                }
-            }
-
-            // Cambiar nombre (para elemento individual)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
-                color: renameMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "✎"; color: renameMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Cambiar nombre..."; color: renameMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                MouseArea {
-                    id: renameMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        renameField.text = fileListRoot.selectedName
-                        renameDialog.open()
-                        renameField.forceActiveFocus()
-                        renameField.selectAll()
-                    }
-                }
-            }
-
-            // Ver propiedades (para elemento individual)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length <= 1 && fileListRoot.selectedPath.length > 0
-                color: propMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "ℹ"; color: propMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Ver propiedades"; color: propMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌘I"
-                    color: propMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: propMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        fileListRoot.openProperties(fileListRoot.selectedPath)
-                    }
-                }
-            }
-
-            // Acciones en fondo vacío
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0
-                color: newFolderMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📁"; color: newFolderMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Nueva carpeta"; color: newFolderMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                MouseArea {
-                    id: newFolderMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        fileListRoot.openNewFolderDialog()
-                    }
-                }
-            }
-
-            // Pegar (en fondo vacío)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0 && finderBackend.hasClipboard
-                color: pasteMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "📥"; color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Pegar"; color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    text: "⌘V"
-                    color: pasteMouse.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: pasteMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.paste()
-                    }
-                }
-            }
-
-            // Abrir en terminal (en fondo vacío)
-            Rectangle {
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath.length === 0
-                color: termMouse.containsMouse ? theme.accent : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    spacing: 8
-                    Text { text: "💻"; color: termMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12 }
-                    Text { text: "Abrir en Terminal"; color: termMouse.containsMouse ? "#ffffff" : theme.contentTextPrimary; font.pixelSize: 12; font.weight: Font.Medium }
-                }
-
-                MouseArea {
-                    id: termMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        fileListRoot.ctxVisible = false
-                        finderBackend.openTerminal()
+                        MouseArea {
+                            id: opZona
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: !modelData.sep
+                            cursorShape: Qt.PointingHandCursor
+                            // La acción se guarda ANTES de cerrar: al cerrar, el modelo del
+                            // Repeater pasa a [] y este delegado (y su modelData) desaparece.
+                            onClicked: { var accion = modelData.a; fileListRoot.ctxVisible = false; accion() }
+                        }
                     }
                 }
             }
         }
     }
+    }
 
-    // Estado vacío (sin archivos)
-    Column {
-        anchors.centerIn: parent
-        spacing: 12
-        visible: finderBackend.entries.length === 0
-
-        Image {
-            source: "qrc:/icons/folder.png"
-            width: 72
-            height: 72
-            anchors.horizontalCenter: parent.horizontalCenter
-            opacity: 0.35
-            smooth: true
+    // ------------------------------------------------------------ aviso
+    Rectangle {
+        id: avisoCaja
+        z: 90
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: finderBackend.aviso !== "" && (avisoTimer.running || finderBackend.ocupado) ? 14 : -50
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        width: avisoFila.implicitWidth + 30
+        height: 32
+        radius: 16
+        color: theme.isDark ? "#2c2c2e" : "#1d1d1f"
+        Row {
+            id: avisoFila
+            anchors.centerIn: parent
+            spacing: 8
+            BusyIndicator { width: 18; height: 18; running: finderBackend.ocupado; visible: running; anchors.verticalCenter: parent.verticalCenter }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: finderBackend.aviso; color: "#ffffff"; font.pixelSize: 12 }
         }
+        Timer { id: avisoTimer; interval: 3800; onTriggered: if (!finderBackend.ocupado) finderBackend.cerrarAviso() }
+    }
 
+    // Grupo: el número de elementos sobre el montón
+    Rectangle {
+        z: 80
+        visible: fileListRoot.agrupando
+        x: fileListRoot.pX + 14
+        y: fileListRoot.pY - 30
+        width: Math.max(26, grupoTexto.implicitWidth + 14)
+        height: 26
+        radius: 13
+        color: "#ff3b30"
+        Text { id: grupoTexto; anchors.centerIn: parent; text: fileListRoot.selectedPaths.length; color: "#ffffff"; font.pixelSize: 13; font.bold: true }
+    }
+
+    // ------------------------------------------------------------ Papelera: barra superior
+    Rectangle {
+        id: barraPapelera
+        visible: finderBackend.enPapelera
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: visible ? 44 : 0
+        color: theme.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035)
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.contentCardBorder }
         Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: finderBackend.searchQuery.length > 0 ? "No se encontraron resultados" : "Esta carpeta está vacía"
+            anchors.left: parent.left
+            anchors.leftMargin: 16
+            anchors.right: barraBotones.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: finderBackend.papeleraVacia ? "La Papelera está vacía"
+                  : fileListRoot.nSel > 0 ? "Seleccionados: " + fileListRoot.nSel + ". Puedes recuperarlos o eliminarlos para siempre."
+                  : "Selecciona elementos para recuperarlos o eliminarlos uno a uno, o vacía la Papelera."
             color: theme.contentTextSecondary
-            font.pixelSize: 14
+            font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+        Row {
+            id: barraBotones
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            Button {
+                visible: fileListRoot.nSel > 0
+                text: "Recuperar"
+                onClicked: { finderBackend.restaurar(fileListRoot.objetivo()); fileListRoot.limpiarSeleccion() }
+            }
+            Button {
+                visible: fileListRoot.nSel > 0
+                text: "Eliminar para siempre"
+                onClicked: fileListRoot.eliminar(true)
+            }
+            Button {
+                text: "Vaciar Papelera"
+                enabled: !finderBackend.papeleraVacia
+                highlighted: true
+                palette.highlight: "#ff3b30"
+                onClicked: fileListRoot.vaciarPapelera()
+            }
         }
     }
 
-    // 1. VISTA EN CUADRÍCULA (GRID VIEW)
-    GridView {
-        id: gridView
-        anchors.fill: parent
-        anchors.margins: 16
-        cellWidth: 104
-        cellHeight: 116
-        clip: true
-        interactive: false
-        boundsBehavior: Flickable.StopAtBounds
-        visible: finderBackend.viewMode === "grid"
+    // ------------------------------------------------------------ elementos
+    // Lo común a la cuadrícula y a la lista: estado, agrupar y soltar encima.
+    component Elemento: Item {
+        id: el
+        property var entrada: ({})
+        readonly property string itemPath: entrada && entrada.path ? entrada.path : ""
+        readonly property bool seleccionado: fileListRoot.selectedPaths.indexOf(itemPath) !== -1
+        readonly property bool resaltado: soltarAqui.containsDrag
+        property real dx: 0
+        property real dy: 0
+        default property alias contenido: cuerpo.data
 
-        WheelHandler {
-            target: gridView
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            onWheel: (event) => {
-                var maxContentY = Math.max(0, gridView.contentHeight - gridView.height)
-                gridView.contentY = Math.max(0, Math.min(maxContentY, gridView.contentY - event.angleDelta.y))
+        // Agrupar: los seleccionados se juntan donde está el ratón
+        Connections {
+            target: fileListRoot
+            function onAgrupandoChanged() {
+                if (fileListRoot.agrupando && el.seleccionado) {
+                    var c = el.mapToItem(fileListRoot, el.width / 2, el.height / 2)
+                    el.dx = finderBackend.viewMode === "list" ? 0 : fileListRoot.pX - c.x
+                    el.dy = fileListRoot.pY - c.y
+                } else {
+                    el.dx = 0
+                    el.dy = 0
+                }
             }
         }
+        z: dx !== 0 || dy !== 0 ? 10 : 0
+        transform: Translate {
+            x: el.dx * 0.92
+            y: el.dy * 0.92
+            Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        }
+        opacity: fileListRoot.arrastrando && seleccionado ? 0.45 : 1
+
+        Item { id: cuerpo; anchors.fill: parent }
 
         MouseArea {
-            id: gridBgMouse
+            id: zona
             anchors.fill: parent
-            z: -1
+            hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onPressed: (mouse) => fileListRoot.handleBgPress(mouse, gridView)
-            onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, gridView)
-            onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
-            onClicked: (mouse) => fileListRoot.handleBgClick(mouse, gridView)
+            pressAndHoldInterval: 380
+            cursorShape: fileListRoot.agrupando ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+            onPressed: (mouse) => fileListRoot.alPresionar(mouse, el.entrada, zona)
+            onPositionChanged: (mouse) => fileListRoot.alMover(mouse, zona)
+            onPressAndHold: fileListRoot.alMantener()
+            onReleased: (mouse) => fileListRoot.alSoltarRaton(mouse, el.entrada)
+            onCanceled: { fileListRoot.pActivo = false; fileListRoot.agrupando = false }
+            onDoubleClicked: (mouse) => {
+                if (mouse.button === Qt.LeftButton && !finderBackend.enPapelera) finderBackend.openItem(el.itemPath)
+            }
         }
+        readonly property bool encima: zona.containsMouse
 
-        model: finderBackend.entries
-
-        delegate: Item {
-            id: gridItem
-            width: gridView.cellWidth
-            height: gridView.cellHeight
-
-            readonly property string itemPath: (modelData && modelData.path) ? modelData.path : ""
-            readonly property string itemName: (modelData && modelData.name) ? modelData.name : ""
-            readonly property bool isDir: (modelData && modelData.isDir) ? modelData.isDir : false
-
-            Item {
-                id: gridDragProxy
-            }
-
-            Drag.active: itemHover.drag.active
-            Drag.source: gridItem
-            Drag.dragType: Drag.Automatic
-            Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-            Drag.keys: ["text/uri-list"]
-            Drag.mimeData: {
-                "text/uri-list": (modelData.path.indexOf("://") !== -1 ? modelData.path : ("file://" + modelData.path)) + "\r\n",
-                "text/plain": modelData.path
-            }
-
-            property bool isSelected: fileListRoot.selectedPaths.indexOf(modelData.path) !== -1 || (fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath === modelData.path)
-
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 4
-                radius: 8
-                color: isSelected ? theme.accent :
-                       itemHover.containsMouse ? theme.itemHover : "transparent"
-
-                Behavior on color { ColorAnimation { duration: 100 } }
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 6
-                    width: parent.width - 8
-
-                    Image {
-                        source: modelData.icon
-                        sourceSize: Qt.size(64, 64)
-                        width: 58
-                        height: 58
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                        asynchronous: true
-                        cache: true
-                    }
-
-                    Text {
-                        text: modelData.name
-                        color: isSelected ? "#ffffff" : theme.contentTextPrimary
-                        font.pixelSize: 11
-                        font.weight: isSelected ? Font.DemiBold : Font.Normal
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideMiddle
-                        maximumLineCount: 2
-                        wrapMode: Text.WrapAnywhere
-                    }
-                }
-
-                MouseArea {
-                    id: itemHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: (itemHover.drag.active || pressedLeft) ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-
-                    property real pressX: 0
-                    property real pressY: 0
-                    property bool pressedLeft: false
-
-                    onPressed: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            pressX = mouse.x
-                            pressY = mouse.y
-                            pressedLeft = true
-                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
-                                fileListRoot.selectedPaths = [modelData.path]
-                            }
-                            fileListRoot.selectedPath = modelData.path
-                            fileListRoot.selectedName = modelData.name
-                            fileListRoot.selectedIsDir = modelData.isDir
-                        }
-                    }
-
-                    onPositionChanged: (mouse) => {
-                        if (pressedLeft && (mouse.buttons & Qt.LeftButton)) {
-                            var dx = mouse.x - pressX
-                            var dy = mouse.y - pressY
-                            if ((dx * dx + dy * dy) > 25) {
-                                pressedLeft = false
-                                finderBackend.startDrag(modelData.path)
-                            }
-                        }
-                    }
-
-                    onPressAndHold: (mouse) => {
-                        if (mouse.button === Qt.LeftButton || (mouse.buttons & Qt.LeftButton)) {
-                            pressedLeft = false
-                            finderBackend.startDrag(modelData.path)
-                        }
-                    }
-
-                    onReleased: (mouse) => {
-                        pressedLeft = false
-                    }
-
-                    onCanceled: {
-                        pressedLeft = false
-                    }
-
-                    onClicked: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
-                            fileListRoot.selectedPaths = []
-                            fileListRoot.selectedPath = ""
-                            fileListRoot.ctxVisible = false
-                        } else if (mouse.button === Qt.RightButton) {
-                            // "disponible si da click derecho en cualquier miembro del grupo"
-                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
-                                fileListRoot.selectedPaths = [modelData.path]
-                            }
-                            fileListRoot.selectedPath = modelData.path
-                            fileListRoot.selectedName = modelData.name
-                            fileListRoot.selectedIsDir = modelData.isDir
-
-                            var pt = mapToItem(fileListRoot, mouse.x, mouse.y)
-                            fileListRoot.showContextMenu(pt.x, pt.y)
-                        }
-                    }
-
-                    onDoubleClicked: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            finderBackend.openItem(modelData.path)
-                            fileListRoot.selectedPaths = []
-                            fileListRoot.selectedPath = ""
-                        }
-                    }
-                }
+        // Soltar sobre una carpeta: dentro de ella
+        DropArea {
+            id: soltarAqui
+            anchors.fill: parent
+            enabled: el.entrada.isDir === true && !finderBackend.enPapelera
+            keys: ["text/uri-list"]
+            onEntered: (drag) => { if (fileListRoot.arrastrando && el.seleccionado) drag.accepted = false }
+            onDropped: (drop) => {
+                if (!drop.hasUrls) return
+                finderBackend.soltar(drop.urls.map(u => u.toString()), el.itemPath, drop.proposedAction === Qt.CopyAction)
+                drop.accept(Qt.CopyAction)
             }
         }
     }
 
-    // 2. VISTA EN LISTA DETALLADA (LIST VIEW)
-    Column {
-        anchors.fill: parent
-        visible: finderBackend.viewMode === "list"
+    Item {
+        id: zonaVistas
+        anchors.top: barraPapelera.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
 
-        // Cabecera de columnas con ordenación interactiva
-        Rectangle {
-            width: parent.width
-            height: 28
-            color: "#f5f5f7"
+        // Vacío
+        Column {
+            anchors.centerIn: parent
+            spacing: 12
+            visible: finderBackend.entries.length === 0
+            Image {
+                source: finderBackend.enPapelera ? "qrc:/icons/trash.png" : "qrc:/icons/folder.png"
+                width: 72; height: 72
+                anchors.horizontalCenter: parent.horizontalCenter
+                opacity: 0.35
+                smooth: true
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: finderBackend.searchQuery.length > 0 ? "No se encontraron resultados"
+                      : finderBackend.enPapelera ? "La Papelera está vacía" : "Esta carpeta está vacía"
+                color: theme.contentTextSecondary
+                font.pixelSize: 14
+            }
+        }
 
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: Qt.rgba(0, 0, 0, 0.08)
+        // ---------------------------------------------------- CUADRÍCULA
+        Item {
+            anchors.fill: parent
+            anchors.margins: 16
+            visible: finderBackend.viewMode === "grid"
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onPressed: (mouse) => fileListRoot.fondoPresionado(mouse, gridView)
+                onPositionChanged: (mouse) => fileListRoot.fondoMovido(mouse, gridView)
+                onReleased: fileListRoot.fondoSoltado()
+                onCanceled: fileListRoot.fondoSoltado()
             }
 
-            Row {
+            GridView {
+                id: gridView
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
+                cellWidth: 104
+                cellHeight: 116
+                clip: true
+                interactive: false
+                boundsBehavior: Flickable.StopAtBounds
+                model: finderBackend.entries
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                // Columna Nombre
-                Item {
-                    width: parent.width - 380
-                    height: parent.height
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            text: "Nombre"
-                            color: finderBackend.sortBy === "name" ? theme.accent : theme.contentTextSecondary
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                        Text {
-                            visible: finderBackend.sortBy === "name"
-                            text: finderBackend.sortAscending ? "▲" : "▼"
-                            color: theme.accent
-                            font.pixelSize: 9
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: finderBackend.sort("name")
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: (event) => {
+                        var max = Math.max(0, gridView.contentHeight - gridView.height)
+                        gridView.contentY = Math.max(0, Math.min(max, gridView.contentY - event.angleDelta.y))
                     }
                 }
 
-                // Columna Fecha
-                Item {
-                    width: 150
-                    height: parent.height
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            text: "Fecha de modificación"
-                            color: finderBackend.sortBy === "date" ? theme.accent : theme.contentTextSecondary
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                        Text {
-                            visible: finderBackend.sortBy === "date"
-                            text: finderBackend.sortAscending ? "▲" : "▼"
-                            color: theme.accent
-                            font.pixelSize: 9
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: finderBackend.sort("date")
-                    }
+                Rectangle {
+                    parent: gridView.contentItem
+                    z: 100
+                    visible: fileListRoot.rbActivo && fileListRoot.rbVista === gridView
+                    x: Math.min(fileListRoot.rbX0, fileListRoot.rbX1)
+                    y: Math.min(fileListRoot.rbY0, fileListRoot.rbY1)
+                    width: Math.abs(fileListRoot.rbX1 - fileListRoot.rbX0)
+                    height: Math.abs(fileListRoot.rbY1 - fileListRoot.rbY0)
+                    color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18)
+                    border.color: theme.accent
+                    radius: 3
                 }
 
-                // Columna Tamaño
-                Item {
-                    width: 100
-                    height: parent.height
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            text: "Tamaño"
-                            color: finderBackend.sortBy === "size" ? theme.accent : theme.contentTextSecondary
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                        Text {
-                            visible: finderBackend.sortBy === "size"
-                            text: finderBackend.sortAscending ? "▲" : "▼"
-                            color: theme.accent
-                            font.pixelSize: 9
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: finderBackend.sort("size")
-                    }
-                }
+                delegate: Elemento {
+                    id: gEl
+                    required property var modelData
+                    entrada: modelData
+                    width: gridView.cellWidth
+                    height: gridView.cellHeight
 
-                // Columna Clase / Tipo
-                Item {
-                    width: 130
-                    height: parent.height
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            text: "Clase"
-                            color: finderBackend.sortBy === "kind" ? theme.accent : theme.contentTextSecondary
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                        Text {
-                            visible: finderBackend.sortBy === "kind"
-                            text: finderBackend.sortAscending ? "▲" : "▼"
-                            color: theme.accent
-                            font.pixelSize: 9
-                        }
-                    }
-                    MouseArea {
+                    Rectangle {
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: finderBackend.sort("kind")
+                        anchors.margins: 4
+                        radius: 8
+                        color: gEl.resaltado ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.35)
+                             : gEl.seleccionado ? theme.accent
+                             : gEl.encima ? theme.itemHover : "transparent"
+                        border.color: gEl.resaltado ? theme.accent : "transparent"
+                        border.width: 2
+                        scale: fileListRoot.agrupando && gEl.seleccionado && gEl.itemPath !== fileListRoot.pPath ? 0.82 : 1
+                        Behavior on scale { NumberAnimation { duration: 200 } }
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            width: parent.width - 8
+                            Image {
+                                source: theme.tinte(modelData.icon)
+                                sourceSize: Qt.size(64, 64)
+                                width: 58; height: 58
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                opacity: finderBackend.portapapelesCortado && finderBackend.clipboardPath === modelData.path ? 0.5 : 1
+                            }
+                            Text {
+                                text: modelData.name
+                                color: gEl.seleccionado ? "#ffffff" : theme.contentTextPrimary
+                                font.pixelSize: 11
+                                font.weight: gEl.seleccionado ? Font.DemiBold : Font.Normal
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideMiddle
+                                maximumLineCount: 2
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Lista de archivos detallada
-        ListView {
-            id: listView
-            width: parent.width
-            height: parent.height - 28
-            clip: true
-            interactive: false
-            boundsBehavior: Flickable.StopAtBounds
+        // ---------------------------------------------------- LISTA
+        Column {
+            anchors.fill: parent
+            visible: finderBackend.viewMode === "list"
 
-            WheelHandler {
-                target: listView
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (event) => {
-                    var maxContentY = Math.max(0, listView.contentHeight - listView.height)
-                    listView.contentY = Math.max(0, Math.min(maxContentY, listView.contentY - event.angleDelta.y))
-                }
-            }
-
-            MouseArea {
-                id: listBgMouse
-                anchors.fill: parent
-                z: -1
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onPressed: (mouse) => fileListRoot.handleBgPress(mouse, listView)
-                onPositionChanged: (mouse) => fileListRoot.handleBgMove(mouse, listView)
-                onReleased: (mouse) => fileListRoot.handleBgRelease(mouse)
-                onClicked: (mouse) => fileListRoot.handleBgClick(mouse, listView)
-            }
-
-            model: finderBackend.entries
-
-            delegate: Rectangle {
-                id: listItem
-                width: listView.width
-                height: 30
-
-                readonly property string itemPath: (modelData && modelData.path) ? modelData.path : ""
-                readonly property string itemName: (modelData && modelData.name) ? modelData.name : ""
-                readonly property bool isDir: (modelData && modelData.isDir) ? modelData.isDir : false
-
-                Item {
-                    id: listDragProxy
-                }
-
-                Drag.active: listHover.drag.active
-                Drag.source: listItem
-                Drag.dragType: Drag.Automatic
-                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-                Drag.keys: ["text/uri-list"]
-                Drag.mimeData: {
-                    "text/uri-list": (modelData.path.indexOf("://") !== -1 ? modelData.path : ("file://" + modelData.path)) + "\r\n",
-                    "text/plain": modelData.path
-                }
-
-                property bool isSelected: fileListRoot.selectedPaths.indexOf(modelData.path) !== -1 || (fileListRoot.selectedPaths.length === 0 && fileListRoot.selectedPath === modelData.path)
-
-                color: isSelected ? theme.accent :
-                       listHover.containsMouse ? theme.itemHover :
-                       index % 2 === 0 ? "transparent" : Qt.rgba(0, 0, 0, 0.02)
-
+            Rectangle {
+                width: parent.width
+                height: 28
+                color: theme.isDark ? Qt.rgba(1, 1, 1, 0.04) : "#f5f5f7"
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.contentCardBorder }
                 Row {
                     anchors.fill: parent
                     anchors.leftMargin: 14
                     anchors.rightMargin: 14
-
-                    // Nombre con icono
-                    Row {
-                        width: parent.width - 380
-                        height: parent.height
-                        spacing: 8
-
-                        Image {
-                            source: modelData.icon
-                            sourceSize: Qt.size(24, 24)
-                            width: 18
-                            height: 18
-                            anchors.verticalCenter: parent.verticalCenter
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            asynchronous: true
-                            cache: true
+                    Repeater {
+                        model: [
+                            { t: "Nombre", c: "name", w: -1 },
+                            { t: "Fecha de modificación", c: "date", w: 150 },
+                            { t: "Tamaño", c: "size", w: 100 },
+                            { t: "Clase", c: "kind", w: 130 }
+                        ]
+                        Item {
+                            required property var modelData
+                            width: modelData.w > 0 ? modelData.w : parent.width - 380
+                            height: parent.height
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.t + (finderBackend.sortBy === modelData.c ? (finderBackend.sortAscending ? "  ▲" : "  ▼") : "")
+                                color: finderBackend.sortBy === modelData.c ? theme.accent : theme.contentTextSecondary
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: finderBackend.sort(modelData.c) }
                         }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.name
-                            color: isSelected ? "#ffffff" : theme.contentTextPrimary
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            width: parent.width - 30
-                        }
-                    }
-
-                    // Fecha
-                    Text {
-                        width: 150
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.modified
-                        color: isSelected ? "#ffffff" : theme.contentTextSecondary
-                        font.pixelSize: 11
-                    }
-
-                    // Tamaño
-                    Text {
-                        width: 100
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.size
-                        color: isSelected ? "#ffffff" : theme.contentTextSecondary
-                        font.pixelSize: 11
-                    }
-
-                    // Tipo
-                    Text {
-                        width: 130
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.type
-                        color: isSelected ? "#ffffff" : theme.contentTextSecondary
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
                     }
                 }
+            }
+
+            Item {
+                width: parent.width
+                height: parent.height - 28
 
                 MouseArea {
-                    id: listHover
                     anchors.fill: parent
-                    hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: (listHover.drag.active || pressedLeft) ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                    onPressed: (mouse) => fileListRoot.fondoPresionado(mouse, listView)
+                    onPositionChanged: (mouse) => fileListRoot.fondoMovido(mouse, listView)
+                    onReleased: fileListRoot.fondoSoltado()
+                    onCanceled: fileListRoot.fondoSoltado()
+                }
 
-                    property real pressX: 0
-                    property real pressY: 0
-                    property bool pressedLeft: false
+                ListView {
+                    id: listView
+                    anchors.fill: parent
+                    clip: true
+                    interactive: false
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: finderBackend.entries
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                    onPressed: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            pressX = mouse.x
-                            pressY = mouse.y
-                            pressedLeft = true
-                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
-                                fileListRoot.selectedPaths = [modelData.path]
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: (event) => {
+                            var max = Math.max(0, listView.contentHeight - listView.height)
+                            listView.contentY = Math.max(0, Math.min(max, listView.contentY - event.angleDelta.y))
+                        }
+                    }
+
+                    Rectangle {
+                        parent: listView.contentItem
+                        z: 100
+                        visible: fileListRoot.rbActivo && fileListRoot.rbVista === listView
+                        x: Math.min(fileListRoot.rbX0, fileListRoot.rbX1)
+                        y: Math.min(fileListRoot.rbY0, fileListRoot.rbY1)
+                        width: Math.abs(fileListRoot.rbX1 - fileListRoot.rbX0)
+                        height: Math.abs(fileListRoot.rbY1 - fileListRoot.rbY0)
+                        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18)
+                        border.color: theme.accent
+                        radius: 3
+                    }
+
+                    delegate: Elemento {
+                        id: lEl
+                        required property var modelData
+                        required property int index
+                        entrada: modelData
+                        width: listView.width
+                        height: 30
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: lEl.resaltado ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.35)
+                                 : lEl.seleccionado ? theme.accent
+                                 : lEl.encima ? theme.itemHover
+                                 : index % 2 === 0 ? "transparent" : (theme.isDark ? Qt.rgba(1, 1, 1, 0.02) : Qt.rgba(0, 0, 0, 0.02))
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 14
+                                Row {
+                                    width: parent.width - 380
+                                    height: parent.height
+                                    spacing: 8
+                                    Image {
+                                        source: theme.tinte(modelData.icon)
+                                        sourceSize: Qt.size(24, 24)
+                                        width: 18; height: 18
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        opacity: finderBackend.portapapelesCortado && finderBackend.clipboardPath === modelData.path ? 0.5 : 1
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.name
+                                        color: lEl.seleccionado ? "#ffffff" : theme.contentTextPrimary
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                        width: parent.width - 30
+                                    }
+                                }
+                                Text { width: 150; anchors.verticalCenter: parent.verticalCenter; text: modelData.modified; color: lEl.seleccionado ? "#ffffff" : theme.contentTextSecondary; font.pixelSize: 11 }
+                                Text { width: 100; anchors.verticalCenter: parent.verticalCenter; text: modelData.size; color: lEl.seleccionado ? "#ffffff" : theme.contentTextSecondary; font.pixelSize: 11 }
+                                Text { width: 130; anchors.verticalCenter: parent.verticalCenter; text: modelData.type; color: lEl.seleccionado ? "#ffffff" : theme.contentTextSecondary; font.pixelSize: 11; elide: Text.ElideRight }
                             }
-                            fileListRoot.selectedPath = modelData.path
-                            fileListRoot.selectedName = modelData.name
-                            fileListRoot.selectedIsDir = modelData.isDir
-                        }
-                    }
-
-                    onPositionChanged: (mouse) => {
-                        if (pressedLeft && (mouse.buttons & Qt.LeftButton)) {
-                            var dx = mouse.x - pressX
-                            var dy = mouse.y - pressY
-                            if ((dx * dx + dy * dy) > 25) {
-                                pressedLeft = false
-                                finderBackend.startDrag(modelData.path)
-                            }
-                        }
-                    }
-
-                    onPressAndHold: (mouse) => {
-                        if (mouse.button === Qt.LeftButton || (mouse.buttons & Qt.LeftButton)) {
-                            pressedLeft = false
-                            finderBackend.startDrag(modelData.path)
-                        }
-                    }
-
-                    onReleased: (mouse) => {
-                        pressedLeft = false
-                    }
-
-                    onCanceled: {
-                        pressedLeft = false
-                    }
-
-                    onClicked: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            // "si da click izquierdo a cualquier lugar, incluyendo los miembros desaparece y se limpia"
-                            fileListRoot.selectedPaths = []
-                            fileListRoot.selectedPath = ""
-                            fileListRoot.ctxVisible = false
-                        } else if (mouse.button === Qt.RightButton) {
-                            // "disponible si da click derecho en cualquier miembro del grupo"
-                            if (fileListRoot.selectedPaths.indexOf(modelData.path) === -1) {
-                                fileListRoot.selectedPaths = [modelData.path]
-                            }
-                            fileListRoot.selectedPath = modelData.path
-                            fileListRoot.selectedName = modelData.name
-                            fileListRoot.selectedIsDir = modelData.isDir
-
-                            var pt = mapToItem(fileListRoot, mouse.x, mouse.y)
-                            fileListRoot.showContextMenu(pt.x, pt.y)
-                        }
-                    }
-
-                    onDoubleClicked: (mouse) => {
-                        if (mouse.button === Qt.LeftButton) {
-                            finderBackend.openItem(modelData.path)
-                            fileListRoot.selectedPaths = []
-                            fileListRoot.selectedPath = ""
                         }
                     }
                 }

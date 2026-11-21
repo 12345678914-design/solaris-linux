@@ -1,6 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Musica.qml</file>
+        <file>qml/Portada.qml</file>
+        <file>qml/Barra.qml</file>
+        <file>qml/BotonM.qml</file>
+        <file>qml/FilaCancion.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>

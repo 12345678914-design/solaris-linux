@@ -1,25 +1,24 @@
-================================================================================
-TITAN LINUX -- AVANCE 2026-09-27
-================================================================================
+# Titan Linux: avance del proyecto (27 de septiembre de 2026)
+
+> Informe histórico. Incluye verificaciones realizadas entre el 27 y el 29 de
+> septiembre de 2026; no representa necesariamente el estado actual del proyecto.
 
 Este fichero resume donde esta el proyecto, que esta verificado y que no. Los
 datos son reales, no planes: lo que se dice aqui "verificado" se ha arrancado en
 QEMU y comprobado; lo que no, esta escrito como esta.
 
-Indice
-  1. Que es Titan Linux y donde esta
-  2. v0.1.0: la ISO en vivo, verificada
-  3. Fase 3: el instalador, en que punto esta
-  4. Los cuarenta y seis fallos reales que han salido, y veintiseis del
-     comprobador
-  5. Los dos planes (interfaz de texto e interfaz grafica)
-  6. Como se comprueba
-  7. Lo que falta, en orden
+## Indice
+
+1. [Que es Titan Linux y donde esta](#1-que-es-titan-linux-y-donde-esta)
+2. [v0.1.0: la ISO en vivo, verificada](#2-v010-la-iso-en-vivo-verificada)
+3. [Fase 3: el instalador](#3-fase-3-el-instalador-en-que-punto-esta)
+4. [Fallos reales y del aparato de pruebas](#4-los-cuarenta-y-seis-fallos-reales-y-veintiseis-del-aparato-de-pruebas)
+5. [Los dos planes](#5-los-dos-planes)
+6. [Como se comprueba](#6-como-se-comprueba)
+7. [Lo que falta](#7-lo-que-falta-en-orden)
 
 
---------------------------------------------------------------------------------
-1. QUE ES TITAN LINUX Y DONDE ESTA
---------------------------------------------------------------------------------
+## 1. QUE ES TITAN LINUX Y DONDE ESTA
 
 Titan Linux es una distribucion derivada de Arch, construida desde cero en este
 repositorio. No es un tema ni un remiendo encima de Arch: el kernel es propio

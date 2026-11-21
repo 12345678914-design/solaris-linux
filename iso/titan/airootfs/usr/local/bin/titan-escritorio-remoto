@@ -1,0 +1,56 @@
+#!/bin/sh
+# Inti OS - escritorio remoto (VNC con wayvnc), como "Compartir escritorio"
+# en Ubuntu/Fedora. Se entra desde otro equipo con cualquier visor VNC
+# (Remmina, TigerVNC, RealVNC...) a <ip-de-este-equipo>:5900, con el nombre
+# de usuario y la contraseña de esta cuenta (PAM). La conexión va cifrada
+# (RSA-AES); la clave se crea la primera vez.
+#
+#   titan-escritorio-remoto estado     activo | inactivo
+#   titan-escritorio-remoto activar    lo arranca y lo deja para cada entrada
+#   titan-escritorio-remoto desactivar
+#   titan-escritorio-remoto inicio     (titan-sesion) arranca si estaba activo
+# El puerto 5900 lo abre Ajustes en el cortafuegos (titan-cortafuegos vnc).
+set -u
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+conf="$dir/wayvnc/config"
+clave="$dir/wayvnc/rsa_key.pem"
+marca="$dir/titan/escritorio-remoto.conf"
+
+corriendo() { pgrep -u "$(id -u)" -x wayvnc >/dev/null 2>&1; }
+
+arrancar() {
+    command -v wayvnc >/dev/null 2>&1 || { echo "wayvnc no está instalado" >&2; exit 1; }
+    mkdir -p "$dir/wayvnc"
+    chmod 0700 "$dir/wayvnc"
+    if [ ! -s "$clave" ]; then
+        (umask 077; openssl genrsa -traditional -out "$clave" 2048 2>/dev/null) ||
+            { echo "No se pudo crear la clave de cifrado" >&2; exit 1; }
+    fi
+    cat > "$conf" <<FIN
+# Lo escribe titan-escritorio-remoto (Ajustes > Compartir)
+address=0.0.0.0
+port=5900
+enable_auth=true
+enable_pam=true
+rsa_private_key_file=$clave
+FIN
+    corriendo || { nohup wayvnc --config "$conf" >"${XDG_RUNTIME_DIR:-/tmp}/wayvnc.log" 2>&1 & }
+}
+
+case "${1:-estado}" in
+    estado)
+        if corriendo; then echo activo; else echo inactivo; fi ;;
+    activar)
+        arrancar
+        mkdir -p "$dir/titan" && echo "ACTIVO=1" > "$marca"
+        sleep 1
+        corriendo || { echo "wayvnc no ha podido arrancar: $(tail -n 2 "${XDG_RUNTIME_DIR:-/tmp}/wayvnc.log" 2>/dev/null)" >&2; exit 1; } ;;
+    desactivar)
+        pkill -u "$(id -u)" -x wayvnc 2>/dev/null
+        mkdir -p "$dir/titan" && echo "ACTIVO=0" > "$marca" ;;
+    inicio)
+        grep -qs '^ACTIVO=1' "$marca" && arrancar
+        exit 0 ;;
+    *)
+        echo "uso: titan-escritorio-remoto estado|activar|desactivar" >&2; exit 2 ;;
+esac

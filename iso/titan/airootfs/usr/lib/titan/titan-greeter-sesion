@@ -1,0 +1,47 @@
+#!/bin/bash
+# Inti OS - pantalla de inicio de sesion (sistema instalado).
+#
+# greetd la arranca como usuario 'greeter' en tty1 (/etc/greetd/config.toml).
+# cage es un compositor de una sola ventana: muestra titan-greeter a pantalla
+# completa y se cierra con el. Al iniciar sesion, greetd arranca
+# /usr/lib/titan/titan-arranque-grafico como el usuario elegido.
+
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+export LANG="${LANG:-es_ES.UTF-8}"
+# Teclado de la pantalla de inicio: la distribucion del sistema (contrasenas con ñ, @, €...)
+if command -v titan-distribucion >/dev/null 2>&1; then
+  read -r XKB_DEFAULT_LAYOUT XKB_DEFAULT_VARIANT <<< "$(titan-distribucion --sistema)"
+  export XKB_DEFAULT_LAYOUT
+  [ -n "${XKB_DEFAULT_VARIANT}" ] && export XKB_DEFAULT_VARIANT || unset XKB_DEFAULT_VARIANT
+fi
+# 'greeter' no tiene carpeta personal: cache de Qt y fontconfig en /tmp.
+export HOME="/tmp/titan-greeter-${UID}"
+export XDG_CACHE_HOME="${HOME}/cache"
+mkdir -p "${XDG_CACHE_HOME}" 2>/dev/null
+
+# Misma deteccion que 15-titan-grafico.sh: sin aceleracion 3D (VMs sin
+# virgl, nomodeset, titan.compat) todo por software.
+sin_3d=1
+for nodo in /dev/dri/renderD*; do
+  [ -e "${nodo}" ] && sin_3d=0
+done
+if [ "${sin_3d}" -eq 1 ] || grep -qE '(titan\.compat|nomodeset|safe_graphics)' /proc/cmdline 2>/dev/null; then
+  export WLR_RENDERER=pixman
+  # En VM, cursor por hardware: si no, se ven dos flechas (la del visor y la
+  # dibujada). Ver aplicar_capa_compatibilidad en 15-titan-grafico.sh.
+  if ! systemd-detect-virt -q 2>/dev/null; then
+    export WLR_NO_HARDWARE_CURSORS=1
+  fi
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export QT_QUICK_BACKEND=software
+fi
+
+if command -v cage >/dev/null 2>&1 && [ -x /usr/local/bin/titan-greeter ]; then
+  exec cage -s -d -- /usr/local/bin/titan-greeter
+fi
+
+# Sin cage o sin el greeter grafico: el de texto de greetd, para no dejar el
+# sistema sin forma de entrar.
+exec agreety --cmd /usr/lib/titan/titan-arranque-grafico

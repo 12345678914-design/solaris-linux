@@ -1,0 +1,10 @@
+[Unit]
+Description=Inti OS: avanzar cada dia la fecha de las actualizaciones estables
+
+[Timer]
+OnBootSec=2min
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

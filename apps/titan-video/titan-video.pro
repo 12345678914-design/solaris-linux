@@ -1,4 +1,4 @@
-QT += quick quickcontrols2 multimedia
+QT += quick quickcontrols2 multimedia network
 
 CONFIG += c++17
 

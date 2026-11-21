@@ -97,7 +97,7 @@ ScrollView {
                             radius: 10
                             color: isSelected ? Qt.rgba(0, 0.44, 0.89, 0.15) :
                                    isHovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
-                            border.color: isSelected ? "#0071e3" :
+                            border.color: isSelected ? theme.accent :
                                           isHovered ? Qt.rgba(1, 1, 1, 0.3) : Qt.rgba(0, 0, 0, 0.1)
                             border.width: isSelected ? 3 : 1
                             scale: isHovered ? 1.03 : 1.0
@@ -131,7 +131,7 @@ ScrollView {
                                         width: 20
                                         height: 20
                                         radius: 10
-                                        color: "#0071e3"
+                                        color: theme.accent
 
                                         Text {
                                             anchors.centerIn: parent
@@ -146,7 +146,7 @@ ScrollView {
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: modelData.name
-                                    color: isSelected ? "#0071e3" : theme.contentTextPrimary
+                                    color: isSelected ? theme.accent : theme.contentTextPrimary
                                     font.pixelSize: 11
                                     font.bold: isSelected
                                     elide: Text.ElideRight

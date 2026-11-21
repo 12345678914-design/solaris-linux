@@ -26,6 +26,8 @@ int main(int argc, char *argv[]) {
     QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextProperty("themeManager", ThemeManager::instance());
+    // TitanTheme.qml busca "titanThemeManager": sin él la app no sigue el modo oscuro ni el acento.
+    engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
     engine.rootContext()->setContextProperty("clockBackend", &clockBackend);
 
     const QUrl url(QStringLiteral("qrc:/qml/Clock.qml"));

@@ -112,28 +112,6 @@ arch-install-scripts
 # envoltorio, y dialog 1.3-20260721 lo quito del paquete). El instalador habla
 # dialog.
 dialog
-# La pantalla GRAFICA del instalador (root/instalador/ventana-gui.py), que es el
-# mismo instalador con las mismas preguntas dibujadas con GTK4 en vez de con
-# ncurses. Va en el live y no en el sistema instalado porque el sistema
-# instalado no tiene escritorio todavia: si la pantalla grafica solo se
-# instalara despues, el primer arranque de un equipo recien instalado no
-# tendria forma de reinstalar. Con esto, 'install.sh --grafico' levanta cage y
-# el instalador corre con ventana; sin dispositivo de grafica, avisa y sigue en
-# texto, que instala igual de bien.
-#
-#   gtk4            la biblioteca de dibujo (unos 52 MB instalados)
-#   libadwaita      el aspecto (GNOME) de las ventanas, con sus widgets
-#   adwaita-icon-theme  los iconos que usan esos widgets
-#   python-gobject  la union de Python con GTK, que es lo que escribe la
-#                   ventana del instalador
-#   cage            un compositor minimo para levantar una pantalla en el live,
-#                   que no trae escritorio. Sin el, una ventana grafica en un
-#                   live no tendria donde dibujarse.
-gtk4
-libadwaita
-adwaita-icon-theme
-python-gobject
-cage
 # gptfdisk aporta sgdisk: el particionado automatico del instalador. Ojo, el
 # paquete se llama gptfdisk, no gdisk (ese nombre es de un programa ancient).
 gptfdisk
@@ -180,9 +158,18 @@ tmux
 #   hicolor-icon-theme  iconos base cuando el tema no trae uno concreto
 #   ttf-dejavu    tipografia con los bloques y simbolos del banner
 #   xdg-utils     xdg-open, que usan el explorador y los menus "abrir con"
-# Compositor principal estilo macOS con ventanas libres (stacking) y soporte X11
+#   wayfire       compositor de la sesion inmersiva (con GPU 3D): animaciones
+#                 de ventana (zoom, minimizar al Dock, deformacion al mover),
+#                 desenfoque real tras los paneles y vistas de ventanas y
+#                 escritorios. Config: ~/.config/wayfire.ini
+# Compositores (los dos stacking): Wayfire con GPU, labwc de respaldo sin 3D
+wayfire
 labwc
 xorg-xwayland
+# GSettings para GTK (orden de los botones de ventana: semaforos a la izquierda)
+dconf
+# Portapapeles compartido con el anfitrion cuando corre en una VM
+spice-vdagent
 dbus
 qt6-base
 qt6-wayland
@@ -197,7 +184,14 @@ vulkan-nouveau
 vulkan-swrast
 
 # --- Controladores Gráficos Modernos: NVIDIA, Intel y AMD ---
-nvidia-open
+# nvidia-open-dkms (no nvidia-open): el paquete precompilado solo vale para el
+# kernel de Arch. Con DKMS el modulo se compila tambien para linux-titanlinux
+# (sus cabeceras las anade build-iso.sh) y se recompila solo al actualizar.
+# Sin esto, con una NVIDIA sola el kernel por defecto se quedaba sin grafica:
+# nvidia-utils pone nouveau en lista negra.
+nvidia-open-dkms
+dkms
+linux-headers
 nvidia-utils
 nvidia-settings
 nvidia-prime
@@ -213,12 +207,19 @@ xf86-video-nouveau
 kitty
 pcmanfm-qt
 ttf-dejavu
+# Fuentes del escritorio: Inter (interfaz, la mas cercana a SF de las libres)
+# y JetBrains Mono (terminal). Se eligen en /etc/fonts/local.conf.
+inter-font
+ttf-jetbrains-mono
+# Emojis de color de las apps (📦 🔒 🎵...): sin esta fuente salen como cuadros vacios
+noto-fonts-emoji
 xdg-utils
 
 # --- Qt Quick Shell moderno estilo macOS ---
 qt6-declarative
 qt6-multimedia
 qt6-multimedia-ffmpeg
+taglib
 qmltermwidget
 
 # --- Soporte de AppImages y aplicaciones adicionales ---
@@ -244,9 +245,12 @@ pavucontrol
 networkmanager
 udisks2
 
-# --- Tienda de Aplicaciones (Arch Linux Pacman + Flatpak) y Apps GNOME ---
-gnome-software
-packagekit
+# --- Tienda de Aplicaciones y Apps GNOME ---
+# Discover (KDE) para Flatpak y firmware (fwupd). Sin packagekit-qt6 a
+# proposito: KDE avisa de que gestionar paquetes de Arch desde Discover esta
+# incompleto; el sistema se actualiza con pacman desde Ajustes. El envoltorio
+# /usr/local/bin/plasma-discover le da el tema claro/oscuro de Inti OS.
+discover
 gnome-calculator
 gnome-calendar
 gnome-clocks
@@ -265,7 +269,182 @@ libva-intel-driver
 
 # --- Aplicaciones incluidas en la ISO ---
 firefox
+# Firefox en español (como Ubuntu: sin esto sale en inglés)
+firefox-i18n-es-es
+firefox-i18n-es-mx
+# Correo (como Ubuntu: Thunderbird; la tecla Correo y los enlaces mailto: lo abren)
+thunderbird
+thunderbird-i18n-es-es
+# Camara web (como Fedora: Snapshot) y escritorio remoto (VNC; Ajustes > Compartir)
+snapshot
+wayvnc
 
 
 
 wtype
+# Inicio de sesion grafico multiusuario (sistema instalado)
+greetd
+cage
+
+# --- Escritorio completo: lo que Ubuntu y Fedora traen de serie -------------
+# Ver verify/comprobar-escritorio-completo.sh: cada bloque tiene su prueba.
+# Contrasena de administrador en ventana (agente propio titan-polkit, Qt 6)
+polkit-qt6
+# Llavero de contrasenas (Secret Service) para Firefox, Wi-Fi, VS Code...
+gnome-keyring
+libsecret
+# Compartir pantalla (Meet, Zoom, Discord, OBS) y capturas por portal
+xdg-desktop-portal-wlr
+xdg-desktop-portal-gtk
+# Capturas de pantalla (titan-captura) y portapapeles de Wayland
+grim
+slurp
+wl-clipboard
+libnotify
+# Bloqueo seguro (ext-session-lock: si algo se cae, la sesion sigue bloqueada)
+# e inactividad (bloquear, apagar pantalla, suspender)
+gtklock
+gtklock-userinfo-module
+gtklock-powerbar-module
+gtklock-playerctl-module
+swayidle
+wlopm
+wlsunset
+sound-theme-freedesktop
+playerctl
+# Impresoras y escaneres (IPP Everywhere sin drivers + escaneres de red)
+cups
+cups-pk-helper
+cups-browsed
+cups-filters
+system-config-printer
+ipp-usb
+sane
+sane-airscan
+simple-scan
+avahi
+nss-mdns
+# Discos: NTFS/exFAT, moviles (MTP), papelera y carpetas de red en Finder
+ntfs-3g
+exfatprogs
+gvfs
+gvfs-mtp
+gvfs-smb
+gvfs-gphoto2
+gnome-disk-utility
+smartmontools
+# Energia: perfiles (ahorro/equilibrado/rendimiento) y bateria
+power-profiles-daemon
+upower
+# Cortafuegos (entrante cerrado salvo SSH y mDNS; ver titan-cortafuegos)
+ufw
+# Puntos de restauracion: btrfs -> snapper (antes/despues de cada pacman y en
+# el menu de GRUB); ext4 -> Timeshift
+snapper
+snap-pac
+grub-btrfs
+inotify-tools
+btrfs-assistant
+timeshift
+# Fuentes para todos los idiomas (sin ellas el chino, japones o arabe son cuadros)
+noto-fonts
+# Métricas de Calibri y Cambria: los .docx de clase no se descolocan (Ubuntu/Fedora las traen)
+ttf-carlito
+ttf-caladea
+noto-fonts-cjk
+# Carpetas Documentos, Descargas, Imagenes... en el idioma del sistema
+xdg-user-dirs
+# VPN y modems moviles
+networkmanager-openvpn
+networkmanager-openconnect
+wireguard-tools
+modemmanager
+usb_modeswitch
+# Codecs que faltaban (GStreamer: AAC, H.264 por libav, MP3...)
+gst-libav
+gst-plugins-ugly
+# Arranque seguro (Secure Boot) con claves propias: titan-arranque-seguro
+sbctl
+# Animacion de arranque (sistema instalado)
+plymouth
+# Accesibilidad: lector de pantalla y sintesis de voz en espanol
+orca
+speech-dispatcher
+espeak-ng
+# Metodos de entrada (chino, japones, coreano...): se activan en Ajustes > Teclado
+fcitx5
+fcitx5-qt
+fcitx5-gtk
+fcitx5-configtool
+fcitx5-chinese-addons
+fcitx5-mozc
+fcitx5-hangul
+# Corrector ortografico (Firefox, OnlyOffice, GTK)
+hunspell
+hunspell-es_any
+hunspell-en_us
+# Lector de huellas y Thunderbolt
+fprintd
+bolt
+# Aviso de actualizaciones (checkupdates)
+pacman-contrib
+fakeroot
+# --- Lo que Ubuntu y Fedora traen de serie y faltaba (comparacion 2026-11) ---
+# Editor de texto grafico (los .txt se abrian en vim dentro de una terminal)
+gnome-text-editor
+# Comprimir y extraer: el Finder lo hace con bsdtar/7z; File Roller abre los
+# .zip/.7z/.rar para ver lo que hay dentro, como en Ubuntu
+zip
+7zip
+unrar
+file-roller
+# Monitor del sistema (procesos, CPU, memoria, discos)
+gnome-system-monitor
+# Particionar a mano (boton "Abrir GParted" del instalador). Corre como root
+# por XWayland: necesita xhost para dar permiso a root en la pantalla
+gparted
+xorg-xhost
+# Grabar la pantalla (titan-grabar, Super+Shift+5) y teclado en pantalla
+# (titan-teclado escribe con wtype por el protocolo de teclado virtual)
+wf-recorder
+# AppArmor (como Ubuntu): el kernel lo trae; se activa con lsm= en el arranque
+apparmor
+
+# Apps para estudiar y dar clase (2026-11). Veyon, Epoptes y Gromit-MPX no
+# estan en los repos (solo AUR); Gromit-MPX se instala desde la App Store.
+# Pizarra y anotaciones
+openboard
+xournalpp
+# Oficina y PDF (ONLYOFFICE va aparte: build-iso.sh descarga su AppImage)
+libreoffice-fresh
+libreoffice-fresh-es
+pdfarranger
+# Grabar y editar video de clases
+obs-studio
+kdenlive
+# Examenes, notas y libros
+auto-multiple-choice
+joplin-desktop
+obsidian
+anki
+calibre
+# Ciencias y matematicas (KDE Edu), astronomia e infantil
+kalzium
+kstars
+kmplot
+kig
+geogebra
+stellarium
+gcompris-qt
+
+# Impresoras antiguas (las modernas imprimen sin driver, IPP Everywhere):
+# Epson/Canon/Brother con gutenprint y foomatic, HP con hplip (como Ubuntu)
+gutenprint
+foomatic-db
+foomatic-db-engine
+foomatic-db-ppds
+hplip
+# "Abrir con la grafica dedicada" en portatiles con dos GPU
+switcheroo-control
+# Mejor integracion como maquina virtual en QEMU/KVM (arranca solo por udev)
+qemu-guest-agent

@@ -1,0 +1,35 @@
+#!/bin/sh
+# Inti OS - instalar un componente que le falta a Ajustes, con un botón
+# "Instalar" en vez de mandar a la terminal.
+#
+# Por seguridad solo instala los de esta lista (nombre -> paquetes de los
+# repositorios oficiales): aunque otro programa lo llame, no puede pedir
+# que se instale otra cosa.
+#
+#   titan-componente instalar wayvnc     (root; Ajustes, con pkexec)
+set -u
+export LC_ALL=C
+
+paquetes() {
+    case "$1" in
+        wayvnc) echo "wayvnc" ;;          # Ajustes > Compartir (escritorio remoto)
+        *) return 1 ;;
+    esac
+}
+
+[ "${1:-}" = instalar ] || { echo "uso: titan-componente instalar NOMBRE" >&2; exit 2; }
+lista=$(paquetes "${2:-}") || { echo "Componente desconocido: ${2:-}" >&2; exit 2; }
+[ "$(id -u)" -eq 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+if [ -d /run/archiso ]; then
+    echo "En la sesión en vivo no se instalan programas: instala Inti OS primero." >&2
+    exit 3
+fi
+if pgrep -x pacman >/dev/null 2>&1; then
+    echo "Ya se está instalando algo. Espera a que termine y vuelve a intentarlo." >&2
+    exit 4
+fi
+# shellcheck disable=SC2086
+pacman -S --needed --noconfirm $lista >/dev/null 2>&1 || {
+    echo "No se pudo instalar. ¿Hay conexión a Internet?" >&2
+    exit 5
+}

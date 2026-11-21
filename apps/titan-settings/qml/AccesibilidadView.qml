@@ -1,0 +1,45 @@
+// Ajustes > Accesibilidad
+import QtQuick
+
+PaginaAjustes {
+    id: vista
+    titulo: "Accesibilidad"
+    descripcion: "Herramientas para usar el equipo sin ver la pantalla, con dificultades de visión o sin teclado."
+
+    Component.onCompleted: sistema.refrescar("Accesibilidad")
+
+    Grupo {
+        etiqueta: "Movilidad y pantallas táctiles"
+        nota: "El teclado se queda abajo y escribe en la ventana donde estabas. Se recuerda para la próxima sesión."
+        Fila {
+            separador: false
+            titulo: "Teclado en pantalla"
+            detalle: "Escribir con el ratón o tocando la pantalla, sin teclado físico."
+            Interruptor {
+                activo: sistema.tecladoPantalla
+                onAlternado: function(v) { sistema.setTecladoPantalla(v) }
+            }
+        }
+    }
+
+    Grupo {
+        etiqueta: "Visión"
+        nota: "Atajo para encender y apagar el lector en cualquier momento: Super + Alt + S. Se recuerda para la próxima sesión."
+        Fila {
+            titulo: "Lector de pantalla"
+            detalle: "Orca lee en voz alta lo que hay en la pantalla."
+            Interruptor {
+                activo: sistema.lector
+                onAlternado: function(v) { sistema.setLector(v) }
+            }
+        }
+        Fila {
+            separador: false
+            titulo: "Voz, velocidad y teclas de Orca"
+            Boton {
+                texto: "Configurar…"
+                onPulsado: sistema.abrir("orca")
+            }
+        }
+    }
+}

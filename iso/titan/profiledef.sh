@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 #
-# Solaris Linux 1.8 - archiso profile (FASE 5 del proyecto).
+# Inti OS 1.8 - archiso profile (FASE 5 del proyecto).
 #
-# Live ISO de Solaris Linux. El sistema arranca con systemd dentro de la
+# Live ISO de Inti OS. El sistema arranca con systemd dentro de la
 # imagen, entra con autologin en tty1 (y en ttyS0, para QEMU headless) y
 # ofrece el comando basico de Linux mas `titan` / `fastfetch`.
 #
@@ -12,10 +12,10 @@
 #   TITAN_CODENAME  apodo de la release
 #   TITAN_REPO      ruta del repositorio local con linux-titanlinux
 
-iso_name="solaris-linux"
-iso_label="SOLARIS_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Solaris Linux Project <https://github.com/solaris-linux>"
-iso_application="Solaris Linux"
+iso_name="inti-os"
+iso_label="INTI_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_publisher="Inti OS Project <https://github.com/solaris-linux>"
+iso_application="Inti OS"
 iso_version="${TITAN_VERSION:-1.8}"
 install_dir="titan"
 buildmodes=('iso')
@@ -44,15 +44,17 @@ file_permissions=(
   # La app Acerca tambien se lanza desde el centro de aplicaciones; sin
   # 0755 el catalogo la muestra pero el clic no arranca nada.
   ["/usr/local/bin/titan-acerca"]="0:0:755"
-  # La pantalla grafica del instalador. Sin esta entrada llega a la ISO como
-  # 0644, y 'ventana()' la busca con '-x' para decidir si puede abrirla: con el
-  # permiso que no tiene se cae al modo de texto sin dar ninguna pista, y en
-  # una maquina con tarjeta el usuario ve como el instalador grafico no existe.
-  ["/root/instalador/ventana-gui.py"]="0:0:755"
   # /root a 0750 como en el paquete 'filesystem'; si no, pacman avisa de que los
   # permisos del directorio no cuadran con su .MTREE.
   ["/root/"]="0:0:750"
   ["/usr/local/bin/titan-shell"]="0:0:755"
+  ["/usr/local/bin/titan-sesion"]="0:0:755"
+  # Inicio de sesion del sistema instalado (greetd + cage + titan-greeter) y
+  # el servicio root que crea usuarios y grupos.
+  ["/usr/local/bin/titan-greeter"]="0:0:755"
+  ["/usr/local/bin/titan-usuarios-helper"]="0:0:755"
+  ["/usr/lib/titan/titan-greeter-sesion"]="0:0:755"
+  ["/usr/lib/titan/titan-arranque-grafico"]="0:0:755"
   ["/usr/local/bin/titan-finder"]="0:0:755"
   ["/usr/local/bin/titan-fotos"]="0:0:755"
   ["/usr/local/bin/titan-musica"]="0:0:755"
@@ -65,5 +67,24 @@ file_permissions=(
   ["/usr/local/bin/instalar"]="0:0:755"
   ["/root/instalador/instalar"]="0:0:755"
   ["/usr/local/bin/titan-installer"]="0:0:755"
+  # Escritorio completo (bloqueo, inactividad, capturas, cortafuegos, etc.)
+  ["/usr/local/bin/titan-bloquear"]="0:0:755"
+  ["/usr/local/bin/titan-bloquear-avisar"]="0:0:755"
+  ["/usr/local/bin/titan-inactividad"]="0:0:755"
+  ["/usr/local/bin/titan-pantallas"]="0:0:755"
+  ["/usr/local/bin/titan-luz-nocturna"]="0:0:755"
+  ["/usr/local/bin/titan-acento"]="0:0:755"
+  ["/usr/local/bin/titan-captura"]="0:0:755"
+  ["/usr/local/bin/titan-grabar"]="0:0:755"
+  ["/usr/local/bin/plasma-discover"]="0:0:755"
+  ["/usr/local/bin/titan-elegir-pantalla"]="0:0:755"
+  ["/usr/local/bin/titan-cortafuegos"]="0:0:755"
+  ["/usr/local/bin/titan-actualizaciones"]="0:0:755"
+  ["/usr/local/bin/titan-arranque-seguro"]="0:0:755"
+  ["/usr/local/bin/titan-huella"]="0:0:755"
+  ["/usr/local/bin/titan-instantaneas"]="0:0:755"
+  ["/usr/local/bin/titan-polkit"]="0:0:755"
+  ["/usr/local/bin/titan-teclado"]="0:0:755"
+  ["/usr/local/bin/titan-lector"]="0:0:755"
   ["/etc/sudoers.d/20-calamares"]="0:0:0440"
 )

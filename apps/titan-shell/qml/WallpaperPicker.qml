@@ -144,7 +144,7 @@ Item {
         property bool selected: false
         property bool highlighted: false
         property bool isAdd: false
-        property color accent: "#0a84ff"
+        property color accent: theme.accent
         property color textColor: "white"
         property color mutedColor: "#bbbbbb"
         signal activated()

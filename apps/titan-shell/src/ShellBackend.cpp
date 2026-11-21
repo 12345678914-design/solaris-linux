@@ -1,10 +1,16 @@
+#include "TitanBinary.h"
+#include "TitanUsuario.h"
 #include "ShellBackend.h"
+#include "TitanPrefs.h"
+#include "TitanIconoSvg.h"
 #include "DockModel.h"
 #include "ThemeManager.h"
+#include "WayfireIpc.h"
 #include <QProcess>
 #include <QStandardPaths>
 #include <QCoreApplication>
 #include <QDir>
+#include <QSettings>
 #include <QFile>
 #include <QFileInfo>
 #include <QTimer>
@@ -15,6 +21,9 @@
 #include <QDBusConnection>
 #include <QUrl>
 #include <QQuickWindow>
+#include <QSaveFile>
+#include <QHash>
+#include <QGuiApplication>
 
 NotificationsAdaptor::NotificationsAdaptor(ShellBackend *parent)
     : QDBusAbstractAdaptor(parent)
@@ -27,18 +36,28 @@ uint NotificationsAdaptor::Notify(const QString &app_name, uint replaces_id, con
                                   const QString &summary, const QString &body, const QStringList &actions,
                                   const QVariantMap &hints, int expire_timeout)
 {
-    Q_UNUSED(replaces_id)
-    Q_UNUSED(actions)
-    Q_UNUSED(hints)
     Q_UNUSED(expire_timeout)
-    m_backend->notify(summary, body, app_icon, app_name);
+    // replaces_id: la app actualiza una notificacion suya (p. ej. progreso);
+    // se quita la vieja sin avisar de cierre (no se ha cerrado, se sustituye).
+    if (replaces_id > 0)
+        m_backend->removeNotificationSilently(static_cast<int>(replaces_id));
+    // Imagen en las pistas (notify-send -i fichero ya llega como app_icon;
+    // algunas apps la mandan en image-path).
+    QString icono = app_icon;
+    if (icono.isEmpty())
+        icono = hints.value(QStringLiteral("image-path")).toString();
+    if (icono.startsWith(QStringLiteral("file://")))
+        icono = QUrl(icono).toLocalFile();
+    // Urgencia critica (bateria agotandose...): se ensena aunque haya No molestar.
+    const bool urgente = hints.value(QStringLiteral("urgency")).toInt() >= 2;
+    m_backend->notify(summary, body, icono, app_name, actions, urgente);
     return static_cast<uint>(m_backend->lastNotificationId());
 }
 
 void NotificationsAdaptor::CloseNotification(uint id)
 {
-    Q_UNUSED(id)
-    m_backend->dismissIsland();
+    // La app la retira: motivo 3 ("cerrada con CloseNotification").
+    m_backend->closeNotificationByApp(static_cast<int>(id));
 }
 
 QStringList NotificationsAdaptor::GetCapabilities()
@@ -56,28 +75,7 @@ void NotificationsAdaptor::GetServerInformation(QString &name, QString &vendor, 
 
 static QString resolveShellBinary(const QString &program)
 {
-    if (QFile::exists(program)) return program;
-    QString inPath = QStandardPaths::findExecutable(program);
-    if (!inPath.isEmpty()) return inPath;
-
-    const QStringList candidates = {
-        QStringLiteral("/usr/local/bin/") + program,
-        QStringLiteral("/usr/bin/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/iso/titan/airootfs/usr/local/bin/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/apps/") + program + QStringLiteral("/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/iso/titan/airootfs/usr/local/bin/") + program
-    };
-
-    for (const QString &c : candidates) {
-        if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
-            return c;
-        }
-    }
-    return program;
+    return titan::resolverBinario(program);
 }
 
 ShellBackend::ShellBackend(QObject *parent)
@@ -99,6 +97,17 @@ ShellBackend::ShellBackend(QObject *parent)
     connect(m_batteryTimer, &QTimer::timeout, this, [this]() {
         updateBatteryStatus();
     });
+    // Sonido al conectar el cargador. La primera lectura no suena: solo
+    // los cambios mientras la sesión está abierta.
+    connect(this, &ShellBackend::batteryChanged, this, [this]() {
+        const int ahora = m_hasBattery ? (m_isCharging ? 1 : 0) : -1;
+        if (m_cargaPrevia == 0 && ahora == 1) {
+            const QString sonido = QStringLiteral("/usr/share/sounds/freedesktop/stereo/power-plug.oga");
+            if (QFile::exists(sonido))
+                QProcess::startDetached(QStringLiteral("pw-play"), {sonido});
+        }
+        m_cargaPrevia = ahora;
+    });
     m_batteryTimer->start();
 
     m_islandTimer = new QTimer(this);
@@ -108,6 +117,25 @@ ShellBackend::ShellBackend(QObject *parent)
     m_workspaces = {
         QStringLiteral("Escritorio 1")
     };
+
+    // En Wayfire el cambio de escritorio tambien puede venir del teclado
+    // (Ctrl+Super+flechas, Super+N) o de un gesto: se refleja aqui sin
+    // volver a pedirlo al compositor.
+    if (WayfireIpc::instancia()->disponible()) {
+        connect(WayfireIpc::instancia(), &WayfireIpc::escritorioCambiado, this, [this](int x) {
+            if (x < 0) return;
+            bool cambiaLista = false;
+            while (m_workspaces.size() <= x) {
+                m_workspaces.append(QStringLiteral("Escritorio ") + QString::number(m_workspaces.size() + 1));
+                cambiaLista = true;
+            }
+            if (cambiaLista) emit workspacesChanged();
+            if (m_currentWorkspace != x) {
+                m_currentWorkspace = x;
+                emit currentWorkspaceChanged();
+            }
+        });
+    }
 
     // Registrar servicio D-Bus org.freedesktop.Notifications
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -125,14 +153,20 @@ ShellBackend::ShellBackend(QObject *parent)
                QStringLiteral("Inti OS"));
     });
 
-    m_userName = QString::fromLocal8Bit(qgetenv("USER"));
-    if (m_userName.isEmpty()) m_userName = QStringLiteral("isai");
+    m_userName = titan::usuarioActual();
     m_userDisplayName = m_userName;
     if (!m_userDisplayName.isEmpty()) m_userDisplayName[0] = m_userDisplayName[0].toUpper();
 
     m_bootSplashActive = true;
     m_bootSplashFinished = false;
-    m_lockScreenActive = !isLiveSystem();
+    // Con greetd la persona ya se ha identificado en la pantalla de inicio:
+    // no se le vuelve a pedir la contrasena al arrancar el escritorio.
+    m_lockScreenActive = !isLiveSystem() && !canSwitchUser();
+    if (m_lockScreenActive && usarBloqueoSeguro()) {
+        // Entrada por consola sin pantalla de inicio: se bloquea con gtklock.
+        m_lockScreenActive = false;
+        QTimer::singleShot(1200, this, &ShellBackend::lockScreen);
+    }
 
     ThemeManager *tm = ThemeManager::instance();
     connect(tm, &ThemeManager::wallpapersChanged, this, &ShellBackend::wallpapersChanged);
@@ -648,14 +682,14 @@ void ShellBackend::scanWifi()
         // Solo si NO existe ningún hardware Wi-Fi físico, proveer redes de demostración para pruebas visuales en QEMU
         if (found.isEmpty() && !hasWifiAdapter()) {
             QVariantMap n1;
-            n1[QStringLiteral("ssid")] = m_wifiSsid.isEmpty() ? QStringLiteral("Solaris-Fiber-5G") : m_wifiSsid;
+            n1[QStringLiteral("ssid")] = m_wifiSsid.isEmpty() ? QStringLiteral("Inti-Fiber-5G") : m_wifiSsid;
             n1[QStringLiteral("signal")] = 95;
             n1[QStringLiteral("connected")] = m_wifiConnected;
             n1[QStringLiteral("security")] = QStringLiteral("WPA2/WPA3");
             found.append(n1);
 
             QVariantMap n2;
-            n2[QStringLiteral("ssid")] = QStringLiteral("Solaris-Guest");
+            n2[QStringLiteral("ssid")] = QStringLiteral("Inti-Guest");
             n2[QStringLiteral("signal")] = 80;
             n2[QStringLiteral("connected")] = false;
             n2[QStringLiteral("security")] = QStringLiteral("Abierta");
@@ -887,7 +921,7 @@ void ShellBackend::launchApp(const QString &appId, const QString &exec)
 void ShellBackend::openAcerca()
 {
     if (m_dockModel) {
-        m_dockModel->launchApp(QStringLiteral("titan-acerca"), QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Solaris"), QStringLiteral("qrc:/icons/about.png"));
+        m_dockModel->launchApp(QStringLiteral("titan-acerca"), QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"));
     } else {
         QProcess::startDetached(resolveShellBinary(QStringLiteral("titan-acerca")));
     }
@@ -1247,34 +1281,370 @@ void ShellBackend::closeNotificationCenter()
 
 void ShellBackend::clearNotifications()
 {
+    // Motivo 2: la ha descartado el usuario (spec de notificaciones).
+    for (const QVariant &v : std::as_const(m_notifications))
+        emit NotificationClosed(v.toMap().value(QStringLiteral("id")).toUInt(), 2);
     m_notifications.clear();
     emit notificationsChanged();
 }
 
-void ShellBackend::removeNotification(int id)
+bool ShellBackend::takeNotification(int id)
 {
     for (int i = 0; i < m_notifications.size(); ++i) {
         if (m_notifications[i].toMap().value(QStringLiteral("id")).toInt() == id) {
             m_notifications.removeAt(i);
             emit notificationsChanged();
-            break;
+            if (m_islandActive && m_currentIslandNotification.value(QStringLiteral("id")).toInt() == id)
+                dismissIsland();
+            return true;
         }
     }
+    return false;
+}
+
+void ShellBackend::removeNotification(int id)
+{
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 2);
+}
+
+void ShellBackend::removeNotificationSilently(int id)
+{
+    takeNotification(id);
+}
+
+void ShellBackend::closeNotificationByApp(int id)
+{
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 3);
+}
+
+void ShellBackend::invokeNotificationAction(int id, const QString &key)
+{
+    // Pulsar un boton (o la notificacion, accion "default") la cierra.
+    emit ActionInvoked(static_cast<uint>(id), key.isEmpty() ? QStringLiteral("default") : key);
+    if (takeNotification(id))
+        emit NotificationClosed(static_cast<uint>(id), 2);
 }
 
 void ShellBackend::dismissIsland()
 {
     if (m_islandActive) {
         m_islandActive = false;
+        m_islandQueue = 0;
         emit islandChanged();
     }
 }
 
-void ShellBackend::notify(const QString &title, const QString &message, const QString &icon, const QString &appName)
+void ShellBackend::mantenerIsla(bool encima)
+{
+    if (!m_islandTimer || !m_islandActive)
+        return;
+    if (encima)
+        m_islandTimer->stop();
+    else
+        m_islandTimer->start(3000);
+}
+
+// ---------------------------------------------------------------- teclas
+// Ejecuta un programa y espera poco: wpctl y brightnessctl tardan milisegundos.
+static QString salidaDe(const QString &prog, const QStringList &args, int ms = 800)
+{
+    QProcess p;
+    p.start(prog, args);
+    if (!p.waitForFinished(ms))
+        return QString();
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+}
+
+bool ShellBackend::leerVolumen(const QString &dispositivo, qreal *valor, bool *silencio)
+{
+    // "Volume: 0.45" o "Volume: 0.45 [MUTED]"
+    const QString o = salidaDe(QStringLiteral("wpctl"), {QStringLiteral("get-volume"), dispositivo});
+    if (!o.startsWith(QStringLiteral("Volume:")))
+        return false;
+    const QStringList partes = o.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    bool ok = false;
+    const qreal v = partes.size() >= 2 ? partes.at(1).toDouble(&ok) : 0;
+    if (!ok)
+        return false;
+    *valor = qBound(0.0, v, 1.0);
+    *silencio = o.contains(QStringLiteral("MUTED"));
+    return true;
+}
+
+bool ShellBackend::brilloRelativo(const QString &dispositivo, const QString &cambio, qreal *valor)
+{
+    // brightnessctl -m: "intel_backlight,backlight,412,43%,960". Va por logind,
+    // asi que no hace falta root. -n 1: bajar nunca apaga del todo la pantalla.
+    QStringList args{QStringLiteral("-m")};
+    if (dispositivo.isEmpty())
+        args << QStringLiteral("-c") << QStringLiteral("backlight");
+    else
+        args << QStringLiteral("-d") << dispositivo;
+    if (!cambio.isEmpty())
+        args << QStringLiteral("-n1") << QStringLiteral("set") << cambio;
+    const QString o = salidaDe(QStringLiteral("brightnessctl"), args);
+    const QStringList c = o.split(QLatin1Char('\n')).value(0).split(QLatin1Char(','));
+    if (c.size() < 5)
+        return false;
+    const double actual = c.at(2).toDouble(), maximo = c.at(4).toDouble();
+    if (maximo <= 0)
+        return false;
+    *valor = qBound(0.0, actual / maximo, 1.0);
+    return true;
+}
+
+void ShellBackend::mostrarIndicador(const QString &tipo, qreal valor, bool silencio)
+{
+    m_indicador = QVariantMap{{QStringLiteral("tipo"), tipo},
+                              {QStringLiteral("valor"), valor},
+                              {QStringLiteral("silencio"), silencio}};
+    m_indicadorActivo = true;
+    if (!m_indicadorTimer) {
+        m_indicadorTimer = new QTimer(this);
+        m_indicadorTimer->setSingleShot(true);
+        connect(m_indicadorTimer, &QTimer::timeout, this, [this]() {
+            m_indicadorActivo = false;
+            emit indicadorChanged();
+        });
+    }
+    m_indicadorTimer->start(1600);
+    emit indicadorChanged();
+}
+
+bool ShellBackend::altPulsada() const
+{
+    return QGuiApplication::queryKeyboardModifiers() & Qt::AltModifier;
+}
+
+void ShellBackend::tecla(const QString &accion)
+{
+    const QString salida = QStringLiteral("@DEFAULT_AUDIO_SINK@");
+    const QString micro = QStringLiteral("@DEFAULT_AUDIO_SOURCE@");
+    qreal v = 0;
+    bool mudo = false;
+
+    if (accion == QStringLiteral("volumen-subir") || accion == QStringLiteral("volumen-bajar")) {
+        const bool sube = accion == QStringLiteral("volumen-subir");
+        // -l 1.0: no pasar del 100 % (como Ubuntu y macOS)
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-volume"), QStringLiteral("-l"), QStringLiteral("1.0"),
+                                           salida, sube ? QStringLiteral("5%+") : QStringLiteral("5%-")});
+        if (sube)
+            salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), salida, QStringLiteral("0")});
+        if (leerVolumen(salida, &v, &mudo)) {
+            m_volume = v;
+            emit volumeChanged();
+            mostrarIndicador(QStringLiteral("volumen"), v, mudo);
+        }
+    } else if (accion == QStringLiteral("silenciar")) {
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), salida, QStringLiteral("toggle")});
+        if (leerVolumen(salida, &v, &mudo))
+            mostrarIndicador(QStringLiteral("volumen"), v, mudo);
+    } else if (accion == QStringLiteral("micro-silenciar")) {
+        salidaDe(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), micro, QStringLiteral("toggle")});
+        if (leerVolumen(micro, &v, &mudo))
+            mostrarIndicador(QStringLiteral("micro"), v, mudo);
+    } else if (accion == QStringLiteral("brillo-subir") || accion == QStringLiteral("brillo-bajar")) {
+        const bool sube = accion == QStringLiteral("brillo-subir");
+        if (m_hasHardwareBacklight
+            && brilloRelativo(QString(), sube ? QStringLiteral("5%+") : QStringLiteral("5%-"), &v)) {
+            m_brightness = qMax(0.05, v);
+            emit brightnessChanged();
+        } else {
+            // Sin pantalla con retroiluminacion (sobremesa): monitor por DDC/CI
+            setBrightness(m_brightness + (sube ? 0.1 : -0.1));
+            v = m_brightness;
+        }
+        mostrarIndicador(QStringLiteral("brillo"), v, false);
+    } else if (accion == QStringLiteral("teclado-subir") || accion == QStringLiteral("teclado-bajar")
+               || accion == QStringLiteral("teclado-alternar")) {
+        QString cambio = accion == QStringLiteral("teclado-subir") ? QStringLiteral("34%+")
+                       : accion == QStringLiteral("teclado-bajar") ? QStringLiteral("34%-") : QString();
+        const QString kbd = QStringLiteral("*::kbd_backlight");
+        if (cambio.isEmpty() && brilloRelativo(kbd, QString(), &v))
+            cambio = v > 0 ? QStringLiteral("0") : QStringLiteral("100%");
+        // -n1 no vale aqui (apagar la luz del teclado si se puede)
+        QStringList args{QStringLiteral("-m"), QStringLiteral("-d"), kbd, QStringLiteral("set"), cambio};
+        const QStringList c = salidaDe(QStringLiteral("brightnessctl"), args).split(QLatin1Char(','));
+        if (c.size() >= 5 && c.at(4).toDouble() > 0)
+            mostrarIndicador(QStringLiteral("teclado"), c.at(2).toDouble() / c.at(4).toDouble(), false);
+    } else if (accion == QStringLiteral("reproducir") || accion == QStringLiteral("pausa")
+               || accion == QStringLiteral("siguiente") || accion == QStringLiteral("anterior")
+               || accion == QStringLiteral("parar")) {
+        static const QHash<QString, QString> orden{
+            {QStringLiteral("reproducir"), QStringLiteral("play-pause")}, {QStringLiteral("pausa"), QStringLiteral("pause")},
+            {QStringLiteral("siguiente"), QStringLiteral("next")}, {QStringLiteral("anterior"), QStringLiteral("previous")},
+            {QStringLiteral("parar"), QStringLiteral("stop")}};
+        QProcess::startDetached(QStringLiteral("playerctl"), {orden.value(accion)});
+    } else if (accion == QStringLiteral("alt-tab") || accion == QStringLiteral("alt-tab-atras")) {
+        emit altTab(accion == QStringLiteral("alt-tab") ? 1 : -1);
+    } else if (accion == QStringLiteral("calculadora")) {
+        QProcess::startDetached(QStringLiteral("titan-calc"), {});
+    } else if (accion == QStringLiteral("navegador")) {
+        QProcess::startDetached(QStringLiteral("xdg-open"), {QStringLiteral("https://")});
+    } else if (accion == QStringLiteral("correo")) {
+        QProcess::startDetached(QStringLiteral("xdg-open"), {QStringLiteral("mailto:")});
+    } else if (accion == QStringLiteral("archivos")) {
+        QProcess::startDetached(QStringLiteral("titan-finder"), {});
+    } else if (accion == QStringLiteral("ajustes")) {
+        openSettings();
+    } else if (accion == QStringLiteral("buscar")) {
+        toggleLauncher();
+    } else if (accion == QStringLiteral("bloquear")) {
+        lockScreen();
+    } else if (accion == QStringLiteral("pantallas")) {
+        QProcess::startDetached(QStringLiteral("titan-elegir-pantalla"), {});
+    }
+}
+
+void ShellBackend::setPrefs(TitanPrefs *p)
+{
+    m_prefs = p;
+    // Cambiar en Ajustes que se ve en el bloqueo se aplica al momento.
+    if (m_prefs)
+        connect(m_prefs, &TitanPrefs::cambiado, this, [this]() {
+            emit avisosBloqueoChanged();
+            escribirAvisosBloqueo();
+        });
+    connect(this, &ShellBackend::notificationsChanged, this, [this]() {
+        emit avisosBloqueoChanged();
+        escribirAvisosBloqueo();
+    });   // setPrefs se llama una sola vez (main.cpp)
+    escribirAvisosBloqueo();
+}
+
+QVariantList ShellBackend::avisosBloqueo() const
+{
+    // Como Android: todo, sin contenido (app y hora) o nada.
+    const QString modo = m_prefs ? m_prefs->s(QStringLiteral("Notificaciones/bloqueo")) : QStringLiteral("todo");
+    QVariantList lista;
+    if (modo == QStringLiteral("nada"))
+        return lista;
+    const bool contenido = modo != QStringLiteral("sinContenido")
+                           && (!m_prefs || m_prefs->b(QStringLiteral("Notificaciones/vistaPrevia")));
+    for (const QVariant &v : m_notifications) {
+        if (lista.size() >= 30)
+            break;
+        const QVariantMap n = v.toMap();
+        QVariantMap a;
+        a[QStringLiteral("id")] = n.value(QStringLiteral("id"));
+        a[QStringLiteral("appName")] = n.value(QStringLiteral("appName"));
+        a[QStringLiteral("icon")] = n.value(QStringLiteral("icon"));
+        a[QStringLiteral("time")] = n.value(QStringLiteral("time"));
+        if (modo == QStringLiteral("sinContenido")) {
+            a[QStringLiteral("title")] = QStringLiteral("Contenido oculto");
+            a[QStringLiteral("message")] = QString();
+        } else {
+            a[QStringLiteral("title")] = n.value(QStringLiteral("title"));
+            a[QStringLiteral("message")] = contenido ? n.value(QStringLiteral("message")) : QVariant(QString());
+        }
+        lista.append(a);
+    }
+    return lista;
+}
+
+// Valor de GKeyFile (lo lee el modulo de gtklock con g_key_file).
+static QString valorClave(QString t)
+{
+    t.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    t.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+    t.replace(QLatin1Char('\r'), QStringLiteral("\\r"));
+    t.replace(QLatin1Char('\t'), QStringLiteral("\\t"));
+    if (t.startsWith(QLatin1Char(' ')))
+        t = QStringLiteral("\\s") + t.mid(1);
+    return t;
+}
+
+void ShellBackend::escribirAvisosBloqueo()
+{
+    // La pantalla de bloqueo segura (gtklock) es otro programa: se le pasan
+    // los avisos en un fichero de XDG_RUNTIME_DIR, que solo puede leer este
+    // usuario y desaparece al cerrar su sesion. Asi, al cambiar de usuario
+    // nadie mas los ve.
+    const QString dir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (dir.isEmpty() || !QFileInfo(dir).isDir())
+        return;
+    QSaveFile f(dir + QStringLiteral("/titan-avisos-bloqueo"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QString out = QStringLiteral("# Inti OS - avisos para la pantalla de bloqueo (titan-shell)\n");
+    int i = 0;
+    for (const QVariant &v : avisosBloqueo()) {
+        const QVariantMap a = v.toMap();
+        QString icono = a.value(QStringLiteral("icon")).toString();
+        if (icono.startsWith(QStringLiteral("file://")))
+            icono = QUrl(icono).toLocalFile();
+        else if (!icono.startsWith(QLatin1Char('/')))
+            icono.clear();   // qrc: no existe fuera del shell
+        out += QStringLiteral("\n[aviso %1]\n").arg(i++);
+        out += QStringLiteral("app=") + valorClave(a.value(QStringLiteral("appName")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("titulo=") + valorClave(a.value(QStringLiteral("title")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("texto=") + valorClave(a.value(QStringLiteral("message")).toString()) + QLatin1Char('\n');
+        out += QStringLiteral("icono=") + valorClave(icono) + QLatin1Char('\n');
+        out += QStringLiteral("hora=") + valorClave(a.value(QStringLiteral("time")).toString()) + QLatin1Char('\n');
+    }
+    f.write(out.toUtf8());
+    f.commit();
+}
+
+// Clave de una app en las preferencias ('/' separaria grupos en QSettings).
+static QString claveApp(const QString &app)
+{
+    QString k = app.isEmpty() ? QStringLiteral("Sistema") : app;
+    k.replace(QLatin1Char('/'), QLatin1Char('_'));
+    k.replace(QLatin1Char('\\'), QLatin1Char('_'));
+    return k;
+}
+
+void ShellBackend::registrarAppNotificadora(const QString &app, const QString &icono)
+{
+    // Ajustes > Notificaciones ensena las apps que han avisado alguna vez.
+    // Fichero aparte: shell.conf solo lo escribe Ajustes.
+    QSettings s(QDir::homePath() + QStringLiteral("/.config/titan/notificaciones-apps.conf"), QSettings::IniFormat);
+    const QString k = QStringLiteral("apps/") + claveApp(app);
+    if (s.value(k + QStringLiteral("/nombre")).toString() == app && s.value(k + QStringLiteral("/icono")).toString() == icono)
+        return;
+    s.setValue(k + QStringLiteral("/nombre"), app.isEmpty() ? QStringLiteral("Sistema") : app);
+    s.setValue(k + QStringLiteral("/icono"), icono);
+}
+
+void ShellBackend::setNoMolestar(bool activo)
+{
+    if (m_prefs)
+        m_prefs->poner(QStringLiteral("Notificaciones/noMolestar"), activo);
+}
+
+void ShellBackend::notify(const QString &title, const QString &message, const QString &icon, const QString &appName,
+                          const QStringList &actions, bool urgente)
 {
     m_lastNotificationId++;
+    // Notificaciones desactivadas para esta app en Ajustes: no se ensena nada.
+    const QString clave = claveApp(appName);
+    if (m_prefs && !urgente) {
+        const QVariant permitir = m_prefs->v(QStringLiteral("Notificaciones/apps/") + clave);
+        if (permitir.isValid() && (permitir.toString() == QStringLiteral("false") || permitir == QVariant(false))) {
+            registrarAppNotificadora(appName, icon);
+            return;
+        }
+    }
     QVariantMap n;
     n[QStringLiteral("id")] = m_lastNotificationId;
+    // Acciones: lista plana [clave, texto, clave, texto...]. "default" es el
+    // clic en la notificacion; no lleva boton propio.
+    QVariantList botones;
+    for (int i = 0; i + 1 < actions.size(); i += 2) {
+        if (actions.at(i) == QStringLiteral("default")) {
+            n[QStringLiteral("defaultAction")] = true;
+            continue;
+        }
+        QVariantMap b;
+        b[QStringLiteral("key")] = actions.at(i);
+        b[QStringLiteral("label")] = actions.at(i + 1);
+        botones.append(b);
+    }
+    n[QStringLiteral("actions")] = botones;
     n[QStringLiteral("title")] = title.isEmpty() ? QStringLiteral("Notificación") : title;
     n[QStringLiteral("message")] = message;
     n[QStringLiteral("appName")] = appName.isEmpty() ? QStringLiteral("Sistema") : appName;
@@ -1304,8 +1674,11 @@ void ShellBackend::notify(const QString &title, const QString &message, const QS
             }
         }
         if (!found) {
-            resolvedIcon = QStringLiteral("qrc:/icons/system.png");
+            resolvedIcon = titan::iconoGenerado(appName.isEmpty() ? resolvedIcon : appName, resolvedIcon);
         }
+    } else if (resolvedIcon.startsWith(QLatin1Char('/')) && !titan::iconoExiste(resolvedIcon)) {
+        resolvedIcon = titan::iconoGenerado(appName.isEmpty() ? QFileInfo(resolvedIcon).completeBaseName() : appName,
+                                            resolvedIcon);
     }
 
     n[QStringLiteral("icon")] = resolvedIcon;
@@ -1314,13 +1687,29 @@ void ShellBackend::notify(const QString &title, const QString &message, const QS
 
     m_notifications.prepend(n);
     emit notificationsChanged();
+    registrarAppNotificadora(appName, icon);
 
-    m_currentIslandNotification = n;
+    // No molestar / Concentracion: se guarda en el centro, sin aviso ni sonido.
+    if (m_prefs && m_prefs->noMolestarActivo() && !urgente)
+        return;
+
+    QVariantMap aviso = n;
+    if (m_prefs && !m_prefs->b(QStringLiteral("Notificaciones/vistaPrevia")))
+        aviso[QStringLiteral("message")] = QString();
+    m_currentIslandNotification = aviso;
+    // Si ya habia un aviso en la isla, el nuevo lo sustituye y cuenta "+N".
+    m_islandQueue = m_islandActive ? m_islandQueue + 1 : 0;
     m_islandActive = true;
     emit islandChanged();
 
     if (m_islandTimer) {
         m_islandTimer->start(5000);
+    }
+
+    if (m_prefs && m_prefs->b(QStringLiteral("Notificaciones/sonido"))) {
+        const QString sonido = QStringLiteral("/usr/share/sounds/freedesktop/stereo/message.oga");
+        if (QFile::exists(sonido))
+            QProcess::startDetached(QStringLiteral("pw-play"), {sonido});
     }
 }
 
@@ -1334,7 +1723,10 @@ void ShellBackend::setWorkspacesVisible(bool visible)
 
 void ShellBackend::toggleWorkspaces()
 {
-    setWorkspacesVisible(!m_workspacesVisible);
+    if (m_workspacesVisible)
+        emit workspacesCloseRequested();
+    else
+        setWorkspacesVisible(true);
 }
 
 void ShellBackend::addWorkspace()
@@ -1356,18 +1748,23 @@ void ShellBackend::removeWorkspace(int index)
     }
 }
 
-void ShellBackend::switchToWorkspace(int index)
+void ShellBackend::switchToWorkspace(int index, bool cerrarVista)
 {
     if (index >= 0 && index < m_workspaces.size()) {
         m_currentWorkspace = index;
         emit currentWorkspaceChanged();
-        QString cmd = QStringLiteral("wtype -M logo -k %1 -m logo 2>/dev/null || wtype -M win -k %1 -m win 2>/dev/null").arg(index + 1);
-        QProcess::startDetached(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
-        setWorkspacesVisible(false);
+        if (!WayfireIpc::instancia()->irAEscritorio(index)) {
+            // labwc: GoToDesktop va atado a Super+N en rc.xml.
+            QString cmd = QStringLiteral("wtype -M logo -k %1 -m logo 2>/dev/null || wtype -M win -k %1 -m win 2>/dev/null").arg(index + 1);
+            QProcess::startDetached(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
+        }
+        if (cerrarVista)
+            setWorkspacesVisible(false);
     }
 }
 
-void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup)
+void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup,
+                                  const QString &posicion)
 {
     auto *win = qobject_cast<QQuickWindow*>(windowObj);
     if (!win) return;
@@ -1378,10 +1775,16 @@ void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h
         // para interactuar con las opciones o cerrarlo al hacer clic fuera
         region = QRegion(0, 0, win->width(), win->height());
     } else if (isMaximized && !isRevealed) {
-        // Tira de activación ultrafina (3 px) en el centro inferior
-        int trigW = qMin(win->width(), 600);
-        int trigX = (win->width() - trigW) / 2;
-        region = QRegion(trigX, win->height() - 3, trigW, 3);
+        // Tira de activación ultrafina (3 px) en el centro del borde del Dock
+        if (posicion == QStringLiteral("izquierda") || posicion == QStringLiteral("derecha")) {
+            int trigH = qMin(win->height(), 600);
+            int trigY = (win->height() - trigH) / 2;
+            region = QRegion(posicion == QStringLiteral("izquierda") ? 0 : win->width() - 3, trigY, 3, trigH);
+        } else {
+            int trigW = qMin(win->width(), 600);
+            int trigX = (win->width() - trigW) / 2;
+            region = QRegion(trigX, win->height() - 3, trigW, 3);
+        }
     } else {
         // Solo el área física del Dock y su margen inmediato (para que las ventanas detrás reciban clics normalmente)
         if (w > 0 && h > 0) {
@@ -1391,11 +1794,42 @@ void ShellBackend::updateDockMask(QObject *windowObj, int x, int y, int w, int h
     win->setMask(region);
 }
 
+bool ShellBackend::canSwitchUser() const
+{
+    return !qEnvironmentVariableIsEmpty("TITAN_DESDE_GREETD");
+}
+
+void ShellBackend::switchUser()
+{
+    // Termina esta sesion (se cierran sus apps); greetd vuelve a mostrar la
+    // pantalla de inicio con todas las cuentas.
+    if (!canSwitchUser())
+        return;
+    // Los avisos de esta sesion no deben verse en la de otro usuario.
+    const QString dir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (!dir.isEmpty())
+        QFile::remove(dir + QStringLiteral("/titan-avisos-bloqueo"));
+    const QString sesion = qEnvironmentVariable("XDG_SESSION_ID");
+    QStringList args{QStringLiteral("terminate-session")};
+    if (!sesion.isEmpty())
+        args << sesion;
+    QProcess::startDetached(QStringLiteral("loginctl"), args);
+}
+
 bool ShellBackend::isLiveSystem() const
 {
-    return QFile::exists(QStringLiteral("/run/archiso")) ||
-           QFile::exists(QStringLiteral("/run/archiso/bootmnt")) ||
-           QFile::exists(QStringLiteral("/etc/titan-build.env"));
+    // Solo /run/archiso: lo crea el arranque del live y no existe en un
+    // sistema instalado. Antes tambien valia /etc/titan-build.env, pero el
+    // instalador copia ese fichero al disco, y en el sistema instalado el
+    // bloqueo aceptaba cualquier contrasena.
+    return QFile::exists(QStringLiteral("/run/archiso"));
+}
+
+bool ShellBackend::usarBloqueoSeguro() const
+{
+    return !isLiveSystem() &&
+           QFile::exists(QStringLiteral("/usr/local/bin/titan-bloquear")) &&
+           QFile::exists(QStringLiteral("/usr/bin/gtklock"));
 }
 
 void ShellBackend::finishBootSplash()
@@ -1410,6 +1844,13 @@ void ShellBackend::finishBootSplash()
 
 void ShellBackend::lockScreen()
 {
+    // Bloqueo de verdad (ext-session-lock con gtklock): lo garantiza el
+    // compositor y no depende de que titan-shell siga vivo. La pantalla de
+    // bloqueo en QML queda solo para el live o si falta gtklock.
+    if (usarBloqueoSeguro()) {
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-bloquear"), {});
+        return;
+    }
     if (!m_lockScreenActive) {
         m_lockScreenActive = true;
         emit lockScreenActiveChanged();

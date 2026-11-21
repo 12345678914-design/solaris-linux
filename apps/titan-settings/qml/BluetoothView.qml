@@ -1,262 +1,95 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+// Ajustes > Bluetooth: dispositivos emparejados (guardados: se reconectan
+// solos) y dispositivos cercanos para emparejar.
+import QtQuick
 
-ScrollView {
-    id: bluetoothView
-    contentWidth: width
-    clip: true
+PaginaAjustes {
+    id: vista
+    titulo: "Bluetooth"
+    descripcion: "Los dispositivos emparejados quedan guardados y se vuelven a conectar solos al encenderlos."
+    mensaje: conexiones.mensaje
+    onMensajeCerrado: conexiones.limpiarMensaje()
 
-    TitanTheme { id: theme }
+    TitanTheme { id: tema }
 
-    Column {
-        width: parent.width - 48
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 20
-        topPadding: 16
-        bottomPadding: 32
+    readonly property var mios: conexiones.dispositivos.filter(function (d) { return d.emparejado })
+    readonly property var otros: conexiones.dispositivos.filter(function (d) { return !d.emparejado && d.nombre !== d.mac })
 
-        // 1. ENCABEZADO
-        Row {
-            width: parent.width
-            spacing: 12
+    Component.onCompleted: conexiones.leerBt()
+    Timer { running: conexiones.btActivo; repeat: true; interval: 6000; onTriggered: if (!conexiones.buscando && conexiones.btOcupado === "") conexiones.leerBt() }
 
-            Text {
-                text: "Bluetooth"
-                color: theme.contentTextPrimary
-                font.pixelSize: 18
-                font.bold: true
+    function icono(tipo) {
+        return { "Audio": "🎧", "Teclado": "⌨️", "Ratón": "🖱️", "Mando": "🎮", "Teléfono": "📱", "Ordenador": "💻" }[tipo] || "ᛒ"
+    }
+
+    Grupo {
+        Fila {
+            titulo: "Bluetooth"
+            detalle: !conexiones.hayBt ? "No se encuentra ningún adaptador Bluetooth" : conexiones.btActivo ? "Encendido" : "Apagado"
+            separador: false
+            Interruptor {
                 anchors.verticalCenter: parent.verticalCenter
+                habilitado: conexiones.hayBt
+                activo: conexiones.btActivo
+                onAlternado: (v) => conexiones.setBt(v)
             }
+        }
+    }
 
-            Item { width: 10 }
-
-            Rectangle {
-                width: 80
-                height: 26
-                radius: 6
-                color: scanBtMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.08)
-                border.color: theme.contentCardBorder
-
-                Text {
-                    anchors.centerIn: parent
-                    text: settingsBackend.bluetoothScanning ? "Buscando…" : "Buscar"
-                    color: theme.contentTextPrimary
-                    font.pixelSize: 11
+    Grupo {
+        visible: conexiones.btActivo
+        etiqueta: "Mis dispositivos"
+        nota: vista.mios.length === 0 ? "Aún no hay dispositivos emparejados." : ""
+        Repeater {
+            model: vista.mios
+            delegate: Fila {
+                required property var modelData
+                required property int index
+                titulo: vista.icono(modelData.tipo) + "  " + modelData.nombre
+                detalle: (conexiones.btOcupado === modelData.mac ? "Conectando…" : modelData.conectado ? "Conectado" : "No conectado")
+                         + (modelData.bateria >= 0 ? " · batería " + modelData.bateria + " %" : "")
+                separador: index < vista.mios.length - 1
+                Boton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    texto: modelData.conectado ? "Desconectar" : "Conectar"
+                    habilitado: conexiones.btOcupado === ""
+                    onPulsado: modelData.conectado ? conexiones.desconectarBt(modelData.mac) : conexiones.conectarBt(modelData.mac)
                 }
-
-                MouseArea {
-                    id: scanBtMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    enabled: !settingsBackend.bluetoothScanning && settingsBackend.bluetoothEnabled
-                    onClicked: settingsBackend.scanBluetooth()
+                Boton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    texto: "Olvidar"
+                    peligro: true
+                    onPulsado: conexiones.olvidarBt(modelData.mac)
                 }
             }
         }
+    }
 
-        // 2. INTERRUPTOR PRINCIPAL
-        Rectangle {
-            width: parent.width
-            height: 60
-            radius: 10
-            color: theme.contentCardBg
-            border.color: theme.contentCardBorder
-            border.width: 1
-
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 12
-
-                Rectangle {
-                    width: 32
-                    height: 32
-                    radius: 7
-                    color: "#007aff"
+    Grupo {
+        visible: conexiones.btActivo
+        etiqueta: conexiones.buscando ? "Dispositivos cercanos · buscando…" : "Dispositivos cercanos"
+        nota: "Pon el dispositivo en modo de emparejamiento y pulsa «Buscar»."
+        Repeater {
+            model: vista.otros
+            delegate: Fila {
+                required property var modelData
+                required property int index
+                titulo: vista.icono(modelData.tipo) + "  " + modelData.nombre
+                detalle: conexiones.btOcupado === modelData.mac ? "Emparejando…" : modelData.tipo
+                separador: index < vista.otros.length - 1
+                Boton {
                     anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "ᛒ"
-                        color: "#ffffff"
-                        font.pixelSize: 16
-                        font.bold: true
-                    }
-                }
-
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-
-                    Text {
-                        text: "Bluetooth"
-                        color: theme.contentTextPrimary
-                        font.pixelSize: 13
-                        font.bold: true
-                    }
-
-                    Text {
-                        text: !settingsBackend.bluetoothEnabled ? "Desactivado" :
-                              settingsBackend.bluetoothConnected ? ("Conectado a " + settingsBackend.connectedBluetoothDevice) : "Visible para otros dispositivos"
-                        color: theme.contentTextSecondary
-                        font.pixelSize: 11
-                    }
-                }
-            }
-
-            Rectangle {
-                id: btSwitch
-                anchors.right: parent.right
-                anchors.rightMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                width: 44
-                height: 24
-                radius: 12
-                color: settingsBackend.bluetoothEnabled ? "#34c759" : (theme.isDark ? "#39393d" : "#e5e5ea")
-                Behavior on color { ColorAnimation { duration: 160 } }
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: settingsBackend.bluetoothEnabled ? 22 : 2
-                    width: 20
-                    height: 20
-                    radius: 10
-                    color: "#ffffff"
-                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: settingsBackend.bluetoothEnabled = !settingsBackend.bluetoothEnabled
+                    texto: "Conectar"
+                    principal: true
+                    habilitado: conexiones.btOcupado === ""
+                    onPulsado: conexiones.conectarBt(modelData.mac)
                 }
             }
         }
+    }
 
-        // 3. LISTA DE DISPOSITIVOS
-        Column {
-            visible: settingsBackend.bluetoothEnabled
-            width: parent.width
-            spacing: 8
-
-            Text {
-                text: "Mis Dispositivos y Cercanos"
-                color: theme.contentTextSecondary
-                font.pixelSize: 12
-                font.bold: true
-            }
-
-            Rectangle {
-                width: parent.width
-                height: Math.max(80, btListView.contentHeight + 16)
-                radius: 10
-                color: theme.contentCardBg
-                border.color: theme.contentCardBorder
-                border.width: 1
-
-                ListView {
-                    id: btListView
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    spacing: 2
-                    model: settingsBackend.bluetoothDevices
-
-                    delegate: Rectangle {
-                        width: btListView.width
-                        height: 38
-                        radius: 6
-                        color: modelData.connected ? (theme.isDark ? Qt.rgba(0.0, 0.44, 0.89, 0.3) : Qt.rgba(0.0, 0.44, 0.89, 0.15)) :
-                               devMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 10
-
-                            Text {
-                                text: "🎧"
-                                font.pixelSize: 13
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
-
-                                Text {
-                                    text: modelData.name || modelData.mac || "Dispositivo Bluetooth"
-                                    color: theme.contentTextPrimary
-                                    font.pixelSize: 12
-                                    font.bold: modelData.connected
-                                }
-
-                                Text {
-                                    text: modelData.connected ? "Conectado" : modelData.mac
-                                    color: modelData.connected ? "#34c759" : theme.contentTextSecondary
-                                    font.pixelSize: 9
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 76
-                            height: 24
-                            radius: 5
-                            color: modelData.connected ? Qt.rgba(1, 0.2, 0.2, 0.15) : (theme.isDark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08))
-                            border.color: modelData.connected ? Qt.rgba(1, 0.2, 0.2, 0.3) : theme.contentCardBorder
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData.connected ? "Desconectar" : "Conectar"
-                                color: modelData.connected ? "#ff4d4d" : theme.contentTextPrimary
-                                font.pixelSize: 10
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (modelData.connected) {
-                                        settingsBackend.disconnectBluetooth(modelData.mac);
-                                    } else {
-                                        settingsBackend.connectBluetooth(modelData.mac);
-                                    }
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: devMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            z: -1
-                            onClicked: {
-                                if (modelData.connected) {
-                                    settingsBackend.disconnectBluetooth(modelData.mac);
-                                } else {
-                                    settingsBackend.connectBluetooth(modelData.mac);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Text {
-                    visible: settingsBackend.bluetoothDevices.length === 0
-                    anchors.centerIn: parent
-                    text: settingsBackend.bluetoothScanning ? "Buscando dispositivos cercanos…" : "No se encontraron dispositivos Bluetooth"
-                    color: theme.contentTextSecondary
-                    font.pixelSize: 12
-                }
-            }
-        }
+    Row {
+        visible: conexiones.btActivo
+        spacing: 8
+        Boton { texto: conexiones.buscando ? "Buscando…" : "Buscar"; habilitado: !conexiones.buscando; onPulsado: conexiones.buscarBt() }
     }
 }

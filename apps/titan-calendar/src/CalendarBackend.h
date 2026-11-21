@@ -34,6 +34,10 @@ public:
     Q_INVOKABLE void goToToday();
     Q_INVOKABLE void addEvent(const QString &title, const QString &timeStr, const QString &description);
     Q_INVOKABLE void deleteEvent(int index);
+    // Cambia un evento del día seleccionado (índice en selectedDateEvents).
+    Q_INVOKABLE void updateEvent(int index, const QString &title, const QString &timeStr, const QString &description);
+    // "" si la hora vale (vacía = todo el día, o HH:MM); si no, el motivo.
+    Q_INVOKABLE QString timeError(const QString &timeStr) const;
 
 signals:
     void dateChanged();
@@ -43,6 +47,8 @@ signals:
 private:
     void loadEvents();
     void saveEvents();
+    static QString normalizeTime(const QString &timeStr);
+    static void sortDay(QVariantList &list);
 
     QDate m_currentDate;
     QDate m_selectedDate;

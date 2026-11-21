@@ -6,7 +6,7 @@ import QtMultimedia
 TitanWindow {
     id: videoWindow
 
-    title: videoBackend.fileName
+    title: videoBackend.fileName + (videoBackend.playlistPosition !== "" ? "  ·  " + videoBackend.playlistPosition : "")
     width: 860
     height: 540
     minimumWidth: 480
@@ -22,6 +22,22 @@ TitanWindow {
         } else {
             mediaPlayer.play();
         }
+    }
+
+    // Velocidades de reproducción que recorre el botón "1×" y las teclas [ ]
+    readonly property var speeds: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    function changeSpeed(step) {
+        var i = speeds.indexOf(mediaPlayer.playbackRate)
+        if (i < 0) i = 2
+        i = Math.max(0, Math.min(speeds.length - 1, i + step))
+        mediaPlayer.playbackRate = speeds[i]
+        pingActivity()
+    }
+    function goNext() { if (videoBackend.playNext()) mediaPlayer.play() }
+    function goPrevious() {
+        // Como en cualquier reproductor: si ya llevas un rato, "anterior" vuelve al principio
+        if (mediaPlayer.position > 3000 || !videoBackend.hasPrevious) mediaPlayer.position = 0
+        else if (videoBackend.playPrevious()) mediaPlayer.play()
     }
 
     function toggleFullscreen() {
@@ -110,6 +126,11 @@ TitanWindow {
             }
             videoOutput: videoOutput
             source: videoBackend.sourceUrl
+            // Al terminar, el siguiente vídeo de la carpeta (como una lista)
+            onMediaStatusChanged: {
+                if (mediaStatus === MediaPlayer.EndOfMedia && videoBackend.hasNext)
+                    videoWindow.goNext()
+            }
 
             Component.onCompleted: {
                 if (videoBackend.sourceUrl.toString().length > 0) {
@@ -265,6 +286,30 @@ TitanWindow {
                 anchors.margins: 10
                 spacing: 10
 
+                // Botón anterior (o volver al principio)
+                Rectangle {
+                    width: 26
+                    height: 26
+                    radius: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: videoBackend.sourceUrl.toString().length > 0 ? 1.0 : 0.35
+                    color: prevMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⏮"
+                        color: theme.headerText
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        id: prevMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: videoBackend.sourceUrl.toString().length > 0
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: videoWindow.goPrevious()
+                    }
+                }
+
                 // Botón Play / Pause
                 Rectangle {
                     width: 32
@@ -289,6 +334,30 @@ TitanWindow {
                     }
                 }
 
+                // Botón siguiente vídeo de la carpeta
+                Rectangle {
+                    width: 26
+                    height: 26
+                    radius: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: videoBackend.hasNext ? 1.0 : 0.35
+                    color: nextMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⏭"
+                        color: theme.headerText
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        id: nextMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: videoBackend.hasNext
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: videoWindow.goNext()
+                    }
+                }
+
                 // Tiempo transcurrido
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -302,7 +371,7 @@ TitanWindow {
                 Slider {
                     id: posSlider
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - 320
+                    width: parent.width - 470
                     from: 0
                     to: mediaPlayer.duration > 0 ? mediaPlayer.duration : 1
                     value: mediaPlayer.position
@@ -360,6 +429,31 @@ TitanWindow {
                     }
                 }
 
+                // Velocidad de reproducción (clic: siguiente velocidad)
+                Rectangle {
+                    width: 38
+                    height: 22
+                    radius: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: speedMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.06)
+                    Text {
+                        anchors.centerIn: parent
+                        text: mediaPlayer.playbackRate + "×"
+                        color: theme.headerText
+                        font.pixelSize: 11
+                    }
+                    MouseArea {
+                        id: speedMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var i = videoWindow.speeds.indexOf(mediaPlayer.playbackRate)
+                            mediaPlayer.playbackRate = videoWindow.speeds[(i + 1) % videoWindow.speeds.length]
+                        }
+                    }
+                }
+
                 // Botón Pantalla Completa
                 Rectangle {
                     width: 26
@@ -408,6 +502,23 @@ TitanWindow {
             if (videoWindow.isFullscreen) {
                 videoWindow.showNormal();
             }
+        }
+        // F pantalla completa, M silencio, N/P siguiente/anterior, [ ] velocidad,
+        // Inicio volver a empezar, 0-9 saltar al 0%-90%, Ctrl+O abrir
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier)) openFileDialog.open()
+            else if (event.key === Qt.Key_F) videoWindow.toggleFullscreen()
+            else if (event.key === Qt.Key_M) audioOutput.muted = !audioOutput.muted
+            else if (event.key === Qt.Key_N) videoWindow.goNext()
+            else if (event.key === Qt.Key_P) videoWindow.goPrevious()
+            else if (event.key === Qt.Key_BracketLeft) videoWindow.changeSpeed(-1)
+            else if (event.key === Qt.Key_BracketRight) videoWindow.changeSpeed(1)
+            else if (event.key === Qt.Key_Home) mediaPlayer.position = 0
+            else if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9 && mediaPlayer.duration > 0)
+                mediaPlayer.position = mediaPlayer.duration * (event.key - Qt.Key_0) / 10
+            else return
+            event.accepted = true
+            videoWindow.pingActivity()
         }
     }
 }

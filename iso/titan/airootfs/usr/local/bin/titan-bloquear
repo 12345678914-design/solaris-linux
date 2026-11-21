@@ -1,0 +1,88 @@
+#!/bin/sh
+# Inti OS - bloquear la sesion de forma segura.
+#
+# Usa gtklock, que bloquea con el protocolo ext-session-lock-v1: el compositor
+# (Wayfire o labwc) es quien garantiza el bloqueo. Si el programa de bloqueo se
+# cae, la sesion NO se desbloquea; la pantalla se queda negra y se puede
+# volver a lanzar desde otra terminal (Ctrl+Alt+F2: titan-bloquear).
+#
+# El fondo es el fondo de escritorio actual, oscurecido; reloj grande, foto y
+# nombre del usuario, campo de contrasena y botones de suspender, reiniciar y
+# apagar. Estilo y disposicion: /usr/share/titan/gtklock/.
+# Debajo del reloj, la musica y las notificaciones de este usuario (modulo
+# titan-avisos, apps/titan-avisos-bloqueo): las que no caben hasta el perfil se
+# acoplan en iconos. Las lee de su XDG_RUNTIME_DIR, asi que otro usuario no
+# las ve; Ajustes > Notificaciones decide si se ensena todo, sin contenido o nada.
+#
+#   titan-bloquear            bloquea (no hace nada si ya esta bloqueada)
+#   titan-bloquear --esperar  bloquea y espera a que el bloqueo este puesto
+#                             (para antes de suspender)
+
+# En el live no hay contrasena que pedir: bloquear solo encerraria al usuario.
+[ -d /run/archiso ] && exit 0
+command -v gtklock >/dev/null 2>&1 || exit 1
+
+uid="$(id -u)"
+if pgrep -u "$uid" -x gtklock >/dev/null 2>&1; then
+    exit 0
+fi
+
+dir_runtime="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+estilo="$dir_runtime/titan-bloqueo.css"
+base=/usr/share/titan/gtklock
+
+# Fondo de escritorio actual (ThemeManager lo guarda en ~/.config/titan).
+fondo=""
+if [ -r "$HOME/.config/titan/wallpaper" ]; then
+    fondo="$(head -n1 "$HOME/.config/titan/wallpaper")"
+fi
+[ -f "$fondo" ] || fondo=/usr/share/titan/wallpaper.jpg
+
+# Tema claro u oscuro: el oscurecido del fondo es mayor en el oscuro.
+velo="0.38"
+if grep -qs '^isDark=false' "$HOME/.config/titan/theme.conf"; then
+    velo="0.22"
+fi
+
+# Color de acento de Ajustes para el campo y el boton de desbloquear.
+acento="$(sed -n 's/^accent=//p' "$HOME/.config/titan/theme.conf" 2>/dev/null | tail -n1 | tr -d '"')"
+printf '%s' "$acento" | grep -Eq '^#[0-9a-fA-F]{6}$' || acento=""
+
+umask 077
+{
+    cat "$base/estilo.css"
+    printf '\nwindow {\n'
+    printf '  background-image: linear-gradient(rgba(8, 10, 16, %s), rgba(8, 10, 16, %s)), url("%s");\n' "$velo" "$velo" "$fondo"
+    printf '}\n'
+    if [ -n "$acento" ]; then
+        printf 'entry:focus { border-color: %s; }\n' "$acento"
+        printf 'button#unlock-button { background-color: %s; color: #ffffff; }\n' "$acento"
+        printf 'button#unlock-button:hover { background-color: shade(%s, 1.12); }\n' "$acento"
+    fi
+} > "$estilo"
+
+gtklock --daemonize \
+    --config "$base/config.ini" \
+    --style "$estilo" \
+    --layout "$base/diseno.ui" \
+    --modules userinfo-module \
+    --modules powerbar-module \
+    --modules playerctl-module \
+    --modules titan-avisos-module \
+    --time-format "%H:%M" \
+    --date-format "%A, %e de %B" \
+    --idle-hide --idle-timeout 30 \
+    --lock-command "/usr/local/bin/titan-bloquear-avisar bloqueada" \
+    --unlock-command "/usr/local/bin/titan-bloquear-avisar desbloqueada" \
+    >/dev/null 2>&1
+
+if [ "${1:-}" = "--esperar" ]; then
+    # gtklock -d vuelve enseguida; la orden de bloqueo deja una marca cuando
+    # el compositor confirma el bloqueo. Como mucho 3 s.
+    i=0
+    while [ $i -lt 30 ] && [ ! -e "$dir_runtime/titan-bloqueada" ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+fi
+exit 0

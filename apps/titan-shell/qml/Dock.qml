@@ -11,7 +11,18 @@ Item {
     property int hoveredIndex: -1
     property int draggedIndex: -1
     property int targetDropIndex: -1
-    readonly property bool isMaximized: windowTracker.hasMaximizedWindow || windowTracker.hasFullscreenWindow
+    // ---------- Preferencias (Ajustes > Escritorio y Dock) ----------
+    readonly property string posicion: { prefs.version; var p = prefs.s("Dock/posicion"); return (p === "izquierda" || p === "derecha") ? p : "abajo" }
+    readonly property bool vertical: posicion !== "abajo"
+    readonly property int iconSize: { prefs.version; return Math.max(28, Math.min(64, prefs.i("Dock/tamano"))) }
+    readonly property int slot: iconSize + 8          // casilla de cada icono
+    readonly property int paso: slot + 4              // casilla + separacion
+    readonly property bool ampliacion: { prefs.version; return prefs.b("Dock/ampliacion") && !prefs.b("Rendimiento/ligero") }
+    readonly property bool ocultarAuto: { prefs.version; return prefs.b("Dock/ocultarAuto") }
+
+    // "isMaximized" = el Dock se esconde y sale al acercar el raton al borde:
+    // con ventanas maximizadas o si se pide ocultarlo siempre.
+    readonly property bool isMaximized: ocultarAuto || windowTracker.hasMaximizedWindow || windowTracker.hasFullscreenWindow
     property bool dockRevealed: false
     readonly property bool shouldShowDock: !shellBackend.launcherVisible && (!isMaximized || dockRevealed)
 
@@ -40,6 +51,7 @@ Item {
     property bool ctxIsPinned: false
     property bool ctxIsRunning: false
     property real ctxMenuX: 0
+    property real ctxMenuY: 0
     property bool ctxMenuVisible: false
     property var ctxWindows: []
 
@@ -51,7 +63,7 @@ Item {
         var gy = dockBg.y - maskPad
         var gw = dockBg.width + maskPad * 2
         var gh = dockBg.height + maskPad * 2
-        shellBackend.updateDockMask(win, gx, gy, gw, gh, isMaximized, dockRevealed, ctxMenuVisible)
+        shellBackend.updateDockMask(win, gx, gy, gw, gh, isMaximized, dockRevealed, ctxMenuVisible, posicion)
     }
 
     Timer {
@@ -62,6 +74,9 @@ Item {
     }
 
     onCtxMenuVisibleChanged: refreshMask()
+    onPosicionChanged: { ctxMenuVisible = false; maskTimer.restart() }
+    onWidthChanged: maskTimer.restart()
+    onHeightChanged: maskTimer.restart()
     onDockRevealedChanged: refreshMask()
 
     onIsMaximizedChanged: {
@@ -118,7 +133,7 @@ Item {
             Rectangle {
                 visible: row.showDot
                 width: 5; height: 5; radius: 2.5
-                color: "#0a84ff"
+                color: theme.accent
                 anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -144,10 +159,11 @@ Item {
     // ---------- Zonas de activación (auto-ocultar) ----------
     MouseArea {
         id: bottomTrigger
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 3
+        // Franja de 3 px pegada al borde donde vive el Dock
+        x: dockContainer.posicion === "derecha" ? parent.width - 3 : 0
+        y: dockContainer.vertical ? 0 : parent.height - 3
+        width: dockContainer.vertical ? 3 : parent.width
+        height: dockContainer.vertical ? parent.height : 3
         hoverEnabled: true
         enabled: dockContainer.isMaximized
         z: 10
@@ -159,10 +175,10 @@ Item {
 
     MouseArea {
         id: dockHoverArea
-        anchors.horizontalCenter: dockBg.horizontalCenter
-        anchors.bottom: parent.bottom
+        x: dockBg.x - 12
+        y: dockBg.y - 12
         width: dockBg.width + 24
-        height: dockBg.height + 16
+        height: dockBg.height + 24
         hoverEnabled: true
         enabled: dockContainer.shouldShowDock
         z: 5
@@ -192,14 +208,16 @@ Item {
     // ---------- DOCK ----------
     Item {
         id: dockBg
-        height: 58
-        width: dockRow.width + 24
+        width: dockContainer.vertical ? dockContainer.slot + 14 : dockRow.width + 24
+        height: dockContainer.vertical ? dockRow.height + 24 : dockContainer.slot + 14
         z: 20
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 8
+        x: dockContainer.posicion === "izquierda" ? 8
+           : dockContainer.posicion === "derecha" ? parent.width - width - 8
+           : (parent.width - width) / 2
+        y: dockContainer.vertical ? (parent.height - height) / 2 : parent.height - height - 8
 
         onWidthChanged: maskTimer.restart()
+        onHeightChanged: maskTimer.restart()
         onXChanged: maskTimer.restart()
         onYChanged: maskTimer.restart()
 
@@ -214,10 +232,20 @@ Item {
                 onRunningChanged: if (!running) dockContainer.refreshMask()
             }
         }
+        Behavior on height {
+            NumberAnimation {
+                duration: 180
+                easing.type: Easing.OutCubic
+                onRunningChanged: if (!running) dockContainer.refreshMask()
+            }
+        }
         Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
+        // Al esconderse se desliza hacia su borde
         transform: Translate {
-            y: dockContainer.shouldShowDock ? 0 : 85
+            x: dockContainer.shouldShowDock ? 0 : (dockContainer.posicion === "izquierda" ? -85 : dockContainer.posicion === "derecha" ? 85 : 0)
+            y: dockContainer.shouldShowDock || dockContainer.vertical ? 0 : 85
+            Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
         }
 
@@ -245,7 +273,7 @@ Item {
             radius: dockContainer.dockRadius
             tint: dockContainer.dockTint
             wallpaper: dockContainer.wallpaperPath
-            originX: dockBg.x
+            originX: dockContainer.pantallaX(dockBg.x)
             originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + dockBg.y) : dockBg.y
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
             sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
@@ -253,10 +281,14 @@ Item {
             highlightColor: theme.specularGlow
         }
 
-        Row {
+        // Fila (abajo) o columna (a los lados)
+        Grid {
             id: dockRow
             anchors.centerIn: parent
             spacing: 4
+            flow: dockContainer.vertical ? Grid.TopToBottom : Grid.LeftToRight
+            columns: dockContainer.vertical ? 1 : Math.max(1, dockRepeater.count)
+            rows: dockContainer.vertical ? Math.max(1, dockRepeater.count) : 1
 
             Repeater {
                 id: dockRepeater
@@ -278,6 +310,13 @@ Item {
         }
     }
 
+    // X en pantalla de algo del Dock (la ventana del Dock a la derecha no empieza en 0)
+    function pantallaX(xLocal) {
+        if (posicion === "derecha" && typeof Screen !== "undefined" && Screen.width > 0)
+            return Screen.width - dockContainer.width + xLocal
+        return xLocal
+    }
+
     // ---------- Menú contextual ----------
     function openContextMenu(appId, appName, appIcon, isPinned, isRunning, clickX, clickY) {
         ctxAppId = appId
@@ -292,6 +331,12 @@ Item {
         if (targetX + contextMenu.width > dockContainer.width - 12)
             targetX = dockContainer.width - contextMenu.width - 12
         ctxMenuX = targetX
+
+        var targetY = clickY - contextMenu.height / 2
+        if (targetY < 12) targetY = 12
+        if (targetY + contextMenu.height > dockContainer.height - 12)
+            targetY = dockContainer.height - contextMenu.height - 12
+        ctxMenuY = targetY
 
         ctxMenuVisible = true
         contextMenu.forceActiveFocus()
@@ -310,15 +355,17 @@ Item {
         z: 9999
         width: 220
         height: menuCol.height + 16
-        x: dockContainer.ctxMenuX
-        anchors.bottom: dockBg.top
-        anchors.bottomMargin: 10
+        // Encima del Dock, o a su lado si el Dock esta en un lateral
+        x: dockContainer.posicion === "izquierda" ? dockBg.x + dockBg.width + 10
+           : dockContainer.posicion === "derecha" ? dockBg.x - width - 10
+           : dockContainer.ctxMenuX
+        y: dockContainer.vertical ? dockContainer.ctxMenuY : dockBg.y - height - 10
 
         // Aparece con fundido + escala suave
         opacity: dockContainer.ctxMenuVisible ? 1.0 : 0.0
         scale: dockContainer.ctxMenuVisible ? 1.0 : 0.94
         visible: opacity > 0.01
-        transformOrigin: Item.Bottom
+        transformOrigin: dockContainer.posicion === "izquierda" ? Item.Left : dockContainer.posicion === "derecha" ? Item.Right : Item.Bottom
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
@@ -330,7 +377,7 @@ Item {
             radius: 12
             tint: dockContainer.menuTint
             wallpaper: dockContainer.wallpaperPath
-            originX: contextMenu.x
+            originX: dockContainer.pantallaX(contextMenu.x)
             originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + contextMenu.y) : contextMenu.y
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
             sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080

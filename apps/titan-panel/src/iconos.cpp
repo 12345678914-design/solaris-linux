@@ -1,4 +1,5 @@
 #include "iconos.h"
+#include "TitanIconoSvg.h"
 
 #include <QColor>
 #include <QPainter>
@@ -17,6 +18,18 @@ QIcon iconoAplicacion(const QString &nombreTema, const QString &texto)
             return icono;
         }
     }
+    // Sin icono en el tema: si la app encaja en una categoria con simbolo
+    // (terminal, musica, web...), el SVG generado de Inti OS. Las iniciales
+    // no: confundian (ver mas abajo).
+    if (!titan::svgIcono(texto, nombreTema).contains(QStringLiteral("<text"))) {
+        const QString url = titan::iconoGenerado(texto, nombreTema);
+        if (url.startsWith(QStringLiteral("file:"))) {
+            QIcon generado(QUrl(url).toLocalFile());
+            if (!generado.isNull())
+                return generado;
+        }
+    }
+
     QIcon generico =
         QIcon::fromTheme(QStringLiteral("application-x-executable"));
     if (generico.isNull()) {

@@ -10,7 +10,7 @@ Que hace, en orden:
   5. guarda una captura de la consola grafica y el registro completo
 
 Uso:
-    scripts/titan-verify.py --iso out/solaris-linux-1.8-x86_64.iso
+    scripts/titan-verify.py --iso out/inti-os-1.8-x86_64.iso
     scripts/titan-verify.py --iso ... --bios --timeout 1200
 
 Codigo de salida: 0 si todo pasa, 1 si algo falla.

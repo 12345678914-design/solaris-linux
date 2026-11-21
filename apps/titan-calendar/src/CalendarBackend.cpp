@@ -1,4 +1,6 @@
 #include "CalendarBackend.h"
+#include <algorithm>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
@@ -135,17 +137,72 @@ QVariantList CalendarBackend::selectedDateEvents() const {
     return m_allEvents.value(key).toList();
 }
 
+// "9:5" -> "09:05", "14h" -> "14:00", "" -> "Todo el día". Si no se entiende, se deja tal cual.
+QString CalendarBackend::normalizeTime(const QString &timeStr) {
+    const QString t = timeStr.trimmed();
+    if (t.isEmpty()) return QStringLiteral("Todo el día");
+    static const QRegularExpression re(QStringLiteral("^(\\d{1,2})(?:[:.h](\\d{1,2}))?h?$"));
+    const auto m = re.match(t);
+    if (m.hasMatch()) {
+        const int h = m.captured(1).toInt();
+        const int min = m.captured(2).isEmpty() ? 0 : m.captured(2).toInt();
+        if (h < 24 && min < 60)
+            return QStringLiteral("%1:%2").arg(h, 2, 10, QLatin1Char('0')).arg(min, 2, 10, QLatin1Char('0'));
+    }
+    return t;
+}
+
+QString CalendarBackend::timeError(const QString &timeStr) const {
+    const QString n = normalizeTime(timeStr);
+    if (n == QStringLiteral("Todo el día")) return QString();
+    static const QRegularExpression ok(QStringLiteral("^\\d{2}:\\d{2}$"));
+    if (ok.match(n).hasMatch() && n.left(2).toInt() < 24 && n.mid(3, 2).toInt() < 60)
+        return QString();
+    return QStringLiteral("Hora no válida: usa HH:MM (ej. 09:30) o déjala vacía");
+}
+
+// Los de todo el día primero; después por hora.
+void CalendarBackend::sortDay(QVariantList &list) {
+    std::stable_sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
+        const QString ta = a.toMap().value(QStringLiteral("time")).toString();
+        const QString tb = b.toMap().value(QStringLiteral("time")).toString();
+        const bool da = !ta.contains(QLatin1Char(':'));
+        const bool db = !tb.contains(QLatin1Char(':'));
+        if (da != db) return da;
+        return ta < tb;
+    });
+}
+
 void CalendarBackend::addEvent(const QString &title, const QString &timeStr, const QString &description) {
-    if (title.trimmed().isEmpty()) return;
+    if (title.trimmed().isEmpty() || !timeError(timeStr).isEmpty()) return;
     QString key = m_selectedDate.toString("yyyy-MM-dd");
     QVariantList evList = m_allEvents.value(key).toList();
-    
+
     QVariantMap item;
     item["title"] = title.trimmed();
-    item["time"] = timeStr.trimmed().isEmpty() ? "Todo el día" : timeStr.trimmed();
+    item["time"] = normalizeTime(timeStr);
     item["description"] = description.trimmed();
 
     evList.append(item);
+    sortDay(evList);
+    m_allEvents[key] = evList;
+    saveEvents();
+    emit eventsChanged();
+    emit dateChanged();
+}
+
+void CalendarBackend::updateEvent(int index, const QString &title, const QString &timeStr, const QString &description) {
+    if (title.trimmed().isEmpty() || !timeError(timeStr).isEmpty()) return;
+    const QString key = m_selectedDate.toString("yyyy-MM-dd");
+    QVariantList evList = m_allEvents.value(key).toList();
+    if (index < 0 || index >= evList.size()) return;
+
+    QVariantMap item = evList.at(index).toMap();
+    item["title"] = title.trimmed();
+    item["time"] = normalizeTime(timeStr);
+    item["description"] = description.trimmed();
+    evList[index] = item;
+    sortDay(evList);
     m_allEvents[key] = evList;
     saveEvents();
     emit eventsChanged();

@@ -9,6 +9,7 @@
 #include <QDBusAbstractAdaptor>
 
 class DockModel;
+class TitanPrefs;
 class ShellBackend;
 
 class NotificationsAdaptor : public QDBusAbstractAdaptor
@@ -76,6 +77,12 @@ class ShellBackend : public QObject
     Q_PROPERTY(bool islandActive READ islandActive NOTIFY islandChanged)
     Q_PROPERTY(QVariantMap currentIslandNotification READ currentIslandNotification NOTIFY islandChanged)
     Q_PROPERTY(int islandQueueCount READ islandQueueCount NOTIFY islandChanged)
+    // Avisos para la pantalla de bloqueo (segun Notificaciones/bloqueo)
+    Q_PROPERTY(QVariantList avisosBloqueo READ avisosBloqueo NOTIFY avisosBloqueoChanged)
+    // Indicador de volumen/brillo en la isla: {tipo, valor (0-1), silencio}
+    Q_PROPERTY(QVariantMap indicador READ indicador NOTIFY indicadorChanged)
+    Q_PROPERTY(bool indicadorActivo READ indicadorActivo NOTIFY indicadorChanged)
+    Q_PROPERTY(bool cambiadorVisible READ cambiadorVisible WRITE setCambiadorVisible NOTIFY cambiadorVisibleChanged)
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
@@ -85,6 +92,8 @@ class ShellBackend : public QObject
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QString userDisplayName READ userDisplayName CONSTANT)
     Q_PROPERTY(bool isLiveSystem READ isLiveSystem CONSTANT)
+    // Sesion iniciada con greetd: se puede volver a la pantalla de inicio.
+    Q_PROPERTY(bool canSwitchUser READ canSwitchUser CONSTANT)
     
 public:
     explicit ShellBackend(QObject *parent = nullptr);
@@ -170,14 +179,33 @@ public:
     void setNotificationCenterVisible(bool visible);
     bool islandActive() const { return m_islandActive; }
     QVariantMap currentIslandNotification() const { return m_currentIslandNotification; }
-    int islandQueueCount() const { return 0; }
+    int islandQueueCount() const { return m_islandQueue; }
+    QVariantList avisosBloqueo() const;
+    QVariantMap indicador() const { return m_indicador; }
+    bool indicadorActivo() const { return m_indicadorActivo; }
+    bool cambiadorVisible() const { return m_cambiadorVisible; }
+    void setCambiadorVisible(bool v) { if (v != m_cambiadorVisible) { m_cambiadorVisible = v; emit cambiadorVisibleChanged(); } }
+    // ¿Sigue pulsada Alt? (el cambiador se cierra al soltarla)
+    Q_INVOKABLE bool altPulsada() const;
+    // Teclas especiales (volumen, brillo, multimedia...): las manda el
+    // compositor con "titan-shell --tecla <accion>".
+    Q_INVOKABLE void tecla(const QString &accion);
 
     Q_INVOKABLE void toggleNotificationCenter();
     Q_INVOKABLE void closeNotificationCenter();
     Q_INVOKABLE void clearNotifications();
     Q_INVOKABLE void removeNotification(int id);
     Q_INVOKABLE void dismissIsland();
-    Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString());
+    // Raton encima del aviso: no se cierra solo; al salir, 3 s mas.
+    Q_INVOKABLE void mantenerIsla(bool encima);
+    Q_INVOKABLE void notify(const QString &title, const QString &message, const QString &icon = QString(), const QString &appName = QString(),
+                            const QStringList &actions = QStringList(), bool urgente = false);
+    // No molestar desde el Centro de control (lo mismo que en Ajustes).
+    Q_INVOKABLE void setNoMolestar(bool activo);
+    void setPrefs(TitanPrefs *p);
+    Q_INVOKABLE void invokeNotificationAction(int id, const QString &key);
+    void removeNotificationSilently(int id);
+    void closeNotificationByApp(int id);
     Q_INVOKABLE void openFinder();
     Q_INVOKABLE void suspend();
     Q_INVOKABLE void reboot();
@@ -190,8 +218,10 @@ public:
     Q_INVOKABLE void toggleWorkspaces();
     Q_INVOKABLE void addWorkspace();
     Q_INVOKABLE void removeWorkspace(int index);
-    Q_INVOKABLE void switchToWorkspace(int index);
-    Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false);
+    // cerrarVista=false: cambia de escritorio sin salir de la vista (estilo GNOME).
+    Q_INVOKABLE void switchToWorkspace(int index, bool cerrarVista = true);
+    Q_INVOKABLE void updateDockMask(QObject *windowObj, int x, int y, int w, int h, bool isMaximized, bool isRevealed, bool hasPopup = false,
+                                    const QString &posicion = QStringLiteral("abajo"));
     
     bool bootSplashActive() const { return m_bootSplashActive; }
     bool bootSplashFinished() const { return m_bootSplashFinished; }
@@ -199,6 +229,8 @@ public:
     QString userName() const { return m_userName; }
     QString userDisplayName() const { return m_userDisplayName; }
     bool isLiveSystem() const;
+    bool canSwitchUser() const;
+    Q_INVOKABLE void switchUser();
 
     Q_INVOKABLE void finishBootSplash();
     Q_INVOKABLE void lockScreen();
@@ -228,6 +260,10 @@ public:
     Q_INVOKABLE void setVolume(qreal level);
 
 signals:
+    // Mismas firmas que NotificationsAdaptor: setAutoRelaySignals las publica en D-Bus.
+    void NotificationClosed(uint id, uint reason);
+    void ActionInvoked(uint id, const QString &action_key);
+
     void launcherVisibleChanged();
     void wallpaperPickerVisibleChanged();
     void controlCenterVisibleChanged();
@@ -250,9 +286,16 @@ signals:
     void currentWallpaperChanged();
     void blurredWallpaperChanged();
     void notificationsChanged();
+    void avisosBloqueoChanged();
+    void indicadorChanged();
+    // Alt+Tab (+1) / Alt+Mayus+Tab (-1): lo pinta CambiadorVentanas.qml
+    void altTab(int paso);
+    void cambiadorVisibleChanged();
     void notificationCenterVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
+    // La vista de escritorios hace su animacion de salida y luego se oculta.
+    void workspacesCloseRequested();
     void workspacesChanged();
     void currentWorkspaceChanged();
     void bootSplashActiveChanged();
@@ -260,6 +303,20 @@ signals:
     void lockScreenActiveChanged();
     
 private:
+    bool usarBloqueoSeguro() const;
+    void registrarAppNotificadora(const QString &app, const QString &icono);
+    TitanPrefs *m_prefs = nullptr;
+    bool takeNotification(int id);
+    void escribirAvisosBloqueo();
+    int m_islandQueue = 0;
+    void mostrarIndicador(const QString &tipo, qreal valor, bool silencio);
+    bool leerVolumen(const QString &dispositivo, qreal *valor, bool *silencio);
+    bool brilloRelativo(const QString &dispositivo, const QString &cambio, qreal *valor);
+    QVariantMap m_indicador;
+    bool m_indicadorActivo = false;
+    bool m_cambiadorVisible = false;
+    class QTimer *m_indicadorTimer = nullptr;
+
     void updateBatteryStatus();
     void syncHardwareStatus();
 
@@ -290,7 +347,7 @@ private:
     bool m_wifiScanning = false;
     bool m_bluetoothEnabled = true;
     bool m_bluetoothConnected = false;
-    QString m_connectedBluetoothDevice = QStringLiteral("Solaris Sound Air");
+    QString m_connectedBluetoothDevice = QStringLiteral("Inti Sound Air");
     QVariantList m_bluetoothDevices;
     bool m_bluetoothScanning = false;
     qreal m_brightness = 0.85;
@@ -299,6 +356,7 @@ private:
     class QTimer *m_batteryTimer = nullptr;
     int m_batteryPercent = 100;
     bool m_isCharging = true;
+    int m_cargaPrevia = -1; // -1 sin lectura aún / sin batería, 0 descargando, 1 cargando
     bool m_hasBattery = false;
     bool m_lowBatteryAlert = false;
     bool m_batteryAlertDismissed = false;

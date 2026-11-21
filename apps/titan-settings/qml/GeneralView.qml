@@ -87,6 +87,16 @@ ScrollView {
                     }
                 }
             }
+
+            // Qué ha pasado al cambiarlo (se aplica al volver a entrar)
+            Text {
+                visible: settingsBackend.languageStatus !== ""
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: settingsBackend.languageStatus
+                color: settingsBackend.languageStatus.indexOf("Listo") === 0 ? theme.accent : theme.contentTextSecondary
+                font.pixelSize: 11
+            }
         }
 
         // 2. SHELL
@@ -232,7 +242,7 @@ ScrollView {
             }
 
             Text {
-                text: "Si desactivas ambos, reabre esta ventana con: titan-settings"
+                text: "Si desactivas los dos, pulsa la tecla Super (⊞) y busca «Ajustes» para volver aquí."
                 color: theme.contentTextSecondary
                 font.pixelSize: 11
                 leftPadding: 4
@@ -274,7 +284,7 @@ ScrollView {
                     }
 
                     Text {
-                        text: settingsBackend.updateStatus
+                        text: settingsBackend.updateRunning ? "Hay una actualización en marcha" : settingsBackend.updateStatus
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -295,7 +305,7 @@ ScrollView {
                            updateMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.08) : (theme.isDark ? "#2c303c" : "#f0f0f4")
                     border.color: Qt.rgba(0, 0, 0, 0.15)
                     border.width: 1
-                    opacity: settingsBackend.updateChecking ? 0.6 : 1.0
+                    opacity: settingsBackend.updateChecking || settingsBackend.updateRunning ? 0.6 : 1.0
 
                     Text {
                         id: updateBtnText
@@ -309,10 +319,143 @@ ScrollView {
                     MouseArea {
                         id: updateMouse
                         anchors.fill: parent
-                        enabled: !settingsBackend.updateChecking
+                        enabled: !settingsBackend.updateChecking && !settingsBackend.updateRunning
                         hoverEnabled: true
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: settingsBackend.checkUpdates()
+                    }
+                }
+            }
+
+            // TIPO DE ACTUALIZACIONES: estables (Arch de hace 7 días) o al día
+            Rectangle {
+                width: parent.width
+                height: modoCol.implicitHeight + 24
+                radius: 10
+                color: theme.contentCardBg
+                border.color: theme.contentCardBorder
+                border.width: 1
+
+                Column {
+                    id: modoCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { id: "estable", titulo: "Estables (recomendado)",
+                              texto: "Llegan con una semana de margen: los fallos de los primeros días ya están arreglados." },
+                            { id: "al-dia", titulo: "Al día",
+                              texto: "Lo último de Arch Linux en cuanto sale. Más novedades, algo más de riesgo." }
+                        ]
+                        delegate: Item {
+                            id: opcionModo
+                            required property var modelData
+                            width: modoCol.width
+                            height: filaModo.implicitHeight
+                            Row {
+                                id: filaModo
+                                spacing: 10
+                                width: parent.width
+                                Rectangle {
+                                    width: 16; height: 16; radius: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: settingsBackend.updateMode === opcionModo.modelData.id ? theme.accent : "transparent"
+                                    border.color: settingsBackend.updateMode === opcionModo.modelData.id ? theme.accent : theme.contentTextSecondary
+                                    border.width: 1.5
+                                    Rectangle { anchors.centerIn: parent; width: 6; height: 6; radius: 3; color: "#ffffff"
+                                                visible: settingsBackend.updateMode === opcionModo.modelData.id }
+                                }
+                                Column {
+                                    width: parent.width - 26
+                                    Text { text: opcionModo.modelData.titulo; color: theme.contentTextPrimary; font.pixelSize: 12; font.bold: true }
+                                    Text { width: parent.width; text: opcionModo.modelData.texto; color: theme.contentTextSecondary
+                                           font.pixelSize: 10; wrapMode: Text.WordWrap }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: !settingsBackend.updateRunning
+                                onClicked: settingsBackend.setUpdateMode(opcionModo.modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // AVISOS DE ARCH antes de actualizar
+            Rectangle {
+                visible: settingsBackend.updateNews.length > 0
+                width: parent.width
+                height: avisosCol.implicitHeight + 32
+                radius: 10
+                color: theme.isDark ? Qt.rgba(1.0, 0.62, 0.04, 0.12) : Qt.rgba(1.0, 0.62, 0.04, 0.10)
+                border.color: "#ff9f0a"
+                border.width: 1.5
+
+                Column {
+                    id: avisosCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        width: parent.width
+                        text: "⚠️  Antes de actualizar: Arch Linux ha publicado avisos que afectan a este equipo"
+                        color: theme.contentTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "A veces una actualización necesita un paso a mano. Si no sabes qué hacer, lo más seguro es esperar unos días: Inti OS guarda una instantánea antes de actualizar por si algo sale mal."
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Repeater {
+                        model: settingsBackend.updateNews
+                        delegate: Row {
+                            required property var modelData
+                            spacing: 8
+                            width: avisosCol.width
+                            Text { text: modelData.fecha; color: theme.contentTextSecondary; font.pixelSize: 11; width: 70 }
+                            Text { text: modelData.titulo; color: theme.contentTextPrimary; font.pixelSize: 11
+                                   width: parent.width - 140; elide: Text.ElideRight }
+                            Text {
+                                text: "Leer"
+                                color: theme.accent
+                                font.pixelSize: 11
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: Qt.openUrlExternally(modelData.enlace) }
+                            }
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 12
+                        Rectangle {
+                            width: 110; height: 28; radius: 6
+                            color: esperarMouse.containsMouse ? (theme.isDark ? "#383c48" : "#d8d8de") : (theme.isDark ? "#282b34" : "#e8e8ed")
+                            border.color: theme.contentCardBorder
+                            Text { anchors.centerIn: parent; text: "Esperar"; color: theme.contentTextPrimary; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: esperarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.cancelUpdates() }
+                        }
+                        Rectangle {
+                            width: 160; height: 28; radius: 6
+                            color: igualMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Actualizar igualmente"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: igualMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.installUpdates(true) }
+                        }
                     }
                 }
             }
@@ -324,7 +467,7 @@ ScrollView {
                 height: 120
                 radius: 10
                 color: theme.isDark ? Qt.rgba(0.08, 0.35, 0.70, 0.18) : Qt.rgba(0.04, 0.45, 0.95, 0.08)
-                border.color: "#007aff"
+                border.color: theme.accent
                 border.width: 1.5
 
                 Column {
@@ -355,7 +498,7 @@ ScrollView {
                             }
 
                             Text {
-                                text: "¿Deseas instalar esta actualización del sistema ahora en la terminal?"
+                                text: "Se instala sola, sin preguntas: pones la contraseña una vez y puedes seguir usando el equipo."
                                 color: theme.contentTextSecondary
                                 font.pixelSize: 11
                             }
@@ -377,7 +520,7 @@ ScrollView {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Cancelar"
+                                text: "Ahora no"
                                 color: theme.contentTextPrimary
                                 font.pixelSize: 11
                                 font.bold: true
@@ -397,11 +540,11 @@ ScrollView {
                             width: 140
                             height: 28
                             radius: 6
-                            color: installMouse.containsMouse ? "#0062cc" : "#007aff"
+                            color: installMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Instalar actualización"
+                                text: "Actualizar"
                                 color: "#ffffff"
                                 font.pixelSize: 11
                                 font.bold: true
@@ -414,6 +557,140 @@ ScrollView {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: settingsBackend.installUpdates()
                             }
+                        }
+                    }
+                }
+            }
+
+            // ACTUALIZANDO: mensaje, barra y, dentro, el registro (como Garuda,
+            // pero sin terminal ni preguntas)
+            Rectangle {
+                id: tarjetaActualizando
+                visible: settingsBackend.updateRunning || settingsBackend.updateResult !== ""
+                property bool detalles: false
+                width: parent.width
+                height: cuerpoAct.implicitHeight + 32
+                radius: 10
+                color: theme.contentCardBg
+                border.color: settingsBackend.updateResult === "error" ? "#ff453a" : theme.contentCardBorder
+                border.width: 1
+
+                Column {
+                    id: cuerpoAct
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 10
+
+                    Text {
+                        width: parent.width
+                        text: settingsBackend.updateRunning ? "Actualizando el sistema"
+                              : settingsBackend.updateResult === "ok" ? "✓ Actualización terminada"
+                              : "No se pudo terminar la actualización"
+                        color: settingsBackend.updateResult === "error" ? "#ff453a" : theme.contentTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+                    Text {
+                        width: parent.width
+                        text: settingsBackend.updateStatus
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                    // Barra de progreso
+                    Rectangle {
+                        width: parent.width
+                        height: 6
+                        radius: 3
+                        color: theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+                        visible: settingsBackend.updateResult !== "error"
+                        Rectangle {
+                            width: Math.max(6, parent.width * settingsBackend.updateProgress)
+                            height: parent.height
+                            radius: 3
+                            color: theme.accent
+                            Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                    Text {
+                        visible: settingsBackend.updateRunning
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Puedes seguir usando el equipo y cerrar esta ventana: la actualización sigue. No apagues el equipo hasta que termine."
+                        color: theme.contentTextSecondary
+                        font.pixelSize: 10
+                    }
+
+                    Row {
+                        spacing: 12
+                        // Mostrar / ocultar el registro
+                        Text {
+                            text: (tarjetaActualizando.detalles ? "▾ Ocultar detalles" : "▸ Mostrar detalles")
+                            color: theme.accent
+                            font.pixelSize: 11
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tarjetaActualizando.detalles = !tarjetaActualizando.detalles
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        visible: tarjetaActualizando.detalles
+                        width: parent.width
+                        height: 220
+                        radius: 8
+                        color: theme.isDark ? "#101114" : "#f4f4f6"
+                        border.color: theme.contentCardBorder
+                        clip: true
+                        Flickable {
+                            id: desplazaRegistro
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            contentWidth: width
+                            contentHeight: textoRegistro.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            // Siempre en la última línea, salvo que se haya subido a leer
+                            property bool alFinal: true
+                            onMovementEnded: alFinal = contentY >= contentHeight - height - 4
+                            onContentHeightChanged: if (alFinal) contentY = Math.max(0, contentHeight - height)
+                            TextEdit {
+                                id: textoRegistro
+                                width: desplazaRegistro.width
+                                text: settingsBackend.updateLog
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.WrapAnywhere
+                                color: theme.contentTextSecondary
+                                font.family: "monospace"
+                                font.pixelSize: 10
+                            }
+                        }
+                    }
+
+                    // Botones al terminar
+                    Row {
+                        visible: !settingsBackend.updateRunning
+                        anchors.right: parent.right
+                        spacing: 12
+                        Rectangle {
+                            visible: settingsBackend.updateResult === "error"
+                            width: 110; height: 28; radius: 6
+                            color: reintentarMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Reintentar"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: reintentarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.installUpdates() }
+                        }
+                        Rectangle {
+                            visible: settingsBackend.updateNeedsReboot && settingsBackend.updateResult === "ok"
+                            width: 130; height: 28; radius: 6
+                            color: reiniciarMouse.containsMouse ? Qt.darker(theme.accent, 1.15) : theme.accent
+                            Text { anchors.centerIn: parent; text: "Reiniciar ahora"; color: "#ffffff"; font.pixelSize: 11; font.bold: true }
+                            MouseArea { id: reiniciarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: settingsBackend.rebootNow() }
                         }
                     }
                 }

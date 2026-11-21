@@ -1,15 +1,26 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 
+// Pantalla de bloqueo estilo macOS Tahoe: el fondo de pantalla actual se ve
+// tal cual (sin velo oscuro), con el reloj grande arriba y los controles de
+// cristal encima. Solo dos degradados suaves arriba y abajo para que el texto
+// se lea sobre cualquier fondo.
+//
+// Las ventanas abiertas NUNCA se ven: la capa es opaca (el fondo de pantalla
+// se pinta aqui mismo), asi que bloquear no deja leer nada del escritorio.
 Item {
     id: lockScreenRoot
     anchors.fill: parent
 
     property bool isUnlocking: false
     property bool hasError: false
+    property bool confirmarCambio: false
+    property bool panelUsuarios: false
 
     // Al activarse la pantalla de bloqueo, enfocar el campo de texto
     onVisibleChanged: {
+        panelUsuarios = false;
+        confirmarCambio = false;
         if (visible) {
             hasError = false;
             passInput.text = "";
@@ -17,26 +28,123 @@ Item {
         }
     }
 
-    // 1. FONDO DIFUMINADO ESTILO macOS CON WALLPAPER ACTUAL
+    // ── 1. FONDO: el fondo de pantalla actual, nítido ──────────────────────
     Rectangle {
         anchors.fill: parent
-        color: "#08090d"
+        color: "#101218"
 
         Image {
             anchors.fill: parent
             source: shellBackend.currentWallpaper.length > 0 ? ("file://" + shellBackend.currentWallpaper) : ""
+            sourceSize: Qt.size(lockScreenRoot.width, lockScreenRoot.height)
             fillMode: Image.PreserveAspectCrop
-            opacity: 0.28
+            asynchronous: true
+            cache: true
         }
 
-        // Tinte de vidrio oscuro líquido
+        // Legibilidad: sombra suave solo donde hay texto (reloj y controles)
         Rectangle {
-            anchors.fill: parent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: parent.height * 0.42
             gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(0.04, 0.05, 0.08, 0.88) }
-                GradientStop { position: 0.5; color: Qt.rgba(0.07, 0.09, 0.14, 0.82) }
-                GradientStop { position: 1.0; color: Qt.rgba(0.03, 0.04, 0.07, 0.92) }
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.30) }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.0) }
             }
+        }
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: parent.height * 0.40
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.0) }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.38) }
+            }
+        }
+    }
+
+    // Componentes de cristal reutilizados
+    component Cristal: Rectangle {
+        color: Qt.rgba(1, 1, 1, 0.16)
+        border.color: Qt.rgba(1, 1, 1, 0.30)
+        border.width: 1
+    }
+
+    component BotonRedondo: Item {
+        id: botonRedondo
+        property string icono: ""
+        property string texto: ""
+        signal pulsado()
+        width: 64
+        height: 66
+        Cristal {
+            id: circulo
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 44; height: 44; radius: 22
+            color: zona.pressed ? Qt.rgba(1, 1, 1, 0.34) : (zona.containsMouse ? Qt.rgba(1, 1, 1, 0.26) : Qt.rgba(1, 1, 1, 0.16))
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Image {
+                anchors.centerIn: parent
+                width: 22; height: 22
+                source: botonRedondo.icono
+                sourceSize: Qt.size(44, 44)
+            }
+            MouseArea {
+                id: zona
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: botonRedondo.pulsado()
+            }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: circulo.bottom
+            anchors.topMargin: 5
+            text: botonRedondo.texto
+            color: "#ffffff"
+            opacity: zona.containsMouse ? 1 : 0.85
+            font.pixelSize: 11
+            font.weight: Font.Medium
+            style: Text.Raised
+            styleColor: Qt.rgba(0, 0, 0, 0.25)
+        }
+    }
+
+    component BotonPildora: Cristal {
+        id: pildora
+        property string icono: ""
+        property string texto: ""
+        property bool aviso: false
+        signal pulsado()
+        height: 36
+        radius: 18
+        width: filaPildora.implicitWidth + 30
+        color: aviso ? Qt.rgba(1, 0.62, 0.04, 0.85)
+                     : (zonaPildora.containsMouse ? Qt.rgba(1, 1, 1, 0.26) : Qt.rgba(1, 1, 1, 0.16))
+        Behavior on color { ColorAnimation { duration: 120 } }
+        Row {
+            id: filaPildora
+            anchors.centerIn: parent
+            spacing: 8
+            Image {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 17; height: 17
+                source: pildora.icono
+                sourceSize: Qt.size(34, 34)
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: pildora.texto
+                color: "#ffffff"
+                font.pixelSize: 13
+                font.weight: Font.Medium
+            }
+        }
+        MouseArea {
+            id: zonaPildora
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: pildora.pulsado()
         }
     }
 
@@ -44,161 +152,189 @@ Item {
     Timer {
         id: clockTimer
         interval: 1000
-        running: true
+        running: lockScreenRoot.visible
         repeat: true
+        triggeredOnStart: true
         onTriggered: {
             var now = new Date();
             timeText.text = Qt.formatTime(now, "hh:mm");
-            dateText.text = Qt.formatDate(now, "dddd, d 'de' MMMM");
+            var fecha = now.toLocaleDateString(Qt.locale("es_ES"), "dddd, d 'de' MMMM");
+            dateText.text = fecha.charAt(0).toUpperCase() + fecha.slice(1);
         }
     }
 
-    // 2. CABECERA: RELOJ ELEGANTE ESTILO macOS
+    // ── 2. CABECERA: candado, fecha y hora grande ──────────────────────────
     Column {
+        id: cabecera
         anchors.top: parent.top
-        anchors.topMargin: parent.height * 0.12
+        anchors.topMargin: parent.height * 0.07
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 4
+        spacing: 2
+
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 20; height: 20
+            source: "qrc:/icons/simbolos/candado.svg"
+            sourceSize: Qt.size(40, 40)
+            opacity: 0.9
+        }
+
+        Item { width: 1; height: 8 }
 
         Text {
             id: dateText
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Qt.formatDate(new Date(), "dddd, d 'de' MMMM")
-            color: "#e2e6f0"
-            font.pixelSize: 18
-            font.weight: Font.Medium
+            color: "#ffffff"
+            opacity: 0.92
+            font.pixelSize: 21
+            font.weight: Font.DemiBold
+            style: Text.Raised
+            styleColor: Qt.rgba(0, 0, 0, 0.18)
         }
 
         Text {
             id: timeText
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Qt.formatTime(new Date(), "hh:mm")
             color: "#ffffff"
-            font.pixelSize: 76
-            font.weight: Font.Light
-            font.letterSpacing: -1.5
+            opacity: 0.96
+            font.pixelSize: Math.round(Math.min(lockScreenRoot.height * 0.16, 132))
+            font.weight: Font.Bold
+            font.letterSpacing: -2
+            style: Text.Raised
+            styleColor: Qt.rgba(0, 0, 0, 0.18)
         }
     }
 
-    // 3. CENTRO: TARJETA DE PERFIL Y CAMPO DE CONTRASEÑA
+    // ── 2b. MÚSICA Y NOTIFICACIONES (como Android) ─────────────────────────
+    // Si llegan hasta el perfil se acoplan en iconos. Son de quien bloqueó:
+    // al cambiar de usuario (o abrir Usuarios y grupos) se ocultan.
+    AvisosBloqueo {
+        anchors.top: cabecera.bottom
+        anchors.topMargin: 22
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(380, lockScreenRoot.width - 48)
+        alturaDisponible: profileCard.y - (cabecera.y + cabecera.height) - 22 - 24
+        oculto: lockScreenRoot.panelUsuarios || lockScreenRoot.confirmarCambio
+    }
+
+    // ── 3. ABAJO EN EL CENTRO: cuenta y contraseña (como macOS) ────────────
     Item {
         id: profileCard
-        anchors.centerIn: parent
-        width: 320
-        height: 240
+        width: 300
+        height: 190
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Math.max(110, parent.height * 0.13)
 
         property real shakeOffset: 0
         x: (parent.width - width) / 2 + shakeOffset
 
         Column {
             anchors.fill: parent
-            spacing: 14
+            spacing: 10
 
-            // A. Avatar circular con monograma
+            // Avatar con monograma, borde de cristal
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 92
-                height: 92
-                radius: 46
-                color: "#1e2433"
-                border.color: Qt.rgba(1, 1, 1, 0.28)
-                border.width: 2.5
-
+                width: 72
+                height: 72
+                radius: 36
+                border.color: Qt.rgba(1, 1, 1, 0.55)
+                border.width: 2
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#007aff" }
-                    GradientStop { position: 1.0; color: "#0040a8" }
+                    GradientStop { position: 0.0; color: "#5aa9ff" }
+                    GradientStop { position: 1.0; color: "#0a5bd6" }
                 }
 
                 Text {
                     anchors.centerIn: parent
                     text: (shellBackend.userDisplayName.length > 0) ? shellBackend.userDisplayName.charAt(0).toUpperCase() : "I"
                     color: "#ffffff"
-                    font.pixelSize: 42
+                    font.pixelSize: 32
                     font.bold: true
                 }
             }
 
-            // B. Nombre del usuario
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: shellBackend.userDisplayName
                 color: "#ffffff"
-                font.pixelSize: 17
-                font.bold: true
-                font.letterSpacing: 0.3
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                style: Text.Raised
+                styleColor: Qt.rgba(0, 0, 0, 0.25)
             }
 
-            // C. Campo de texto redondeado para contraseña estilo macOS
-            Rectangle {
+            // Campo de contraseña: píldora de cristal
+            Cristal {
                 id: passFieldContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 230
-                height: 34
-                radius: 17
-                color: Qt.rgba(1, 1, 1, 0.12)
-                border.color: passInput.activeFocus ? "#0a84ff" : (hasError ? "#ff453a" : Qt.rgba(1, 1, 1, 0.24))
-                border.width: passInput.activeFocus || hasError ? 1.5 : 1
+                width: 220
+                height: 36
+                radius: 18
+                // Cristal oscuro: se lee igual sobre fondos claros y oscuros
+                color: Qt.rgba(0, 0, 0, passInput.activeFocus ? 0.30 : 0.22)
+                border.color: hasError ? "#ff6961" : Qt.rgba(1, 1, 1, passInput.activeFocus ? 0.55 : 0.32)
+                border.width: hasError ? 1.5 : 1
 
-                Row {
-                    anchors.fill: parent
+                TextField {
+                    id: passInput
+                    anchors.left: parent.left
                     anchors.leftMargin: 14
-                    anchors.rightMargin: 6
-                    spacing: 6
+                    anchors.right: submitButton.left
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    echoMode: TextInput.Password
+                    placeholderText: "Introduce la contraseña"
+                    color: "#ffffff"
+                    placeholderTextColor: Qt.rgba(1, 1, 1, 0.70)
+                    font.pixelSize: 13
+                    background: null
+                    focus: true
 
-                    TextField {
-                        id: passInput
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 34
-                        echoMode: TextInput.Password
-                        placeholderText: "Contraseña"
-                        color: "#ffffff"
-                        placeholderTextColor: Qt.rgba(1, 1, 1, 0.45)
-                        font.pixelSize: 13
-                        background: null
-                        focus: true
-
-                        onTextChanged: {
-                            if (hasError) hasError = false;
-                        }
-
-                        onAccepted: tryUnlock()
+                    onTextChanged: {
+                        if (hasError) hasError = false;
                     }
 
-                    // Botón flecha derecha (Enter gráfico)
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 24
-                        height: 24
-                        radius: 12
-                        color: submitMouse.containsMouse ? "#0062cc" : (passInput.text.length > 0 || shellBackend.isLiveSystem ? "#007aff" : Qt.rgba(1, 1, 1, 0.2))
+                    onAccepted: tryUnlock()
+                }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "→"
-                            color: "#ffffff"
-                            font.pixelSize: 13
-                            font.bold: true
-                        }
+                // Flecha para entrar (aparece al escribir)
+                Rectangle {
+                    id: submitButton
+                    anchors.right: parent.right
+                    anchors.rightMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 26
+                    height: 26
+                    radius: 13
+                    opacity: passInput.text.length > 0 || shellBackend.isLiveSystem ? 1 : 0.0
+                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    color: submitMouse.pressed ? Qt.rgba(1, 1, 1, 0.45) : Qt.rgba(1, 1, 1, 0.30)
 
-                        MouseArea {
-                            id: submitMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: tryUnlock()
-                        }
+                    Image {
+                        anchors.centerIn: parent
+                        width: 15; height: 15
+                        source: "qrc:/icons/simbolos/flecha.svg"
+                        sourceSize: Qt.size(30, 30)
+                    }
+
+                    MouseArea {
+                        id: submitMouse
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: tryUnlock()
                     }
                 }
             }
 
-            // D. Mensaje de error si la contraseña no coincide
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Contraseña incorrecta"
-                color: "#ff453a"
-                font.pixelSize: 11
-                font.bold: true
-                opacity: hasError ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 150 } }
+                text: hasError ? "Contraseña incorrecta" : (shellBackend.isLiveSystem ? "Pulsa Intro para entrar" : "")
+                color: hasError ? "#ffb3ae" : Qt.rgba(1, 1, 1, 0.8)
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                style: Text.Raised
+                styleColor: Qt.rgba(0, 0, 0, 0.3)
             }
         }
     }
@@ -215,104 +351,63 @@ Item {
         NumberAnimation { target: profileCard; property: "shakeOffset"; to: 0; duration: 30; easing.type: Easing.OutQuad }
     }
 
-    // 4. PIE DE PÁGINA: ACCIONES DE ENERGÍA ESTILO macOS
+    // ── 4. ABAJO A LA IZQUIERDA: cuentas ───────────────────────────────────
     Row {
+        anchors.left: parent.left
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 32
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 36
+        anchors.margins: 28
+        spacing: 10
 
-        // Suspender
-        Column {
-            spacing: 6
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 40
-                height: 40
-                radius: 20
-                color: suspMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "🌙"
-                    font.pixelSize: 16
-                }
-
-                MouseArea {
-                    id: suspMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: shellBackend.suspend()
-                }
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Reposo"
-                color: "#c0c4d2"
-                font.pixelSize: 11
+        BotonPildora {
+            visible: shellBackend.canSwitchUser
+            icono: "qrc:/icons/simbolos/usuario.svg"
+            texto: lockScreenRoot.confirmarCambio ? "Se cerrarán tus apps · pulsa otra vez" : "Cambiar de usuario"
+            aviso: lockScreenRoot.confirmarCambio
+            onPulsado: {
+                if (lockScreenRoot.confirmarCambio) shellBackend.switchUser()
+                else { lockScreenRoot.confirmarCambio = true; confirmarTimer.restart() }
             }
         }
 
-        // Reiniciar
-        Column {
-            spacing: 6
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 40
-                height: 40
-                radius: 20
-                color: reBootMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "🔄"
-                    font.pixelSize: 16
-                }
-
-                MouseArea {
-                    id: reBootMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: shellBackend.reboot()
-                }
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Reiniciar"
-                color: "#c0c4d2"
-                font.pixelSize: 11
-            }
+        BotonPildora {
+            visible: !shellBackend.isLiveSystem && usuarios.gestionDisponible
+            icono: "qrc:/icons/simbolos/usuarios.svg"
+            texto: "Usuarios y grupos"
+            onPulsado: { usuarios.recargar(); lockScreenRoot.panelUsuarios = true }
         }
+    }
 
-        // Apagar
-        Column {
-            spacing: 6
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 40
-                height: 40
-                radius: 20
-                color: pwrMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
+    Timer {
+        id: confirmarTimer
+        interval: 4000
+        onTriggered: lockScreenRoot.confirmarCambio = false
+    }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "⏻"
-                    font.pixelSize: 16
-                    color: "#ffffff"
-                }
+    // ── 5. ABAJO A LA DERECHA: energía ─────────────────────────────────────
+    Row {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 18
+        spacing: 6
 
-                MouseArea {
-                    id: pwrMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: shellBackend.powerOff()
-                }
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Apagar"
-                color: "#c0c4d2"
-                font.pixelSize: 11
+        BotonRedondo { icono: "qrc:/icons/simbolos/reposo.svg"; texto: "Reposo"; onPulsado: shellBackend.suspend() }
+        BotonRedondo { icono: "qrc:/icons/simbolos/reiniciar.svg"; texto: "Reiniciar"; onPulsado: shellBackend.reboot() }
+        BotonRedondo { icono: "qrc:/icons/simbolos/apagar.svg"; texto: "Apagar"; onPulsado: shellBackend.powerOff() }
+    }
+
+    // Panel de usuarios y grupos (compartido con titan-greeter)
+    Loader {
+        id: cargadorPanel
+        anchors.fill: parent
+        active: lockScreenRoot.panelUsuarios
+        source: "qrc:/qml/PanelUsuarios.qml"
+        onLoaded: item.forceActiveFocus()
+        Connections {
+            target: cargadorPanel.item
+            function onCerrar() {
+                lockScreenRoot.panelUsuarios = false
+                passInput.forceActiveFocus()
             }
         }
     }

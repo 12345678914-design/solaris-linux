@@ -1,0 +1,10 @@
+[Unit]
+Description=Inti OS: comprobar actualizaciones cada 6 horas
+
+[Timer]
+OnStartupSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

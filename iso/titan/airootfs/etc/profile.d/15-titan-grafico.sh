@@ -1,14 +1,28 @@
 # /etc/profile.d/15-titan-grafico.sh
 # shellcheck shell=bash
 #
-# Titan Linux - arranque del escritorio grafico con Labwc y Titan Shell (Qt Quick)
+# Titan Linux - arranque del escritorio grafico con Titan Shell (Qt Quick)
+#
+# Compositor:
+#   wayfire  sesion inmersiva (animaciones, desenfoque real). Por defecto si
+#            hay GPU con aceleracion 3D.
+#   labwc    respaldo ligero: VMs, sin 3D, nomodeset/titan.compat, o si
+#            Wayfire no arranca.
+# Forzar uno: TITAN_DESKTOP=wayfire|labwc|plasma, o en la linea del kernel
+# titan.wayfire / titan.labwc.
 
-case $- in
-  *i*) ;;
-  *) return 0 ;;
-esac
+# Sistema instalado: greetd inicia la sesion y llama a este fichero desde
+# /usr/lib/titan/titan-arranque-grafico con TITAN_DESDE_GREETD=1 (no es una
+# shell interactiva ni hace falta que sea tty1). En el live, tty1 con
+# entrada automatica, como siempre.
+if [ -z "${TITAN_DESDE_GREETD:-}" ]; then
+  case $- in
+    *i*) ;;
+    *) return 0 ;;
+  esac
 
-[ "$(tty 2>/dev/null)" = "/dev/tty1" ] || return 0
+  [ "$(tty 2>/dev/null)" = "/dev/tty1" ] || return 0
+fi
 [ -n "${TMUX:-}" ] && return 0
 [ -n "${TITAN_GRAFICO:-}" ] && return 0
 [ -e /etc/titan/modo-texto ] && return 0
@@ -62,7 +76,7 @@ if [ "${SESION_DESKTOP}" = "plasma" ]; then
     ""|C|POSIX) export LANG=es_ES.UTF-8 ;;
   esac
 
-  echo "Iniciando Solaris (KDE Plasma 6 Wayland)..."
+  echo "Iniciando Inti OS (KDE Plasma 6 Wayland)..."
   dbus-run-session -- startplasma-wayland 2>&1 | tee /tmp/plasma.log
   codigo_salida=${PIPESTATUS[0]}
   if [ $codigo_salida -ne 0 ] && [ -s /tmp/plasma.log ]; then
@@ -87,6 +101,16 @@ export XDG_CURRENT_DESKTOP=Titan:labwc
 
 # Asegurar que DISPLAY no esté predefinido para que labwc inicialice el backend nativo
 unset DISPLAY
+
+# Metodos de entrada (fcitx5), si se activaron en Ajustes > Teclado. Las
+# variables tienen que estar antes de arrancar el compositor para que las
+# hereden todas las apps (Qt, GTK y las X11 por Xwayland).
+if grep -qs '^ACTIVO=1' "${HOME}/.config/titan/entrada.conf"; then
+  export XMODIFIERS=@im=fcitx
+  export QT_IM_MODULE=fcitx
+  export GTK_IM_MODULE=fcitx
+  export SDL_IM_MODULE=fcitx
+fi
 
 # 1. Detección de arranque en modo compatibilidad forzada (nomodeset, titan.compat, safe_graphics)
 ES_COMPAT=0
@@ -117,6 +141,11 @@ if command -v lspci >/dev/null 2>&1; then
   lspci | grep -qiE "(vga|display).*intel" && ES_INTEL=1
   lspci | grep -qiE "(vga|display).*(amd|ati|radeon)" && ES_AMD=1
   lspci | grep -qiE "(vga|3d).*nvidia" && ES_NVIDIA=1
+fi
+
+# Cargar módulos nvidia si hay GPU NVIDIA y aún no están en el kernel
+if [ "${ES_NVIDIA}" -eq 1 ] && [ ! -d /sys/module/nvidia_drm ]; then
+  modprobe -q nvidia-drm 2>/dev/null || modprobe -q nvidia_drm 2>/dev/null || true
 fi
 
 # Verificar si el driver privativo de NVIDIA (nvidia/nvidia-drm) está realmente cargado en el kernel y activo
@@ -163,7 +192,16 @@ export LP_NUM_THREADS="${NCORES}"
 
 aplicar_capa_compatibilidad() {
   export WLR_RENDERER=pixman
-  export WLR_NO_HARDWARE_CURSORS=1
+  # En una VM el cursor va por hardware: la GPU virtual (virtio, vmwgfx, qxl)
+  # tiene plano de cursor y el visor (QEMU, VirtualBox, VMware) lo muestra
+  # como el puntero del anfitrion. Con cursor por software se veian DOS
+  # flechas: la que dibuja el compositor y la del visor. Si no hay plano de
+  # cursor, wlroots ya dibuja el cursor por software sin ayuda.
+  if [ "${ES_VM:-0}" -eq 1 ]; then
+    unset WLR_NO_HARDWARE_CURSORS
+  else
+    export WLR_NO_HARDWARE_CURSORS=1
+  fi
   export LIBGL_ALWAYS_SOFTWARE=1
   export QT_QUICK_BACKEND=software
   export QSG_RHI_BACKEND=software
@@ -182,14 +220,28 @@ else
     echo "Titan Linux: Laptop con gráficos híbridos detectada (Intel/AMD + NVIDIA)."
     echo "-> Asignando pantalla principal a la GPU integrada (PRIME Offload disponible para NVIDIA)."
     target_card="${IGPU_CARD:-${CARD_PANTALLA}}"
+    sec_card=""
+    for c in /sys/class/drm/card[0-9]; do
+      [ -d "$c" ] || continue
+      cn="$(basename "$c")"
+      if [ -n "$target_card" ] && [ "$cn" != "$target_card" ] && [ -e "/dev/dri/$cn" ]; then
+        sec_card="$cn"
+        break
+      fi
+    done
     if [ -n "${target_card}" ] && [ -e "/dev/dri/${target_card}" ]; then
-      export WLR_DRM_DEVICES="/dev/dri/${target_card}"
+      if [ -n "${sec_card}" ]; then
+        export WLR_DRM_DEVICES="/dev/dri/${target_card}:/dev/dri/${sec_card}"
+      else
+        export WLR_DRM_DEVICES="/dev/dri/${target_card}"
+      fi
     fi
     # No forzar variables de NVIDIA a nivel global para que el escritorio corra sobre la iGPU (Mesa)
   elif [ "${ES_NVIDIA}" -eq 1 ]; then
     if [ "${NVIDIA_PROPIETARIO}" -eq 1 ]; then
       echo "Titan Linux: GPU NVIDIA detectada con driver privativo activo (nvidia-drm)..."
       export LIBVA_DRIVER_NAME=nvidia
+      export NVD_BACKEND=direct
       export __GLX_VENDOR_LIBRARY_NAME=nvidia
       # IMPORTANTE: No fijar GBM_BACKEND=nvidia-drm (Mesa 21.2+ lo maneja internamente; fijarlo rompe labwc, Qt y Firefox)
       unset GBM_BACKEND 2>/dev/null || true
@@ -199,6 +251,7 @@ else
       unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
       unset GBM_BACKEND 2>/dev/null || true
       unset LIBVA_DRIVER_NAME 2>/dev/null || true
+      unset NVD_BACKEND 2>/dev/null || true
     fi
   else
     echo "Titan Linux: GPU Intel/AMD detectada - aceleración OpenGL/Vulkan nativa vía Mesa."
@@ -214,6 +267,130 @@ case "${LANG:-}" in
   ""|C|POSIX) export LANG=C.UTF-8 ;;
 esac
 
+# 4b. Teclas de volumen, brillo, multimedia y Super+D (2026-11): a quien ya
+#     tenia su wayfire.ini / rc.xml de antes se le anaden las de /etc/skel.
+if [ -f "${HOME}/.config/wayfire.ini" ]; then
+  # Super+D de Wayfire restauraba todas las ventanas al abrir una app
+  # y Alt+Tab pasa a titan-shell (fast-switcher no decia a que app se cambiaba)
+  sed -i -e 's/^toggle_showdesktop = <super> KEY_D$/toggle_showdesktop = none/' \
+         -e 's/^activate = <alt> KEY_TAB$/activate = none/' \
+         -e 's/^activate_backward = <alt> <shift> KEY_TAB$/activate_backward = none/' "${HOME}/.config/wayfire.ini"
+  if ! grep -q -- '--tecla' "${HOME}/.config/wayfire.ini" && grep -q '^\[command\]' "${HOME}/.config/wayfire.ini"; then
+    awk '/^# Teclas especiales/{f=1} f{print} /^# Fin de las teclas especiales/{exit}' \
+      /etc/skel/.config/wayfire.ini > "${HOME}/.config/.teclas-titan" 2>/dev/null
+    awk -v f="${HOME}/.config/.teclas-titan" '{print} /^\[command\]/{while((getline l < f)>0) print l}' \
+      "${HOME}/.config/wayfire.ini" > "${HOME}/.config/wayfire.ini.nuevo" \
+      && mv "${HOME}/.config/wayfire.ini.nuevo" "${HOME}/.config/wayfire.ini"
+    rm -f "${HOME}/.config/.teclas-titan"
+  fi
+fi
+if [ -f "${HOME}/.config/labwc/rc.xml" ] && ! grep -q -- '--tecla' "${HOME}/.config/labwc/rc.xml"; then
+  grep -- '--tecla' /etc/skel/.config/labwc/rc.xml | grep '<keybind' > "${HOME}/.config/labwc/.teclas-titan" 2>/dev/null
+  awk -v f="${HOME}/.config/labwc/.teclas-titan" '/<\/keyboard>/{while((getline l < f)>0) print l} {print}' \
+    "${HOME}/.config/labwc/rc.xml" > "${HOME}/.config/labwc/rc.xml.nuevo" \
+    && mv "${HOME}/.config/labwc/rc.xml.nuevo" "${HOME}/.config/labwc/rc.xml"
+  rm -f "${HOME}/.config/labwc/.teclas-titan"
+fi
+
+# 4c'. Panel tactil: sin clics con la palma al escribir (Wayfire lo traia
+#      desactivado). Solo si la persona no lo ha elegido en Ajustes.
+if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q '^disable_touchpad_while_typing' "${HOME}/.config/wayfire.ini"; then
+  if grep -q '^\[input\]' "${HOME}/.config/wayfire.ini"; then
+    sed -i '/^\[input\]/a disable_touchpad_while_typing = true' "${HOME}/.config/wayfire.ini"
+  else
+    printf '\n[input]\ndisable_touchpad_while_typing = true\n' >> "${HOME}/.config/wayfire.ini"
+  fi
+fi
+
+# 4c''. Gestos del panel tactil (plugin titan-gestos, 2026-11)
+if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q 'titan-gestos' "${HOME}/.config/wayfire.ini"; then
+  sed -i 's/^  titan-decor \\$/  titan-decor \\\n  titan-gestos \\/' "${HOME}/.config/wayfire.ini"
+fi
+
+# 4c-bis. Vista de ventanas tambien con las minimizadas (2026-11): "mostrar
+#     el escritorio" minimiza, y luego 3 dedos arriba no enseñaba nada
+if [ -f "${HOME}/.config/wayfire.ini" ] && grep -q '^include_minimized = false$' "${HOME}/.config/wayfire.ini"; then
+  sed -i '/^\[scale\]/,/^\[/{s/^include_minimized = false$/include_minimized = true\nminimized_alpha = 0.55/}' "${HOME}/.config/wayfire.ini"
+fi
+
+# 4c-ter. Minimizar mas rapido (2026-11): "zoom" de 0,2 s en vez de la
+#     succion de 0,42 s. Tambien en la copia del modo "equipo ligero".
+for f in "${HOME}/.config/wayfire.ini" "${HOME}/.config/titan/rendimiento-normal.conf"; do
+  [ -f "$f" ] && sed -i 's/^minimize_animation = squeezimize$/minimize_animation = zoom/; s/^animate minimize_animation squeezimize$/animate minimize_animation zoom/' "$f"
+done
+
+# 4c. Distribucion del teclado (2026-11): la del sistema (la que se eligio al
+#     instalar) si la persona no ha elegido otra en Ajustes > Teclado. Antes
+#     Wayfire usaba siempre "us" y labwc la de XKB_DEFAULT_* (ninguna).
+if command -v titan-distribucion >/dev/null 2>&1; then
+  if [ ! -f "${HOME}/.config/wayfire.ini" ] || ! grep -q '^xkb_layout' "${HOME}/.config/wayfire.ini"; then
+    # shellcheck disable=SC2046
+    titan-distribucion $(titan-distribucion --sistema) 2>/dev/null || true
+  fi
+  # labwc y Xwayland la toman del entorno
+  set -- $(titan-distribucion)
+  export XKB_DEFAULT_LAYOUT="${1:-us}"
+  [ -n "${2:-}" ] && export XKB_DEFAULT_VARIANT="$2"
+  set --
+fi
+
+# 5. Compositor: Wayfire (inmersivo) solo con aceleracion 3D real; necesita
+#    OpenGL ES y no tiene renderizado por software como labwc (pixman).
+COMPOSITOR="labwc"
+if command -v wayfire >/dev/null 2>&1 && [ -f "${HOME}/.config/wayfire.ini" ]; then
+  if [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] && [ "${SIN_ACCEL_3D}" -eq 0 ]; then
+    COMPOSITOR="wayfire"
+  fi
+  # VM con GPU virtual 3D (virgl: virtio-vga-gl; vmwgfx con 3D): tiene nodo
+  # de render, asi que tambien puede. Si Wayfire no arranca, se cae a labwc.
+  if [ "${ES_COMPAT}" -eq 0 ] && [ -e /dev/dri/renderD128 ]; then
+    COMPOSITOR="wayfire"
+  fi
+  if grep -qw 'titan.wayfire' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-}" = "wayfire" ]; then
+    [ -e /dev/dri/renderD128 ] && COMPOSITOR="wayfire"
+  fi
+fi
+if grep -qw 'titan.labwc' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-}" = "labwc" ]; then
+  COMPOSITOR="labwc"
+fi
+
+# Apps Flatpak en XDG_DATA_DIRS. /etc/profile.d/flatpak.sh va DESPUES de este
+# fichero (orden alfabetico) y el compositor se queda corriendo aqui, asi que
+# sin esto la sesion no las veia: la App Store no podia "Lanzar" lo que
+# instalaba y "Abrir con" no las ofrecia. flatpak.sh no repite carpetas.
+[ -r /etc/profile.d/flatpak.sh ] && . /etc/profile.d/flatpak.sh
+
+codigo_salida=1
+if [ "${COMPOSITOR}" = "wayfire" ]; then
+  # labwc lee ~/.config/labwc/environment; Wayfire no, asi que se exporta aqui.
+  export XDG_CURRENT_DESKTOP=Titan:wayfire
+  # Si se forzo Wayfire en una VM con virgl, quitar la capa por software.
+  unset WLR_RENDERER LIBGL_ALWAYS_SOFTWARE QSG_RENDER_LOOP MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE
+  export QT_QUICK_BACKEND=rhi
+  export QSG_RHI_BACKEND=opengl
+  export QT_WAYLAND_DISABLE_WINDOWDECORATION=0
+  # Con preferred_decoration_mode=client, Firefox dibuja su barra redondeada.
+  export MOZ_GTK_TITLEBAR_DECORATION=client
+  # kitty: sin su barra propia; Wayfire le pone la de Titan (titan-decor,
+  # forced_views). En labwc no se pone: alli kitty pide la barra al compositor.
+  export KITTY_CONF_DECORACION="hide_window_decorations yes"
+  export NO_AT_BRIDGE=1
+  echo "Iniciando Inti OS (sesión inmersiva con Wayfire)..."
+  dbus-run-session -- wayfire 2>&1 | tee /tmp/wayfire.log
+  codigo_salida=${PIPESTATUS[0]}
+  if [ $codigo_salida -ne 0 ]; then
+    echo "Aviso: Wayfire finalizó con código ${codigo_salida}; se usa labwc."
+    tail -n 15 /tmp/wayfire.log
+    export XDG_CURRENT_DESKTOP=Titan:labwc
+    export MOZ_GTK_TITLEBAR_DECORATION=system
+    unset KITTY_CONF_DECORACION
+    unset QT_QUICK_BACKEND QSG_RHI_BACKEND
+    [ "${ES_VM}" -eq 1 ] && aplicar_capa_compatibilidad
+    COMPOSITOR="labwc"
+  fi
+fi
+
+if [ "${COMPOSITOR}" = "labwc" ]; then
 echo "Iniciando Titan Linux (interfaz gráfica estilo macOS con labwc)..."
 dbus-run-session -- labwc 2>&1 | tee /tmp/labwc.log
 codigo_salida=${PIPESTATUS[0]}
@@ -224,6 +401,7 @@ if [ $codigo_salida -ne 0 ] && [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] 
   unset GBM_BACKEND 2>/dev/null || true
   unset __GLX_VENDOR_LIBRARY_NAME 2>/dev/null || true
   unset LIBVA_DRIVER_NAME 2>/dev/null || true
+  unset NVD_BACKEND 2>/dev/null || true
   unset WLR_DRM_DEVICES 2>/dev/null || true
   aplicar_capa_compatibilidad
   dbus-run-session -- labwc 2>&1 | tee -a /tmp/labwc.log
@@ -233,6 +411,7 @@ fi
 if [ $codigo_salida -ne 0 ] && [ -s /tmp/labwc.log ]; then
   echo "Aviso: labwc finalizó con código ${codigo_salida}. Registro de error:"
   tail -n 25 /tmp/labwc.log
+fi
 fi
 
 echo "El escritorio se ha cerrado. Volviendo a la consola de texto."

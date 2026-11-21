@@ -1,0 +1,10 @@
+[Unit]
+Description=Inti OS: avisar cuando una app se cierra inesperadamente
+
+[Service]
+ExecStart=/usr/local/bin/titan-avisos-fallos
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

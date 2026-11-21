@@ -1,6 +1,9 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Fotos.qml</file>
+        <file>qml/Visor.qml</file>
+        <file>qml/Editor.qml</file>
+        <file>qml/BotonM.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>

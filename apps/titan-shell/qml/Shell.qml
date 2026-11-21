@@ -177,7 +177,7 @@ QtObject {
                         width: 110
                         height: 32
                         radius: 8
-                        color: "#0071e3"
+                        color: (typeof titanThemeManager !== "undefined" ? titanThemeManager.accent : "#0071e3")
 
                         Text {
                             anchors.centerIn: parent
@@ -272,16 +272,109 @@ QtObject {
     property var dynamicIslandWin: Window {
         objectName: "dynamicIslandWindow"
         visible: false
-        width: Screen.width
-        height: 130
+        id: ventanaIsla
+        // Del tamaño de la isla, para no tapar ni robar clics a las ventanas
+        // de debajo. Antes seguía cada fotograma de la animación (unos 60
+        // cambios de tamaño de la superficie Wayland por transición): ahora
+        // crece de una vez al tamaño final y solo encoge cuando la animación
+        // ha terminado. (Una máscara de entrada con ventana fija no sirve:
+        // su commit a mitad de animación deja a Qt sin frame callback.)
+        property real anchoV: 40
+        property real altoV: 28
+        width: anchoV
+        height: altoV
         color: "transparent"
         flags: Qt.FramelessWindowHint
 
+        function ajustar() {
+            var w = Math.ceil(Math.max(isla.anchoObjetivo, isla.width)) + 16
+            var h = Math.ceil(Math.max(isla.altoObjetivo, isla.height)) + 8
+            var quieta = Math.abs(isla.width - isla.anchoObjetivo) < 1 && Math.abs(isla.height - isla.altoObjetivo) < 1
+            if (w > anchoV || quieta) anchoV = Math.max(40, w)
+            if (h > altoV || quieta) altoV = Math.max(28, h)
+        }
+        Connections {
+            target: isla
+            function onAnchoObjetivoChanged() { ventanaIsla.ajustar() }
+            function onAltoObjetivoChanged() { ventanaIsla.ajustar() }
+            function onWidthChanged() { ventanaIsla.ajustar() }
+            function onHeightChanged() { ventanaIsla.ajustar() }
+        }
+
+        // Sobre la barra superior (28 px): en reposo cabe dentro de ella.
         DynamicIsland {
+            id: isla
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 4
+            anchors.topMargin: 2
         }
+    }
+
+    // Alt+Tab: a qué app se cambia (CambiadorVentanas.qml)
+    // Indicador "abriendo…" junto al puntero para las apps que no están en el
+    // Dock (ColaApps lo enseña, lo mueve y lo quita al salir la ventana).
+    property var cursorWin: Window {
+        objectName: "cursorWindow"
+        visible: false
+        width: 34
+        height: 34
+        color: "transparent"
+        flags: Qt.FramelessWindowHint | Qt.WindowTransparentForInput
+        Item {
+            anchors.fill: parent
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: Qt.rgba(0.08, 0.08, 0.10, 0.72)
+            }
+            Image {
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                sourceSize: Qt.size(36, 36)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                source: {
+                    var ic = colaApps.icono
+                    if (!ic) return ""
+                    if (ic.charAt(0) === "/") return "file://" + ic
+                    return (ic.indexOf("://") !== -1 || ic.indexOf("qrc:") === 0) ? ic : ""
+                }
+            }
+            // Arco que gira (RotationAnimator va en el hilo de dibujo: barato)
+            Canvas {
+                id: arco
+                anchors.fill: parent
+                anchors.margins: 2
+                onPaint: {
+                    var c = getContext("2d")
+                    c.reset()
+                    c.lineWidth = 2.5
+                    c.lineCap = "round"
+                    c.strokeStyle = "#ffffff"
+                    c.beginPath()
+                    c.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 1.4)
+                    c.stroke()
+                }
+                RotationAnimator on rotation {
+                    from: 0; to: 360
+                    duration: 900
+                    loops: Animation.Infinite
+                    running: shellRoot.cursorWin.visible
+                }
+            }
+        }
+    }
+
+    property var cambiadorWin: Window {
+        objectName: "cambiadorWindow"
+        visible: false
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        onActiveChanged: if (active) cambiadorVentanas.conTeclado = true
+        CambiadorVentanas { id: cambiadorVentanas }
     }
 
     // 11. Sistema de Escritorios / Mission Control (Hot Corner superior derecho)
