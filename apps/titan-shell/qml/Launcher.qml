@@ -83,8 +83,9 @@ Item {
     // ---------- Acciones ----------
     function launchApp(app) {
         if (!app) return
-        dockModel.setAppLaunching(app.exec, app.exec, app.name, app.icon)
-        launcherBackend.launch(app.exec)
+        // Rebota en el Dock si está allí; si no, indicador junto al puntero
+        var enDock = dockModel.setAppLaunching(app.exec, app.exec, app.name, app.icon)
+        launcherBackend.launch(app.exec, enDock, launcher.iconFor(app.icon))
         shellBackend.closeLauncher()
     }
 

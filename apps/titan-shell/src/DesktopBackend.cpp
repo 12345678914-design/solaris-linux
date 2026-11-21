@@ -1,5 +1,6 @@
 #include "TitanBinary.h"
 #include "DesktopBackend.h"
+#include "ColaApps.h"
 #include "TitanIconoSvg.h"
 #include "TitanDesktopEntry.h"
 #include "TitanIconoApp.h"
@@ -618,7 +619,7 @@ QString DesktopBackend::resolveIcon(const QString &fileName, bool isDir) const
     return QStringLiteral("qrc:/icons/file-generic.png");
 }
 
-void DesktopBackend::openItem(const QString &path)
+void DesktopBackend::openItem(const QString &path, bool enDock)
 {
     QFileInfo fi(path);
     if (!fi.exists()) return;
@@ -656,7 +657,8 @@ void DesktopBackend::openItem(const QString &path)
             QStringList parts = QProcess::splitCommand(exec);
             if (!parts.isEmpty()) {
                 QString prog = resolveDesktopBinary(parts.takeFirst());
-                QProcess::startDetached(prog, parts);
+                // De una en una, en orden (ColaApps)
+                ColaApps::instancia()->lanzar(prog, parts, enDock, ini.value(QStringLiteral("Icon")));
                 return;
             }
         }

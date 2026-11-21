@@ -1,0 +1,127 @@
+#!/bin/sh
+# Inti OS - modo "equipo ligero" para ordenadores modestos (Celeron, Atom,
+# poca memoria, sin aceleración gráfica).
+#
+# Quita lo que más cuesta a la gráfica: el desenfoque y la gelatina de las
+# ventanas, las animaciones de abrir/cerrar/minimizar, y acorta las de la
+# vista de ventanas y escritorios. titan-shell, por su parte, deja el
+# vidrio del Dock y del Launchpad en un color liso y no amplía los iconos
+# (lo lee de [Rendimiento] ligero en ~/.config/titan/shell.conf).
+#
+#   titan-rendimiento detectar         ligero | normal (y el motivo)
+#   titan-rendimiento estado           ligero | normal (lo elegido)
+#   titan-rendimiento poner ligero|normal
+#   titan-rendimiento inicio           al entrar: la primera vez decide solo
+#
+# Antes de cambiar Wayfire guarda los valores de la persona en
+# ~/.config/titan/rendimiento-normal.conf y "normal" los devuelve tal cual.
+set -u
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+wf="$dir/wayfire.ini"
+prefs="$dir/titan/shell.conf"
+copia="$dir/titan/rendimiento-normal.conf"
+cpuinfo="${TITAN_CPUINFO:-/proc/cpuinfo}"
+meminfo="${TITAN_MEMINFO:-/proc/meminfo}"
+dri="${TITAN_DRI:-/dev/dri}"
+
+# Lo que cambia en Wayfire: sección clave valor-ligero
+ajustes='animate open_animation none
+animate close_animation none
+animate minimize_animation none
+scale duration 150ms linear
+expo duration 150ms linear
+vswitch duration 150ms linear'
+
+detectar() {
+    modelo=$(grep -m1 'model name' "$cpuinfo" 2>/dev/null | cut -d: -f2-)
+    hilos=$(grep -c '^processor' "$cpuinfo" 2>/dev/null)
+    mem=$(awk '/^MemTotal:/ {print $2}' "$meminfo" 2>/dev/null)
+    if printf '%s' "$modelo" | grep -qiE 'celeron|atom|pentium( cpu)? (silver|n[0-9])|athlon silver|\ba[4-9]-[0-9]{4}|\be[12]-[0-9]{4}'; then
+        echo "ligero (procesador:$modelo)"; return
+    fi
+    if [ "${hilos:-4}" -le 2 ]; then echo "ligero ($hilos hilos)"; return; fi
+    if [ "${mem:-8000000}" -lt 4500000 ]; then echo "ligero ($((mem / 1024)) MB de memoria)"; return; fi
+    if ! ls "$dri"/renderD* >/dev/null 2>&1; then echo "ligero (sin aceleración gráfica)"; return; fi
+    echo "normal"
+}
+
+# Valor de clave en [seccion] de un ini (vacío si no está)
+leer_ini() { # fichero seccion clave
+    awk -v s="[$2]" -v k="$3" '
+        /^\[/ { dentro = ($0 == s); next }
+        dentro { c = $0; sub(/[ \t]*=.*/, "", c); gsub(/^[ \t]+/, "", c)
+                 if (c == k) { v = $0; sub(/^[^=]*=[ \t]*/, "", v); print v; exit } }' "$1" 2>/dev/null
+}
+
+# Pone clave = valor en [seccion] (la crea si hace falta)
+poner_ini() { # fichero seccion clave valor [separador]
+    [ -f "$1" ] || : > "$1"
+    awk -v s="[$2]" -v k="$3" -v v="$4" -v sep="${5:- = }" '
+        function cerrar() { if (dentro && !hecho) { print k sep v; hecho = 1 } }
+        /^\[/ { cerrar(); dentro = ($0 == s); if (dentro) visto = 1; print; next }
+        dentro && !hecho { c = $0; sub(/[ \t]*=.*/, "", c); gsub(/^[ \t]+/, "", c)
+                           if (c == k && $0 ~ /=/) { print k sep v; hecho = 1; next } }
+        { print }
+        END { cerrar(); if (!visto) { if (NR) print ""; print s; print k sep v } }' "$1" > "$1.nuevo" &&
+        mv "$1.nuevo" "$1"
+}
+
+# Quita/añade un plugin de la lista "plugins = \" (una línea por plugin)
+quitar_plugin() {
+    awk -v p="$1" '
+        /^plugins[ \t]*=/ { lista = 1; print; next }
+        lista && /^[^ \t]/ { lista = 0 }
+        lista { x = $0; gsub(/[ \t\\]/, "", x); if (x == p) next }
+        { print }' "$wf" > "$wf.nuevo" && mv "$wf.nuevo" "$wf"
+}
+poner_plugin() {
+    grep -qE "^[[:space:]]+$1([[:space:]]+\\\\)?\$" "$wf" && return 0
+    sed -i "s/^plugins[[:space:]]*=[[:space:]]*\\\\\$/&\n  $1 \\\\/" "$wf"
+}
+
+estado() {
+    case "$(leer_ini "$prefs" Rendimiento ligero)" in
+        true) echo ligero ;;
+        *) echo normal ;;
+    esac
+}
+
+poner() {
+    mkdir -p "$dir/titan"
+    poner_ini "$prefs" Rendimiento ligero "$([ "$1" = ligero ] && echo true || echo false)" "="
+    [ -f "$wf" ] || return 0
+    if [ "$1" = ligero ]; then
+        if [ ! -f "$copia" ]; then
+            printf '%s\n' "$ajustes" | while read -r s k _; do
+                printf '%s %s %s\n' "$s" "$k" "$(leer_ini "$wf" "$s" "$k")"
+            done > "$copia"
+            for p in blur wobbly; do
+                grep -qE "^[[:space:]]+$p([[:space:]]+\\\\)?\$" "$wf" && echo "plugin $p" >> "$copia"
+            done
+        fi
+        printf '%s\n' "$ajustes" | while read -r s k v; do poner_ini "$wf" "$s" "$k" "$v"; done
+        quitar_plugin blur
+        quitar_plugin wobbly
+    else
+        [ -f "$copia" ] || return 0
+        while read -r s k v; do
+            if [ "$s" = plugin ]; then poner_plugin "$k"
+            elif [ -n "$v" ]; then poner_ini "$wf" "$s" "$k" "$v"; fi
+        done < "$copia"
+        rm -f "$copia"
+    fi
+}
+
+case "${1:-estado}" in
+    detectar) detectar ;;
+    estado) estado ;;
+    poner)
+        case "${2:-}" in ligero|normal) poner "$2" ;; *) echo "uso: titan-rendimiento poner ligero|normal" >&2; exit 2 ;; esac ;;
+    inicio)
+        # Solo la primera vez: después manda lo que elija la persona en Ajustes
+        if [ -z "$(leer_ini "$prefs" Rendimiento ligero)" ]; then
+            d=$(detectar)
+            poner "${d%% *}"
+        fi ;;
+    *) echo "uso: titan-rendimiento detectar|estado|poner ligero|normal|inicio" >&2; exit 2 ;;
+esac

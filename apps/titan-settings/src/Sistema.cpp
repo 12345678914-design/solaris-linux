@@ -233,6 +233,29 @@ void Sistema::leerEnergia()
         }
         emit cambiado();
     }, 5000);
+    // ¿Es un equipo modesto? (titan-rendimiento detectar: "ligero (motivo)")
+    correr(kBin + QStringLiteral("titan-rendimiento"), {QStringLiteral("detectar")}, [this](int c, const QString &o, const QString &) {
+        const QString t = o.trimmed();
+        m_ligeroMotivo.clear();
+        if (c == 0 && t.startsWith(QStringLiteral("ligero"))) {
+            const int a = t.indexOf(QLatin1Char('(')), b = t.lastIndexOf(QLatin1Char(')'));
+            m_ligeroMotivo = (a >= 0 && b > a) ? t.mid(a + 1, b - a - 1).trimmed() : QStringLiteral("equipo modesto");
+        }
+        emit cambiado();
+    }, 5000);
+}
+
+// Equipo ligero: titan-rendimiento cambia wayfire.ini y shell.conf; el Dock
+// y Ajustes lo ven solos (vigilan shell.conf) y Wayfire recarga su fichero.
+void Sistema::setEquipoLigero(bool activo)
+{
+    correr(kBin + QStringLiteral("titan-rendimiento"),
+           {QStringLiteral("poner"), activo ? QStringLiteral("ligero") : QStringLiteral("normal")},
+           [this](int c, const QString &, const QString &e) {
+        if (c != 0)
+            avisar(QStringLiteral("No se pudo cambiar el modo: ") + e.trimmed());
+        emit cambiado();
+    }, 10000);
 }
 
 void Sistema::setPerfilEnergia(const QString &perfil)

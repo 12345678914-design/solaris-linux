@@ -24,6 +24,7 @@ SOURCES += \
     src/LauncherBackend.cpp \
     src/DesktopBackend.cpp \
     src/WayfireIpc.cpp \
+    src/ColaApps.cpp \
     src/Mpris.cpp \
     ../titan-common/ThemeManager.cpp \
     ../titan-common/TitanPrefs.cpp \
@@ -38,6 +39,7 @@ HEADERS += \
     src/LauncherBackend.h \
     src/DesktopBackend.h \
     src/WayfireIpc.h \
+    src/ColaApps.h \
     src/Mpris.h \
     ../titan-common/ThemeManager.h \
     ../titan-common/TitanPrefs.h \

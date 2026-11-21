@@ -356,12 +356,17 @@ void ThemeManager::sincronizarGtk()
     m_ultimoOscuro = int(m_isDark);
     m_ultimoAcento = m_accent;
 
-    // En orden y en un solo proceso: primero el tema GTK y después
-    // color-scheme (el portal), para que nadie vea una mezcla de los dos.
+    // En orden y en un solo proceso: PRIMERO color-scheme (el portal) y
+    // después el tema GTK. Firefox, al cambiar el tema GTK, mira color-scheme
+    // para decidir el color de su ventana: si llegaba antes el tema, veía el
+    // color-scheme anterior y se quedaba un paso por detrás (la primera vez
+    // seguía claro; luego, ventana oscura con páginas claras). La pausa deja
+    // que el portal reparta color-scheme antes del cambio de tema.
     QProcess::startDetached(QStringLiteral("sh"), {
         QStringLiteral("-c"),
-        QStringLiteral("gsettings set org.gnome.desktop.interface gtk-theme '%1'; "
-                       "gsettings set org.gnome.desktop.interface color-scheme '%2'; "
+        QStringLiteral("gsettings set org.gnome.desktop.interface color-scheme '%2'; "
+                       "sleep 0.3; "
+                       "gsettings set org.gnome.desktop.interface gtk-theme '%1'; "
                        "gsettings set org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'")
             .arg(gtkTheme, gtkColorScheme)
     });

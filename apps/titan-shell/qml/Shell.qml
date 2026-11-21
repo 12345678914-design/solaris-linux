@@ -311,6 +311,61 @@ QtObject {
     }
 
     // Alt+Tab: a qué app se cambia (CambiadorVentanas.qml)
+    // Indicador "abriendo…" junto al puntero para las apps que no están en el
+    // Dock (ColaApps lo enseña, lo mueve y lo quita al salir la ventana).
+    property var cursorWin: Window {
+        objectName: "cursorWindow"
+        visible: false
+        width: 34
+        height: 34
+        color: "transparent"
+        flags: Qt.FramelessWindowHint | Qt.WindowTransparentForInput
+        Item {
+            anchors.fill: parent
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: Qt.rgba(0.08, 0.08, 0.10, 0.72)
+            }
+            Image {
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                sourceSize: Qt.size(36, 36)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                source: {
+                    var ic = colaApps.icono
+                    if (!ic) return ""
+                    if (ic.charAt(0) === "/") return "file://" + ic
+                    return (ic.indexOf("://") !== -1 || ic.indexOf("qrc:") === 0) ? ic : ""
+                }
+            }
+            // Arco que gira (RotationAnimator va en el hilo de dibujo: barato)
+            Canvas {
+                id: arco
+                anchors.fill: parent
+                anchors.margins: 2
+                onPaint: {
+                    var c = getContext("2d")
+                    c.reset()
+                    c.lineWidth = 2.5
+                    c.lineCap = "round"
+                    c.strokeStyle = "#ffffff"
+                    c.beginPath()
+                    c.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 1.4)
+                    c.stroke()
+                }
+                RotationAnimator on rotation {
+                    from: 0; to: 360
+                    duration: 900
+                    loops: Animation.Infinite
+                    running: shellRoot.cursorWin.visible
+                }
+            }
+        }
+    }
+
     property var cambiadorWin: Window {
         objectName: "cambiadorWindow"
         visible: false

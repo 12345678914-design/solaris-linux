@@ -24,7 +24,8 @@ public:
     QVariantList recentApps() const { return QVariantList(); }
     
     Q_INVOKABLE void search(const QString &query);
-    Q_INVOKABLE void launch(const QString &exec);
+    // enDock: rebota en el Dock (sin indicador junto al puntero)
+    Q_INVOKABLE void launch(const QString &exec, bool enDock = false, const QString &icono = QString());
     Q_INVOKABLE void reload();
     QVariantList categorias() const { return m_categorias; }
     QString categoria() const { return m_categoria; }

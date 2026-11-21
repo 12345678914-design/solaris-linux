@@ -1,5 +1,6 @@
 #include "TitanBinary.h"
 #include "DockModel.h"
+#include "ColaApps.h"
 #include "TitanIconoSvg.h"
 #include "TitanDesktopEntry.h"
 #include "TitanIconoApp.h"
@@ -680,9 +681,9 @@ static QString resolveBinary(const QString &program)
     return titan::resolverBinario(program);
 }
 
-void DockModel::setAppLaunching(const QString &appId, const QString &exec, const QString &name, const QString &icon)
+bool DockModel::setAppLaunching(const QString &appId, const QString &exec, const QString &name, const QString &icon)
 {
-    if (appId.isEmpty() && exec.isEmpty()) return;
+    if (appId.isEmpty() && exec.isEmpty()) return false;
 
     QString targetId = cleanAppId(!appId.isEmpty() ? appId : exec);
 
@@ -696,39 +697,18 @@ void DockModel::setAppLaunching(const QString &appId, const QString &exec, const
         }
     }
 
-    if (foundIdx >= 0) {
-        m_apps[foundIdx][QStringLiteral("launching")] = true;
+    // Solo rebotan las apps que están en el Dock. Antes las demás se
+    // añadían como icono temporal y, al abrir varias, el Dock se llenaba de
+    // iconos fantasma; ahora esas muestran un indicador junto al puntero.
+    if (foundIdx < 0) {
+        Q_UNUSED(name);
+        Q_UNUSED(icon);
+        return false;
+    }
+    m_apps[foundIdx][QStringLiteral("launching")] = true;
+    {
         QModelIndex idx = index(foundIdx);
         emit dataChanged(idx, idx, {LaunchingRole});
-    } else {
-        QVariantMap launchInfo;
-        launchInfo[QStringLiteral("appId")] = targetId;
-        launchInfo[QStringLiteral("name")] = name.isEmpty() ? targetId : name;
-        QString resolvedIcon = icon;
-        if (resolvedIcon.isEmpty() || resolvedIcon.contains(QStringLiteral("system.png"))) {
-            resolvedIcon = resolveDynamicIcon(targetId, name);
-        }
-        launchInfo[QStringLiteral("icon")] = resolvedIcon;
-        launchInfo[QStringLiteral("exec")] = exec.isEmpty() ? targetId : exec;
-        launchInfo[QStringLiteral("running")] = false;
-        launchInfo[QStringLiteral("hasWindow")] = false;
-        launchInfo[QStringLiteral("active")] = false;
-        launchInfo[QStringLiteral("launching")] = true;
-        launchInfo[QStringLiteral("isPinned")] = false;
-        launchInfo[QStringLiteral("showSeparator")] = true;
-        m_launchingAppInfo[targetId] = launchInfo;
-
-        int insertPos = m_apps.size();
-        for (int i = 0; i < m_apps.size(); ++i) {
-            if (m_apps[i][QStringLiteral("appId")].toString() == QStringLiteral("titan-trash")) {
-                insertPos = i;
-                break;
-            }
-        }
-
-        beginInsertRows(QModelIndex(), insertPos, insertPos);
-        m_apps.insert(insertPos, launchInfo);
-        endInsertRows();
     }
 
     if (m_launchTimers.contains(targetId)) {
@@ -764,18 +744,20 @@ void DockModel::setAppLaunching(const QString &appId, const QString &exec, const
     });
     m_launchTimers[targetId] = timer;
     timer->start(12000);
+    return true;
 }
 
 void DockModel::launchApp(const QString &appId, const QString &exec, const QString &name, const QString &icon)
 {
-    setAppLaunching(appId, exec, name, icon);
+    const bool enDock = setAppLaunching(appId, exec, name, icon);
 
     QString toExec = exec.isEmpty() ? appId : exec;
     if (!toExec.isEmpty()) {
-        QStringList parts = toExec.split(' ');
+        QStringList parts = QProcess::splitCommand(toExec);
+        if (parts.isEmpty())
+            return;
         QString program = parts.takeFirst();
-        QString resolved = resolveBinary(program);
-        QProcess::startDetached(resolved, parts);
+        ColaApps::instancia()->lanzar(resolveBinary(program), parts, enDock, icon);
     }
 }
 
@@ -817,10 +799,12 @@ void DockModel::activateApp(const QString &appId)
             setAppLaunching(aId, exec, name, icon);
 
             if (!exec.isEmpty()) {
-                QStringList parts = exec.split(' ');
+                QStringList parts = QProcess::splitCommand(exec);
+                if (parts.isEmpty())
+                    break;
                 QString program = parts.takeFirst();
-                QString resolved = resolveBinary(program);
-                QProcess::startDetached(resolved, parts);
+                // De una en una (ColaApps): pulsar dos veces no la abre dos veces
+                ColaApps::instancia()->lanzar(resolveBinary(program), parts, true, icon);
             }
             break;
         }

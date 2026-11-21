@@ -20,7 +20,8 @@ public:
     QVariantMap positions() const { return m_positions; }
 
 public slots:
-    Q_INVOKABLE void openItem(const QString &path);
+    // enDock: la app rebota en el Dock (sin indicador junto al puntero)
+    Q_INVOKABLE void openItem(const QString &path, bool enDock = false);
     Q_INVOKABLE void openInFinder();
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void removeItem(const QString &path);

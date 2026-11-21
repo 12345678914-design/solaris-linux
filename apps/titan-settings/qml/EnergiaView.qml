@@ -122,6 +122,23 @@ PaginaAjustes {
         }
     }
 
+    // Equipo ligero (titan-rendimiento)
+    Grupo {
+        etiqueta: "Rendimiento del escritorio"
+        nota: sistema.ligeroRecomendado !== ""
+              ? "Recomendado en este equipo (" + sistema.ligeroRecomendado + "). Se activó solo la primera vez."
+              : "Para ordenadores modestos: quita el desenfoque, la gelatina de las ventanas y las animaciones, y el Dock no amplía los iconos."
+        Fila {
+            separador: false
+            titulo: "Equipo ligero"
+            detalle: "Todo va más fluido en equipos lentos; se ve más sencillo."
+            Interruptor {
+                activo: { prefs.version; return prefs.b("Rendimiento/ligero") }
+                onAlternado: function(v) { sistema.setEquipoLigero(v) }
+            }
+        }
+    }
+
     // Inactividad
     Grupo {
         etiqueta: "Cuando no se usa"

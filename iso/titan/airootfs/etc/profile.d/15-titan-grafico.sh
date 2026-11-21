@@ -307,6 +307,12 @@ if [ -f "${HOME}/.config/wayfire.ini" ] && ! grep -q 'titan-gestos' "${HOME}/.co
   sed -i 's/^  titan-decor \\$/  titan-decor \\\n  titan-gestos \\/' "${HOME}/.config/wayfire.ini"
 fi
 
+# 4c-bis. Vista de ventanas tambien con las minimizadas (2026-11): "mostrar
+#     el escritorio" minimiza, y luego 3 dedos arriba no enseñaba nada
+if [ -f "${HOME}/.config/wayfire.ini" ] && grep -q '^include_minimized = false$' "${HOME}/.config/wayfire.ini"; then
+  sed -i '/^\[scale\]/,/^\[/{s/^include_minimized = false$/include_minimized = true\nminimized_alpha = 0.55/}' "${HOME}/.config/wayfire.ini"
+fi
+
 # 4c. Distribucion del teclado (2026-11): la del sistema (la que se eligio al
 #     instalar) si la persona no ha elegido otra en Ajustes > Teclado. Antes
 #     Wayfire usaba siempre "us" y labwc la de XKB_DEFAULT_* (ninguna).

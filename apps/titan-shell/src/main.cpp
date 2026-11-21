@@ -26,6 +26,7 @@
 #include <QScreen>
 
 #include <LayerShellQt/window.h>
+#include "ColaApps.h"
 
 namespace {
 
@@ -317,6 +318,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("shellBackend"), &shellBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("windowTracker"), &windowTracker);
     engine.rootContext()->setContextProperty(QStringLiteral("dockModel"), &dockModel);
+    // Abrir apps de una en una (Dock, Launchpad, búsqueda, escritorio)
+    ColaApps::instancia()->setTracker(&windowTracker);
+    engine.rootContext()->setContextProperty(QStringLiteral("colaApps"), ColaApps::instancia());
     engine.rootContext()->setContextProperty(QStringLiteral("launcherBackend"), &launcherBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopBackend"), &desktopBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("mpris"), &mpris);
@@ -545,6 +549,15 @@ int main(int argc, char *argv[])
                 if (win->isVisible())
                     win->requestActivate();
             });
+        } else if (name == QStringLiteral("cursorWindow")) {
+            // Indicador "abriendo…" junto al puntero (ColaApps lo mueve con
+            // los márgenes). Ámbito sin "titan-" para que Wayfire no le
+            // aplique el desenfoque de las capas titan-*.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorLeft;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("inti-abriendo"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            ColaApps::instancia()->setVentanaIndicador(win);
         } else if (name == QStringLiteral("workspacesWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;

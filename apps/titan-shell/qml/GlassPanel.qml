@@ -21,7 +21,8 @@ Item {
     // Borde "Liquid Glass": en vez de un trazo uniforme, la luz entra por arriba,
     // casi desaparece en los lados y rebota débil abajo. Necesita shaders
     // (MultiEffect): con effects=false (backend por software) se usa el borde simple.
-    property bool effects: true
+    // En "equipo ligero" (Ajustes > Batería y energía) el vidrio es un tinte liso
+    property bool effects: { prefs.version; return !prefs.b("Rendimiento/ligero") }
     property bool liquid: true
     readonly property bool _liquidRim: effects && liquid && showBorder
 

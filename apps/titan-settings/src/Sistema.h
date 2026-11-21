@@ -23,6 +23,8 @@ class Sistema : public QObject
     Q_PROPERTY(QString perfilEnergia READ perfilEnergia NOTIFY cambiado)
     Q_PROPERTY(QStringList perfilesEnergia READ perfilesEnergia NOTIFY cambiado)
     Q_PROPERTY(QVariantMap bateria READ bateria NOTIFY cambiado)
+    // Equipo ligero: por qué se recomienda en este equipo ("" si no hace falta)
+    Q_PROPERTY(QString ligeroRecomendado READ ligeroRecomendado NOTIFY cambiado)
     Q_PROPERTY(QVariantMap inactividad READ inactividad NOTIFY cambiado)
     // Seguridad
     Q_PROPERTY(QString cortafuegos READ cortafuegos NOTIFY cambiado)
@@ -61,6 +63,7 @@ public:
     explicit Sistema(QObject *parent = nullptr);
 
     QString perfilEnergia() const { return m_perfil; }
+    QString ligeroRecomendado() const { return m_ligeroMotivo; }
     QStringList perfilesEnergia() const { return m_perfiles; }
     QVariantMap bateria() const { return m_bateria; }
     QVariantMap inactividad() const { return m_inactividad; }
@@ -91,6 +94,7 @@ public:
     Q_INVOKABLE void refrescar(const QString &seccion);
 
     Q_INVOKABLE void setPerfilEnergia(const QString &perfil);
+    Q_INVOKABLE void setEquipoLigero(bool activo);
     Q_INVOKABLE void setInactividad(const QString &clave, int minutos);
     Q_INVOKABLE void bloquearAhora();
 
@@ -171,6 +175,7 @@ private:
     QString m_teclado;
     QVariantMap m_raton;
     bool m_panelTactil = false;
+    QString m_ligeroMotivo;
     QVariantList m_impresoras;
     QString m_tipoInst;
     QVariantList m_instantaneas;

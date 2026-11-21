@@ -448,10 +448,9 @@ Item {
 
                 onDoubleClicked: (mouse) => {
                     if (mouse.button === Qt.LeftButton) {
-                        if (modelData.isApp) {
-                            dockModel.setAppLaunching(modelData.exec ? modelData.exec : modelData.name, modelData.exec, modelData.name, modelData.icon)
-                        }
-                        desktopBackend.openItem(modelData.path)
+                        var enDock = modelData.isApp
+                            && dockModel.setAppLaunching(modelData.exec ? modelData.exec : modelData.name, modelData.exec, modelData.name, modelData.icon)
+                        desktopBackend.openItem(modelData.path, enDock)
                         desktopIconsRoot.selectedPaths = []
                     }
                 }

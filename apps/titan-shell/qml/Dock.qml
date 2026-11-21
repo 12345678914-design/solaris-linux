@@ -17,7 +17,7 @@ Item {
     readonly property int iconSize: { prefs.version; return Math.max(28, Math.min(64, prefs.i("Dock/tamano"))) }
     readonly property int slot: iconSize + 8          // casilla de cada icono
     readonly property int paso: slot + 4              // casilla + separacion
-    readonly property bool ampliacion: { prefs.version; return prefs.b("Dock/ampliacion") }
+    readonly property bool ampliacion: { prefs.version; return prefs.b("Dock/ampliacion") && !prefs.b("Rendimiento/ligero") }
     readonly property bool ocultarAuto: { prefs.version; return prefs.b("Dock/ocultarAuto") }
 
     // "isMaximized" = el Dock se esconde y sale al acercar el raton al borde:

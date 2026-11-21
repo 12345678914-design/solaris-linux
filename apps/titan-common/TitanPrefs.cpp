@@ -19,6 +19,7 @@ const QHash<QString, QVariant> &tabla()
         {QStringLiteral("Dock/posicion"), QStringLiteral("abajo")},
         {QStringLiteral("Dock/tamano"), 36},
         {QStringLiteral("Dock/ampliacion"), true},
+        {QStringLiteral("Rendimiento/ligero"), false},
         {QStringLiteral("Dock/ocultarAuto"), false},
         {QStringLiteral("Barra/visible"), true},
         {QStringLiteral("Barra/estilo"), QStringLiteral("transparente")},

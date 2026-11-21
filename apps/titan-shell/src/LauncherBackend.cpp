@@ -1,5 +1,6 @@
 #include "TitanBinary.h"
 #include "LauncherBackend.h"
+#include "ColaApps.h"
 #include <QCollator>
 #include <QLocale>
 #include <QHash>
@@ -401,7 +402,7 @@ static QString resolveLauncherBinary(const QString &program)
     return titan::resolverBinario(program);
 }
 
-void LauncherBackend::launch(const QString &exec)
+void LauncherBackend::launch(const QString &exec, bool enDock, const QString &icono)
 {
     if (exec.isEmpty()) return;
 
@@ -416,15 +417,15 @@ void LauncherBackend::launch(const QString &exec)
         program == QStringLiteral("htop") || program == QStringLiteral("top") ||
         program == QStringLiteral("nano") || program == QStringLiteral("btop")) {
         if (QFile::exists(QStringLiteral("/usr/bin/kitty"))) {
-            QProcess::startDetached(QStringLiteral("/usr/bin/kitty"), parts);
+            ColaApps::instancia()->lanzar(QStringLiteral("/usr/bin/kitty"), parts, enDock, icono);
             return;
         } else if (QFile::exists(QStringLiteral("/usr/local/bin/titan-terminal"))) {
-            QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-terminal"), QStringList() << QStringLiteral("-e") << parts);
+            ColaApps::instancia()->lanzar(QStringLiteral("/usr/local/bin/titan-terminal"), QStringList() << QStringLiteral("-e") << parts, enDock, icono);
             return;
         }
     }
 
     program = parts.takeFirst();
-    QString resolved = resolveLauncherBinary(program);
-    QProcess::startDetached(resolved, parts);
+    // De una en una, en orden (ColaApps)
+    ColaApps::instancia()->lanzar(resolveLauncherBinary(program), parts, enDock, icono);
 }

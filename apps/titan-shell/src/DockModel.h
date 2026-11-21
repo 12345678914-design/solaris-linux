@@ -39,7 +39,9 @@ public:
     
     Q_INVOKABLE void activateApp(const QString &appId);
     Q_INVOKABLE void launchApp(const QString &appId, const QString &exec = QString(), const QString &name = QString(), const QString &icon = QString());
-    Q_INVOKABLE void setAppLaunching(const QString &appId, const QString &exec = QString(), const QString &name = QString(), const QString &icon = QString());
+    // Hace rebotar el icono si la app está en el Dock; devuelve si estaba.
+    // Las que no están no se añaden (las abre ColaApps con su indicador).
+    Q_INVOKABLE bool setAppLaunching(const QString &appId, const QString &exec = QString(), const QString &name = QString(), const QString &icon = QString());
     Q_INVOKABLE void moveItem(int fromIndex, int toIndex);
 
     Q_INVOKABLE void pinApp(const QString &appId);
