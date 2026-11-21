@@ -351,21 +351,22 @@ void ThemeManager::syncLabwcTheme()
 void ThemeManager::sincronizarGtk()
 {
     QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
-    QString gtkTheme = m_isDark ? QStringLiteral("Adwaita-dark") : QStringLiteral("Adwaita");
+    // El tema GTK de dconf queda SIEMPRE en "Adwaita"; el modo va solo en
+    // color-scheme, como hace GNOME. Firefox (y Thunderbird) elige solo su
+    // variante oscura a partir de color-scheme, pero si además cambiaba el
+    // tema GTK se quedaba un paso por detrás (oscuro -> seguía claro; claro
+    // -> ventana oscura y páginas claras). Las apps GTK 3 que se abren
+    // después siguen el modo por gtk-application-prefer-dark-theme de
+    // settings.ini (más abajo); las GTK 4/libadwaita, por color-scheme.
+    QString gtkTheme = QStringLiteral("Adwaita");
 
     m_ultimoOscuro = int(m_isDark);
     m_ultimoAcento = m_accent;
 
-    // En orden y en un solo proceso: PRIMERO color-scheme (el portal) y
-    // después el tema GTK. Firefox, al cambiar el tema GTK, mira color-scheme
-    // para decidir el color de su ventana: si llegaba antes el tema, veía el
-    // color-scheme anterior y se quedaba un paso por detrás (la primera vez
-    // seguía claro; luego, ventana oscura con páginas claras). La pausa deja
-    // que el portal reparta color-scheme antes del cambio de tema.
     QProcess::startDetached(QStringLiteral("sh"), {
         QStringLiteral("-c"),
         QStringLiteral("gsettings set org.gnome.desktop.interface color-scheme '%2'; "
-                       "sleep 0.3; "
+                       "[ \"$(gsettings get org.gnome.desktop.interface gtk-theme)\" = \"'%1'\" ] || "
                        "gsettings set org.gnome.desktop.interface gtk-theme '%1'; "
                        "gsettings set org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'")
             .arg(gtkTheme, gtkColorScheme)
@@ -386,7 +387,7 @@ void ThemeManager::sincronizarGtk()
             QTextStream k(&kf);
             k << "[org/gnome/desktop/interface]\n"
               << "color-scheme='" << gtkColorScheme << "'\n"
-              << "gtk-theme='" << gtkTheme << "'\n"
+              << "gtk-theme='" << (m_isDark ? "Adwaita-dark" : "Adwaita") << "'\n"
               << "icon-theme='" << (m_isDark ? "breeze-dark" : "breeze") << "'\n";
         }
     }

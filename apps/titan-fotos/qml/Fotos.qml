@@ -674,7 +674,6 @@ TitanWindow {
 
     // ---------------------------------------------------------------- menús
     Menu {
-        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuOrden
         MenuItem { text: "Fecha"; checkable: true; checked: fotosBackend.orden === "fecha"; onTriggered: fotosBackend.ordenarPor("fecha") }
         MenuItem { text: "Nombre"; checkable: true; checked: fotosBackend.orden === "nombre"; onTriggered: fotosBackend.ordenarPor("nombre") }
@@ -684,7 +683,6 @@ TitanWindow {
     }
 
     Menu {
-        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuFoto
         property var rutas: []
         readonly property bool una: rutas.length === 1
@@ -713,7 +711,6 @@ TitanWindow {
     }
 
     Menu {
-        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuAlbum
         property var rutas: []
         Instantiator {
@@ -731,7 +728,6 @@ TitanWindow {
     }
 
     Menu {
-        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuAlbumLateral
         property var album: ({})
         MenuItem { text: "Cambiar nombre…"; onTriggered: dlgAlbum.renombrar(menuAlbumLateral.album) }
@@ -741,7 +737,6 @@ TitanWindow {
     }
 
     Menu {
-        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuCarpeta
         property string ruta: ""
         MenuItem { text: "Mostrar en el Finder"; onTriggered: fotosBackend.openInFinder(menuCarpeta.ruta) }

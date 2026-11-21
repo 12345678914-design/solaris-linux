@@ -102,6 +102,12 @@ public:
     Q_INVOKABLE bool esComprimido(const QString &path) const;
     Q_INVOKABLE void comprimir(const QStringList &paths);
     Q_INVOKABLE void extraer(const QString &path);
+    // Menú del clic derecho: documentos nuevos, "Abrir con" y "Copiar ruta"
+    Q_INVOKABLE QVariantList tiposNuevos() const;
+    Q_INVOKABLE QString nuevoArchivo(const QString &tipo);
+    Q_INVOKABLE QVariantList aplicacionesPara(const QString &path) const;
+    Q_INVOKABLE void abrirCon(const QString &path, const QString &desktop);
+    Q_INVOKABLE void copiarRuta(const QStringList &paths);
     Q_INVOKABLE QString escritorio() const { return QDir::homePath() + QStringLiteral("/Escritorio"); }
 
     Q_INVOKABLE void goTo(const QString &path);

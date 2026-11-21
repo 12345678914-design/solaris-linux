@@ -372,17 +372,13 @@ Item {
         focus: dockContainer.ctxMenuVisible
         Keys.onEscapePressed: dockContainer.ctxMenuVisible = false
 
-        GlassPanel {
+        // Fondo opaco (como los menús de Windows y macOS): se lee mejor que el vidrio
+        Rectangle { anchors.fill: parent; anchors.bottomMargin: -3; radius: 13; color: Qt.rgba(0, 0, 0, theme.isDark ? 0.35 : 0.12) }
+        Rectangle {
             anchors.fill: parent
             radius: 12
-            tint: dockContainer.menuTint
-            wallpaper: dockContainer.wallpaperPath
-            originX: dockContainer.pantallaX(contextMenu.x)
-            originY: (typeof Screen !== "undefined" && Screen.height > 0) ? (Screen.height - dockContainer.height + contextMenu.y) : contextMenu.y
-            sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : dockContainer.width
-            sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
-            borderColor: theme.glassBorder
-            highlightColor: theme.specularGlow
+            color: theme.isDark ? "#2b2b2e" : "#ffffff"
+            border.color: theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
         }
 
         Column {

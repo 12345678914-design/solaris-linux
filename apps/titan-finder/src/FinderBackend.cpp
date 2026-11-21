@@ -25,6 +25,10 @@
 #include <QPixmap>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QLocale>
+#include <QMimeDatabase>
+#include <QMimeType>
+#include <QSet>
 
 static QString resolveFinderBinary(const QString &program)
 {
@@ -1185,4 +1189,151 @@ bool FinderBackend::mountAndOpen(const QString &deviceNode)
         }
     }
     return false;
+}
+
+// ---------------------------------------------------------------- menú contextual
+
+namespace {
+// Documentos vacíos de ONLYOFFICE (los usa él mismo para "Nuevo"): en el
+// idioma del sistema si los hay, si no en inglés.
+QString plantillaOffice(const QString &ext)
+{
+    const QString base = QStringLiteral("/opt/onlyoffice/desktopeditors/converter/empty/");
+    const QString idioma = QLocale().name().replace(QLatin1Char('_'), QLatin1Char('-'));
+    for (const QString &d : {idioma, QStringLiteral("es-ES"), QStringLiteral("en-US"), QStringLiteral("default")}) {
+        const QString f = base + d + QStringLiteral("/new.") + ext;
+        if (QFile::exists(f))
+            return f;
+    }
+    return QString();
+}
+
+QStringList carpetasAplicaciones()
+{
+    QStringList d = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+    d << QStringLiteral("/var/lib/flatpak/exports/share/applications")
+      << QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications");
+    d.removeDuplicates();
+    return d;
+}
+}
+
+QVariantList FinderBackend::tiposNuevos() const
+{
+    QVariantList l;
+    auto poner = [&l](const QString &tipo, const QString &texto, const QString &icono) {
+        l.append(QVariantMap{{QStringLiteral("tipo"), tipo}, {QStringLiteral("t"), texto}, {QStringLiteral("i"), icono}});
+    };
+    poner(QStringLiteral("txt"), QStringLiteral("Documento de texto"), QStringLiteral("📝"));
+    if (!plantillaOffice(QStringLiteral("docx")).isEmpty())
+        poner(QStringLiteral("docx"), QStringLiteral("Documento"), QStringLiteral("📄"));
+    if (!plantillaOffice(QStringLiteral("xlsx")).isEmpty())
+        poner(QStringLiteral("xlsx"), QStringLiteral("Hoja de cálculo"), QStringLiteral("📊"));
+    if (!plantillaOffice(QStringLiteral("pptx")).isEmpty())
+        poner(QStringLiteral("pptx"), QStringLiteral("Presentación"), QStringLiteral("📽"));
+    return l;
+}
+
+QString FinderBackend::nuevoArchivo(const QString &tipo)
+{
+    if (!puedeEscribir()) {
+        ponerAviso(QStringLiteral("No tienes permiso para crear archivos aquí"));
+        return QString();
+    }
+    QString base, plantilla;
+    if (tipo == QLatin1String("txt")) base = QStringLiteral("Documento de texto");
+    else if (tipo == QLatin1String("docx")) base = QStringLiteral("Documento");
+    else if (tipo == QLatin1String("xlsx")) base = QStringLiteral("Hoja de cálculo");
+    else if (tipo == QLatin1String("pptx")) base = QStringLiteral("Presentación");
+    else return QString();
+    if (tipo != QLatin1String("txt")) {
+        plantilla = plantillaOffice(tipo);
+        if (plantilla.isEmpty())
+            return QString();
+    }
+    QDir dir(m_currentPath);
+    QString nombre = base + QLatin1Char('.') + tipo;
+    for (int i = 2; dir.exists(nombre); ++i)
+        nombre = QStringLiteral("%1 %2.%3").arg(base).arg(i).arg(tipo);
+    const QString ruta = dir.filePath(nombre);
+    bool ok;
+    if (plantilla.isEmpty()) {
+        QFile f(ruta);
+        ok = f.open(QIODevice::WriteOnly | QIODevice::NewOnly);
+    } else {
+        ok = QFile::copy(plantilla, ruta);
+        if (ok)
+            QFile::setPermissions(ruta, QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup | QFile::ReadOther);
+    }
+    if (!ok) {
+        ponerAviso(QStringLiteral("No se pudo crear el archivo"));
+        return QString();
+    }
+    refresh();
+    return ruta;
+}
+
+// Apps que dicen abrir ese tipo de archivo (MimeType= de su .desktop), la
+// predeterminada primero. Como "Abrir con" de Windows.
+QVariantList FinderBackend::aplicacionesPara(const QString &path) const
+{
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(path);
+    QSet<QString> tipos{mime.name()};
+    for (const QString &t : mime.allAncestors()) tipos.insert(t);
+    for (const QString &t : mime.aliases()) tipos.insert(t);
+    tipos.remove(QStringLiteral("application/octet-stream"));
+
+    QProcess xdg;
+    xdg.start(QStringLiteral("xdg-mime"), {QStringLiteral("query"), QStringLiteral("default"), mime.name()});
+    const QString predeterminada = xdg.waitForFinished(1500) ? QString::fromUtf8(xdg.readAllStandardOutput()).trimmed() : QString();
+
+    QVariantList lista;
+    QSet<QString> vistos, nombres;
+    const QString idioma = QLocale().name().left(2);
+    for (const QString &carpeta : carpetasAplicaciones()) {
+        const QFileInfoList ficheros = QDir(carpeta).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+        for (const QFileInfo &fi : ficheros) {
+            if (vistos.contains(fi.fileName()))
+                continue;   // el de más prioridad (el de la persona) gana
+            vistos.insert(fi.fileName());
+            const auto d = titan::leerDesktop(fi.absoluteFilePath());
+            if (titan::esVerdadero(d.value(QStringLiteral("NoDisplay"))) || titan::esVerdadero(d.value(QStringLiteral("Hidden")))
+                || d.value(QStringLiteral("Type")) != QLatin1String("Application"))
+                continue;
+            bool sirve = false;
+            for (const QString &m : d.value(QStringLiteral("MimeType")).split(QLatin1Char(';'), Qt::SkipEmptyParts))
+                if (tipos.contains(m)) { sirve = true; break; }
+            if (!sirve)
+                continue;
+            QString nombre = d.value(QStringLiteral("Name[") + idioma + QLatin1Char(']'));
+            if (nombre.isEmpty()) nombre = d.value(QStringLiteral("Name"));
+            if (nombres.contains(nombre))
+                continue;   // dos .desktop con el mismo nombre: uno basta
+            nombres.insert(nombre);
+            QVariantMap app{{QStringLiteral("t"), nombre}, {QStringLiteral("desktop"), fi.absoluteFilePath()}};
+            if (fi.fileName() == predeterminada) lista.prepend(app); else lista.append(app);
+        }
+    }
+    // Las demás por nombre (la predeterminada se queda la primera)
+    const bool hayPred = !lista.isEmpty() && lista.first().toMap().value(QStringLiteral("desktop")).toString().endsWith(QLatin1Char('/') + predeterminada);
+    std::sort(lista.begin() + (hayPred ? 1 : 0), lista.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value(QStringLiteral("t")).toString().localeAwareCompare(b.toMap().value(QStringLiteral("t")).toString()) < 0;
+    });
+    while (lista.size() > 10) lista.removeLast();
+    return lista;
+}
+
+void FinderBackend::abrirCon(const QString &path, const QString &desktop)
+{
+    if (path.isEmpty() || !desktop.endsWith(QStringLiteral(".desktop")) || !QFile::exists(desktop))
+        return;
+    QProcess::startDetached(QStringLiteral("gio"), {QStringLiteral("launch"), desktop, path});
+}
+
+void FinderBackend::copiarRuta(const QStringList &paths)
+{
+    if (paths.isEmpty())
+        return;
+    QGuiApplication::clipboard()->setText(paths.join(QLatin1Char('\n')));
+    ponerAviso(paths.size() == 1 ? QStringLiteral("Ruta copiada") : QStringLiteral("Rutas copiadas"));
 }

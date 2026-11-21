@@ -122,7 +122,16 @@ Rectangle {
         renameField.text = selectedName
         renameDialog.open()
         renameField.forceActiveFocus()
-        renameField.selectAll()
+        // Como Windows: se selecciona el nombre sin la extensión
+        var punto = selectedName.lastIndexOf(".")
+        if (!selectedIsDir && punto > 0) renameField.select(0, punto)
+        else renameField.selectAll()
+    }
+    // Nuevo documento: se crea y se pide el nombre en seguida
+    function crearDocumento(tipo) {
+        var ruta = finderBackend.nuevoArchivo(tipo)
+        if (!ruta) return
+        Qt.callLater(function () { fileListRoot.seleccionarSolo(ruta); fileListRoot.renombrar() })
     }
     function confirmar(titulo, texto, boton, accion) {
         dlgConfirmar.titulo = titulo
@@ -146,15 +155,13 @@ Rectangle {
         folderNameField.forceActiveFocus()
         folderNameField.selectAll()
     }
-    // El menú va en su propia ventana emergente (ver ctxPopup): se abre en el
-    // puntero y, si no cabe, el sistema lo da la vuelta o lo desplaza para que
-    // se vea entero, aunque salga de la ventana del Finder (como en Windows).
+    // posX/posY: en coordenadas de la lista; el menú va en la capa de toda la ventana
     function showContextMenu(posX, posY) {
-        ctxX = posX
-        ctxY = posY
+        var q = fileListRoot.mapToItem(capaMenu, posX, posY)
+        ctxX = q.x
+        ctxY = q.y
         ctxVisible = true
     }
-    onCtxVisibleChanged: ctxVisible ? ctxPopup.open() : ctxPopup.close()
 
     Connections {
         target: finderBackend
@@ -795,13 +802,23 @@ Rectangle {
             }
             if (n === 1) {
                 o.push({ t: "Abrir", i: "↗", k: "↵", a: function () { finderBackend.openItem(fileListRoot.selectedPaths[0]) } })
+                if (!selectedIsDir) {
+                    var ruta = selectedPaths[0]
+                    o.push({ t: "Abrir con", i: "⇱", sub: function () {
+                        return finderBackend.aplicacionesPara(ruta).map(function (app) {
+                            return { t: app.t, a: function () { finderBackend.abrirCon(ruta, app.desktop) } }
+                        })
+                    } })
+                }
                 if (selectedIsDir) o.push({ t: "Abrir en Terminal", i: ">_", a: function () { finderBackend.openTerminal(fileListRoot.selectedPaths[0]) } })
                 o.push({ sep: true })
             }
-            o.push({ t: "Copiar" + cuantos, i: "⧉", k: "Ctrl+C", a: fileListRoot.copiar })
             var movibles = true
             for (var i = 0; i < n; ++i) if (!finderBackend.dentroDeCasa(selectedPaths[i]) || finderBackend.esProtegida(selectedPaths[i])) movibles = false
             if (movibles) o.push({ t: "Cortar" + cuantos, i: "✂", k: "Ctrl+X", a: fileListRoot.cortar })
+            o.push({ t: "Copiar" + cuantos, i: "⧉", k: "Ctrl+C", a: fileListRoot.copiar })
+            var rutas = selectedPaths.slice()
+            o.push({ t: n === 1 ? "Copiar ruta" : "Copiar rutas", i: "⌗", a: function () { finderBackend.copiarRuta(rutas) } })
             if (n === 1 && selectedIsDir && finderBackend.hasClipboard)
                 o.push({ t: "Pegar dentro" + (finderBackend.portapapelesCantidad > 1 ? " (" + finderBackend.portapapelesCantidad + ")" : ""), i: "📥", a: fileListRoot.pegarDentro })
             if (finderBackend.puedeEscribir)
@@ -812,8 +829,6 @@ Rectangle {
                 o.push({ t: (n === 1 ? "Comprimir «" + fileListRoot.nombreCorto(selectedPaths[0]) + "»" : "Comprimir " + n + " elementos"), i: "⊞",
                          a: function () { finderBackend.comprimir(fileListRoot.objetivo()) } })
             }
-            o.push({ t: (movibles ? "Mover al Escritorio" : "Copiar al Escritorio") + cuantos, i: "🖥",
-                     a: function () { finderBackend.soltar(fileListRoot.objetivo(), finderBackend.escritorio(), !movibles); fileListRoot.limpiarSeleccion() } })
             o.push({ sep: true })
             if (n === 1) {
                 o.push({ t: "Cambiar nombre…", i: "✎", k: "F2", a: fileListRoot.renombrar })
@@ -829,112 +844,199 @@ Rectangle {
             if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
             return o
         }
-        if (finderBackend.puedeEscribir) o.push({ t: "Nueva carpeta", i: "📁", k: "Ctrl+Mayús+N", a: fileListRoot.openNewFolderDialog })
+        if (finderBackend.puedeEscribir) {
+            o.push({ t: "Nueva carpeta", i: "📁", k: "Ctrl+Mayús+N", a: fileListRoot.openNewFolderDialog })
+            o.push({ t: "Nuevo documento", i: "📄", sub: function () {
+                return finderBackend.tiposNuevos().map(function (d) {
+                    return { t: d.t, i: d.i, a: function () { fileListRoot.crearDocumento(d.tipo) } }
+                })
+            } })
+        }
         if (finderBackend.hasClipboard && finderBackend.puedeEscribir) {
             var c = finderBackend.portapapelesCantidad
             o.push({ t: (finderBackend.portapapelesCortado ? "Mover aquí" : "Pegar") + (c > 1 ? " (" + c + ")" : ""), i: "📥", k: "Ctrl+V", a: fileListRoot.pegar })
         }
+        o.push({ sep: true })
+        o.push({ t: "Ver", i: "▤", sub: function () {
+            return [
+                { t: "Iconos", marca: finderBackend.viewMode === "grid", a: function () { finderBackend.viewMode = "grid" } },
+                { t: "Lista", marca: finderBackend.viewMode === "list", a: function () { finderBackend.viewMode = "list" } },
+                { sep: true },
+                { t: "Archivos ocultos", k: "Ctrl+H", marca: finderBackend.showHiddenFiles,
+                  a: function () { finderBackend.showHiddenFiles = !finderBackend.showHiddenFiles } }
+            ]
+        } })
+        o.push({ t: "Ordenar por", i: "⇅", sub: function () {
+            var l = [["name", "Nombre"], ["date", "Fecha de modificación"], ["size", "Tamaño"], ["kind", "Clase"]].map(function (c) {
+                return { t: c[1], marca: finderBackend.sortBy === c[0], a: function () { finderBackend.sortBy = c[0] } }
+            })
+            l.push({ sep: true })
+            l.push({ t: "Ascendente", marca: finderBackend.sortAscending, a: function () { finderBackend.sortAscending = true } })
+            l.push({ t: "Descendente", marca: !finderBackend.sortAscending, a: function () { finderBackend.sortAscending = false } })
+            return l
+        } })
         if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
         o.push({ sep: true })
         o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+T", a: function () { finderBackend.openTerminal() } })
-        o.push({ t: finderBackend.showHiddenFiles ? "Ocultar archivos ocultos" : "Mostrar archivos ocultos", i: ".*", k: "Ctrl+H",
-                 a: function () { finderBackend.showHiddenFiles = !finderBackend.showHiddenFiles } })
         o.push({ t: "Propiedades de la carpeta", i: "ℹ", a: function () { fileListRoot.openProperties(finderBackend.currentPath) } })
         return o
     }
 
-    Popup {
-        id: ctxPopup
-        popupType: Popup.Window
-        x: fileListRoot.ctxX
-        y: fileListRoot.ctxY
-        // Si el sistema no admite ventanas emergentes, al menos dentro de la ventana
-        margins: 8
-        padding: 0
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: null
-        onClosed: fileListRoot.ctxVisible = false
+    // ------------------------------------------------------------ menú contextual
+    // Se dibuja sobre TODA la ventana (no solo sobre la lista). Se abre en el
+    // puntero hacia la derecha y abajo; si no cabe, hacia el otro lado del
+    // puntero, pegado a él (como Windows y macOS). Fondo opaco: se lee mejor.
+    function posMenu(p, tam, total) {
+        var m = 6
+        var q = p + tam + m <= total ? p : p - tam
+        return Math.max(m, Math.min(q, total - tam - m))
+    }
+    property var subOpciones: []
+    property real subY: 0
 
-    contentItem: Rectangle {
-        id: contextMenu
-        implicitWidth: 240
-        implicitHeight: ctxCol.implicitHeight + 14
-        radius: 10
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: theme.isDark ? Qt.rgba(0.18, 0.19, 0.25, 0.97) : Qt.rgba(0.97, 0.97, 0.99, 0.97) }
-            GradientStop { position: 1.0; color: theme.isDark ? Qt.rgba(0.13, 0.14, 0.19, 0.97) : Qt.rgba(0.92, 0.93, 0.96, 0.97) }
+    component FilaMenu: Item {
+        id: fila
+        required property var modelData
+        property bool enSub: false
+        readonly property bool activa: zona.containsMouse || (!enSub && !!modelData.sub && fileListRoot.subOpciones.length > 0 && fileListRoot.subDe === modelData.t)
+        width: parent ? parent.width : 0
+        height: modelData.sep ? 9 : (modelData.vacia ? 26 : 28)
+        Rectangle {
+            visible: !!fila.modelData.sep
+            anchors.centerIn: parent
+            width: parent.width - 16
+            height: 1
+            color: theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.10)
         }
-        border.color: theme.glassBorder
-
-        Column {
-            id: ctxCol
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 7
-            spacing: 1
-            Repeater {
-                model: fileListRoot.ctxVisible ? fileListRoot.opcionesMenu() : []
-                delegate: Item {
-                    required property var modelData
-                    width: ctxCol.width
-                    height: modelData.sep ? 9 : 28
-                    Rectangle {
-                        visible: !!modelData.sep
-                        anchors.centerIn: parent
-                        width: parent.width - 12
-                        height: 1
-                        color: theme.glassBorder
-                    }
-                    Rectangle {
-                        visible: !modelData.sep
-                        anchors.fill: parent
-                        radius: 6
-                        color: opZona.containsMouse ? (modelData.peligro ? "#ff3b30" : theme.accent) : "transparent"
-                        Text {
-                            id: opIcono
-                            x: 8
-                            width: 20
-                            anchors.verticalCenter: parent.verticalCenter
-                            horizontalAlignment: Text.AlignHCenter
-                            text: modelData.i || ""
-                            color: opZona.containsMouse ? "#ffffff" : (modelData.peligro ? "#ff3b30" : theme.contentTextPrimary)
-                            font.pixelSize: 11
-                        }
-                        Text {
-                            anchors.left: opIcono.right
-                            anchors.leftMargin: 8
-                            anchors.right: opAtajo.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.t || ""
-                            color: opZona.containsMouse ? "#ffffff" : (modelData.peligro ? "#ff3b30" : theme.contentTextPrimary)
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            id: opAtajo
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.k || ""
-                            color: opZona.containsMouse ? "#ffffff" : theme.contentTextSecondary
-                            font.pixelSize: 10
-                        }
-                        MouseArea {
-                            id: opZona
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: !modelData.sep
-                            cursorShape: Qt.PointingHandCursor
-                            // La acción se guarda ANTES de cerrar: al cerrar, el modelo del
-                            // Repeater pasa a [] y este delegado (y su modelData) desaparece.
-                            onClicked: { var accion = modelData.a; fileListRoot.ctxVisible = false; accion() }
-                        }
-                    }
-                }
+        Rectangle {
+            visible: !fila.modelData.sep
+            anchors.fill: parent
+            radius: 5
+            color: fila.activa && !fila.modelData.vacia ? (fila.modelData.peligro ? "#e5372c" : theme.accent) : "transparent"
+            readonly property color tinta: fila.activa && !fila.modelData.vacia ? "#ffffff"
+                                         : fila.modelData.vacia ? theme.contentTextSecondary
+                                         : (fila.modelData.peligro ? "#e5372c" : theme.contentTextPrimary)
+            Text {
+                id: opIcono
+                x: 8
+                width: 20
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignHCenter
+                text: fila.modelData.marca ? "✓" : (fila.modelData.i || "")
+                color: parent.tinta
+                font.pixelSize: 11
+            }
+            Text {
+                anchors.left: opIcono.right
+                anchors.leftMargin: 8
+                anchors.right: opAtajo.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                text: fila.modelData.t || ""
+                color: parent.tinta
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            Text {
+                id: opAtajo
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                text: fila.modelData.sub ? "›" : (fila.modelData.k || "")
+                color: fila.activa ? "#ffffff" : theme.contentTextSecondary
+                font.pixelSize: fila.modelData.sub ? 15 : 10
+            }
+        }
+        MouseArea {
+            id: zona
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: !fila.modelData.sep && !fila.modelData.vacia
+            onContainsMouseChanged: if (containsMouse && !fila.enSub) fila.abrirSub()
+            onClicked: {
+                if (fila.modelData.sub) { fila.abrirSub(); return }
+                // La acción se guarda ANTES de cerrar: al cerrar, el modelo
+                // pasa a [] y este delegado (y su modelData) desaparece.
+                var accion = fila.modelData.a
+                fileListRoot.ctxVisible = false
+                accion()
+            }
+        }
+        function abrirSub() {
+            if (fila.modelData.sub) {
+                fileListRoot.subY = fila.mapToItem(capaMenu, 0, 0).y
+                fileListRoot.subDe = fila.modelData.t
+                var l = fila.modelData.sub()
+                fileListRoot.subOpciones = l.length > 0 ? l : [{ t: "Ninguna aplicación", vacia: true }]
+            } else {
+                fileListRoot.subOpciones = []
+                fileListRoot.subDe = ""
             }
         }
     }
+    property string subDe: ""
+    onCtxVisibleChanged: if (!ctxVisible) { subOpciones = []; subDe = "" }
+
+    Item {
+        id: capaMenu
+        parent: fileListRoot.Window.contentItem ? fileListRoot.Window.contentItem : fileListRoot
+        anchors.fill: parent
+        z: 10000
+        visible: fileListRoot.ctxVisible
+
+        // Clic fuera: cierra (y no hace nada más, como en Windows)
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onPressed: fileListRoot.ctxVisible = false
+            onWheel: (w) => { w.accepted = true }
+        }
+
+        CajaMenu {
+            id: menuPpal
+            width: 250
+            opciones: fileListRoot.ctxVisible ? fileListRoot.opcionesMenu() : []
+            x: fileListRoot.posMenu(fileListRoot.ctxX, width, capaMenu.width)
+            y: fileListRoot.posMenu(fileListRoot.ctxY, height, capaMenu.height)
+        }
+        // Submenú (Nuevo documento, Abrir con, Ver, Ordenar por): a la
+        // derecha del menú, o a la izquierda si allí no cabe.
+        CajaMenu {
+            esSub: true
+            width: 220
+            opciones: fileListRoot.subOpciones
+            x: menuPpal.x + menuPpal.width - 4 + width + 6 <= capaMenu.width ? menuPpal.x + menuPpal.width - 4
+                                                                              : menuPpal.x - width + 4
+            y: fileListRoot.posMenu(fileListRoot.subY - 6, height, capaMenu.height)
+        }
+    }
+
+    component CajaMenu: Item {
+        id: caja
+        property bool esSub: false
+        property var opciones: []
+        visible: opciones.length > 0
+        height: col.implicitHeight + 12
+        // Sombra sencilla (sin desenfoque: no cuesta en equipos lentos)
+        Rectangle { anchors.fill: parent; anchors.margins: -1; anchors.topMargin: 1; anchors.bottomMargin: -4; radius: 10; color: Qt.rgba(0, 0, 0, theme.isDark ? 0.30 : 0.10) }
+        Rectangle { anchors.fill: parent; anchors.bottomMargin: -2; radius: 9; color: Qt.rgba(0, 0, 0, theme.isDark ? 0.30 : 0.08) }
+        Rectangle {
+            anchors.fill: parent
+            radius: 9
+            color: theme.isDark ? "#2b2b2e" : "#ffffff"
+            border.color: theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
+        }
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }   // pulsar el borde no cierra
+        Column {
+            id: col
+            x: 6
+            y: 6
+            width: parent.width - 12
+            Repeater {
+                model: caja.opciones
+                delegate: FilaMenu { enSub: caja.esSub }
+            }
+        }
     }
 
     // ------------------------------------------------------------ aviso

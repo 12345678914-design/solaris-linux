@@ -1,4 +1,5 @@
 #include "SettingsBackend.h"
+#include <QLocalSocket>
 #include "ThemeManager.h"
 #include "TitanUsuario.h"
 
@@ -225,7 +226,6 @@ void SettingsBackend::applyUserLanguage(const QString &lang, const QString &codi
     const QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/locale.conf");
     if (lang == QStringLiteral("auto")) {
         QFile::remove(conf);   // sin fichero propio: el idioma del sistema
-        m_languageStatus = QStringLiteral("Listo: se usará el idioma del sistema la próxima vez que entres.");
     } else {
         QDir().mkpath(QFileInfo(conf).absolutePath());
         QFile f(conf);
@@ -236,6 +236,18 @@ void SettingsBackend::applyUserLanguage(const QString &lang, const QString &codi
             if (lang == QStringLiteral("quz"))
                 ts << "LANGUAGE=quz:es_ES:es\n";
         }
+    }
+    // Al momento: el shell toma el idioma nuevo y lo pasa a lo que abra
+    QLocalSocket shell;
+    shell.connectToServer(QStringLiteral("titan-shell-ipc-") + qEnvironmentVariable("USER"));
+    if (shell.waitForConnected(500)) {
+        shell.write("idioma\n");
+        shell.flush();
+        shell.waitForBytesWritten(500);
+        shell.disconnectFromServer();
+        m_languageStatus = QStringLiteral("Listo: las apps que abras desde ahora ya salen en el idioma nuevo. "
+                                          "Las que estén abiertas, al cerrarlas y volver a abrirlas.");
+    } else {
         m_languageStatus = QStringLiteral("Listo: el idioma cambiará la próxima vez que entres en la sesión.");
     }
     m_language = lang;

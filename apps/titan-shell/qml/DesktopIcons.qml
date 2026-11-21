@@ -485,22 +485,10 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
 
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: titanTheme.windowBgTop }
-            GradientStop { position: 1.0; color: titanTheme.windowBgBottom }
-        }
-        border.color: titanTheme.glassBorder
+        // Fondo opaco (como los menús de Windows y macOS): se lee mejor que el vidrio
+        color: titanTheme.isDark ? "#2b2b2e" : "#ffffff"
+        border.color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
         border.width: 1
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 20
-            height: 1
-            color: titanTheme.specularGlow
-            radius: 1
-        }
 
         Column {
             id: ctxCol

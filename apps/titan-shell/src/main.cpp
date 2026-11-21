@@ -26,6 +26,13 @@
 #include <QScreen>
 
 #include <LayerShellQt/window.h>
+#include <QDir>
+#include <QFile>
+#include <QHash>
+#include <QLocale>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include "ColaApps.h"
 
 namespace {
@@ -77,6 +84,53 @@ void configurarCapa(QQuickWindow *win, LayerShellQt::Window::Layer capa,
 }
 
 } // namespace
+
+
+// Idioma al momento (Ajustes > General > Idioma): lee ~/.config/locale.conf
+// (o /etc/locale.conf) como /etc/profile.d/locale.sh al entrar y lo pone en
+// el entorno del shell y de D-Bus/systemd. Las apps que se abran desde ese
+// momento (Dock, Launchpad, escritorio, servicios) salen ya en el idioma
+// nuevo, sin cerrar la sesión.
+static void aplicarIdioma()
+{
+    QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/locale.conf");
+    if (!QFile::exists(conf))
+        conf = QStringLiteral("/etc/locale.conf");
+    static const QStringList claves = {
+        QStringLiteral("LANG"), QStringLiteral("LANGUAGE"), QStringLiteral("LC_CTYPE"), QStringLiteral("LC_NUMERIC"),
+        QStringLiteral("LC_TIME"), QStringLiteral("LC_COLLATE"), QStringLiteral("LC_MONETARY"), QStringLiteral("LC_MESSAGES"),
+        QStringLiteral("LC_PAPER"), QStringLiteral("LC_NAME"), QStringLiteral("LC_ADDRESS"), QStringLiteral("LC_TELEPHONE"),
+        QStringLiteral("LC_MEASUREMENT"), QStringLiteral("LC_IDENTIFICATION")};
+    static const QRegularExpression valido(QStringLiteral("^[A-Za-z0-9_.@:-]*$"));
+    QHash<QString, QString> v;
+    QFile f(conf);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!f.atEnd()) {
+            const QString l = QString::fromUtf8(f.readLine()).trimmed();
+            const int i = l.indexOf(QLatin1Char('='));
+            if (i <= 0 || l.startsWith(QLatin1Char('#')))
+                continue;
+            const QString k = l.left(i).trimmed();
+            QString val = l.mid(i + 1).trimmed();
+            if (val.size() >= 2 && (val.startsWith(QLatin1Char('"')) || val.startsWith(QLatin1Char('\''))))
+                val = val.mid(1, val.size() - 2);
+            if (claves.contains(k) && valido.match(val).hasMatch())
+                v.insert(k, val);
+        }
+    }
+    if (v.value(QStringLiteral("LANG")).isEmpty())
+        v.insert(QStringLiteral("LANG"), QStringLiteral("C.UTF-8"));
+    QStringList entorno;
+    for (const QString &k : claves) {
+        const QString val = v.value(k);
+        if (val.isEmpty()) qunsetenv(k.toLatin1().constData());
+        else qputenv(k.toLatin1().constData(), val.toUtf8());
+        entorno << k + QLatin1Char('=') + val;
+    }
+    QLocale::setDefault(QLocale(v.value(QStringLiteral("LANG")).section(QLatin1Char('.'), 0, 0)));
+    // Servicios que arranca D-Bus o systemd (portales, llavero...)
+    QProcess::startDetached(QStringLiteral("dbus-update-activation-environment"), QStringList{QStringLiteral("--systemd")} + entorno);
+}
 
 int main(int argc, char *argv[])
 {
@@ -270,6 +324,8 @@ int main(int argc, char *argv[])
                         shellBackend.toggleNotificationCenter();
                     } else if (cmd == "toggle-control-center") {
                         shellBackend.toggleControlCenter();
+                    } else if (cmd == "idioma") {
+                        aplicarIdioma();
                     } else if (cmd == "lock") {
                         shellBackend.lockScreen();
                     } else if (cmd == "tecla escritorio") {
