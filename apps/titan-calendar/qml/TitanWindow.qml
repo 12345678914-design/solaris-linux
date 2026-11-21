@@ -71,13 +71,13 @@ Window {
     // Paleta de los controles estándar (estilo Basic) según el tema: sin esto,
     // ComboBox, TextField, etc. salen con la paleta clara por defecto de Qt
     // aunque el tema sea oscuro, o con colores fijos que no se leen en el claro.
-    palette.window: titanTheme.isDark ? "#1c1d22" : "#f5f5f7"
+    palette.window: titanTheme.isDark ? "#000000" : "#f5f5f7"
     palette.windowText: titanTheme.contentTextPrimary
-    palette.base: titanTheme.isDark ? "#26272d" : "#ffffff"
-    palette.alternateBase: titanTheme.isDark ? "#2c2d33" : "#f2f2f5"
+    palette.base: titanTheme.isDark ? "#111113" : "#ffffff"
+    palette.alternateBase: titanTheme.isDark ? "#18181b" : "#f2f2f5"
     palette.text: titanTheme.contentTextPrimary
     palette.placeholderText: titanTheme.contentTextSecondary
-    palette.button: titanTheme.isDark ? "#3a3b41" : "#ffffff"
+    palette.button: titanTheme.isDark ? "#232326" : "#ffffff"
     palette.buttonText: titanTheme.contentTextPrimary
     palette.highlight: titanTheme.accent
     palette.highlightedText: "#ffffff"
@@ -86,7 +86,7 @@ Window {
     palette.mid: titanTheme.isDark ? "#55565c" : "#c7c7cc"
     palette.dark: titanTheme.isDark ? "#101114" : "#a1a1a6"
     palette.shadow: "#000000"
-    palette.toolTipBase: titanTheme.isDark ? "#2c2d33" : "#ffffff"
+    palette.toolTipBase: titanTheme.isDark ? "#18181b" : "#ffffff"
     palette.toolTipText: titanTheme.contentTextPrimary
 
     // Barra lateral flotante (estilo Tahoe): una tarjeta separada del borde.
@@ -426,12 +426,14 @@ Window {
             z: 25
         }
 
-        // Borde exterior redondeado, por encima de todo
+        // Borde exterior con el color de acento de Ajustes (más suave si la
+        // ventana no está activa), por encima de todo. Sin borde al maximizar.
         Rectangle {
             anchors.fill: parent
             radius: rootWindow.cornerRadius
             color: "transparent"
-            border.color: titanTheme.glassBorder
+            visible: rootWindow.visibility !== Window.Maximized && rootWindow.visibility !== Window.FullScreen
+            border.color: rootWindow.active ? titanTheme.accent : Qt.rgba(titanTheme.accent.r, titanTheme.accent.g, titanTheme.accent.b, 0.45)
             border.width: 1
             z: 100
         }

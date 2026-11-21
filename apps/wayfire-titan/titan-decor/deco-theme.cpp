@@ -39,6 +39,34 @@ bool titan_dark()
     return true;
 }
 
+/** accent from ~/.config/titan/theme.conf ([Theme] accent=#rrggbb). Blue by default. */
+unsigned titan_accent()
+{
+    const char *home = std::getenv("HOME");
+    if (home)
+    {
+        std::ifstream f(std::string(home) + "/.config/titan/theme.conf");
+        std::string line;
+        while (std::getline(f, line))
+        {
+            if (line.rfind("accent", 0) == 0)
+            {
+                auto h = line.find('#');
+                if ((h != std::string::npos) && (line.size() >= h + 7))
+                {
+                    try
+                    {
+                        return (unsigned)std::stoul(line.substr(h + 1, 6), nullptr, 16);
+                    } catch (...)
+                    {}
+                }
+            }
+        }
+    }
+
+    return 0x0071e3;
+}
+
 wf::color_t hex(unsigned rgb, double a = 1.0)
 {
     return {((rgb >> 16) & 0xff) / 255.0, ((rgb >> 8) & 0xff) / 255.0, (rgb & 0xff) / 255.0, a};
@@ -52,7 +80,8 @@ namespace titan_decor
 /** Create a new theme with the default parameters */
 decoration_theme_t::decoration_theme_t()
 {
-    dark = titan_dark();
+    dark   = titan_dark();
+    accent = titan_accent();
 }
 
 wf::color_t decoration_theme_t::get_bar_color(bool active) const
@@ -65,7 +94,7 @@ wf::color_t decoration_theme_t::get_bar_color(bool active) const
     // Same colours as the Titan apps' bar and labwc's themerc.
     if (dark)
     {
-        return active ? hex(0x1e2028) : hex(0x17181e);
+        return active ? hex(0x111113) : hex(0x0a0a0b);
     }
 
     return active ? hex(0xe8e8eb) : hex(0xf3f3f5);
@@ -113,6 +142,19 @@ void decoration_theme_t::render_background(const wf::scene::render_instruction_t
     wf::geometry_t rectangle, bool active) const
 {
     data.pass->add_rect(get_bar_color(active), data.target, rectangle, data.damage);
+    if (!follow_titan_theme)
+    {
+        return;
+    }
+
+    // Línea de 1 px alrededor de la ventana con el color de acento de Ajustes
+    // (más suave si no está activa), como las apps de Inti.
+    const wf::color_t c = hex(accent, active ? 1.0 : 0.45);
+    const auto& r = rectangle;
+    data.pass->add_rect(c, data.target, {r.x, r.y, r.width, 1}, data.damage);
+    data.pass->add_rect(c, data.target, {r.x, r.y + r.height - 1, r.width, 1}, data.damage);
+    data.pass->add_rect(c, data.target, {r.x, r.y, 1, r.height}, data.damage);
+    data.pass->add_rect(c, data.target, {r.x + r.width - 1, r.y, 1, r.height}, data.damage);
 }
 
 /**

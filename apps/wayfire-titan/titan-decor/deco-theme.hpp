@@ -76,6 +76,7 @@ class decoration_theme_t
   private:
     /** Titan theme read from ~/.config/titan/theme.conf when the window opens. */
     bool dark = true;
+    unsigned accent = 0x0071e3;
     wf::option_wrapper_t<bool> follow_titan_theme{"titan-decor/follow_titan_theme"};
     wf::option_wrapper_t<std::string> font{"titan-decor/font"};
     wf::option_wrapper_t<wf::color_t> font_color{"titan-decor/font_color"};

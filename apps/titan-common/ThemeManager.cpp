@@ -296,10 +296,9 @@ void ThemeManager::syncLabwcTheme()
         if (m_isDark) {
             out << "# Titan Linux - Tema macOS Dark para Labwc\n"
                 << "window.active.title.bg: flat solid\n"
-                << "window.active.title.bg.color: #1e2028\n"
+                << "window.active.title.bg.color: #111113\n"
                 << "window.inactive.title.bg: flat solid\n"
-                << "window.inactive.title.bg.color: #15161c\n"
-                << "window.active.border.color: #383c4c\n"
+                << "window.inactive.title.bg.color: #0a0a0b\n"
                 << "window.inactive.border.color: #20222c\n"
                 << "border.width: 1\n"
                 << "window.active.label.text.color: #f2f4f8\n"
@@ -310,14 +309,14 @@ void ThemeManager::syncLabwcTheme()
                 << "window.active.title.bg.color: #e8e8ed\n"
                 << "window.inactive.title.bg: flat solid\n"
                 << "window.inactive.title.bg.color: #f2f2f7\n"
-                << "window.active.border.color: #d1d1d6\n"
                 << "window.inactive.border.color: #e5e5ea\n"
                 << "border.width: 1\n"
                 << "window.active.label.text.color: #1d1d1f\n"
                 << "window.inactive.label.text.color: #8e8e93\n";
         }
-        // Menus de labwc con el color de acento.
-        out << "menu.items.active.bg.color: " << m_accent << "\n"
+        // Borde de la ventana activa y menus de labwc con el color de acento.
+        out << "window.active.border.color: " << m_accent << "\n"
+            << "menu.items.active.bg.color: " << m_accent << "\n"
             << "menu.items.active.text.color: #ffffff\n";
         out << "window.label.text.justify: center\n"
             << "window.active.button.close.unpressed.image.color: #ff5f56\n"

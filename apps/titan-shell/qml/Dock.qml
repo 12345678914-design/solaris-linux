@@ -377,7 +377,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 12
-            color: theme.isDark ? "#2b2b2e" : "#ffffff"
+            color: theme.isDark ? "#161618" : "#ffffff"
             border.color: theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
         }
 

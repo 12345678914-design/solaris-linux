@@ -486,7 +486,7 @@ Item {
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
 
         // Fondo opaco (como los menús de Windows y macOS): se lee mejor que el vidrio
-        color: titanTheme.isDark ? "#2b2b2e" : "#ffffff"
+        color: titanTheme.isDark ? "#161618" : "#ffffff"
         border.color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
         border.width: 1
 
