@@ -39,6 +39,18 @@ else
     done
   fi
   cflags=(-I"${sdk}/usr/include" -I"${sdk}/usr/include/wlroots-0.20")
+  # wlroots-full.hpp incluye wlr/render/vulkan.h, que pide las cabeceras de
+  # Vulkan aunque los plugins no lo usen. Si no estan en el sistema (p. ej.
+  # tras quitar vulkan-headers como paquete huerfano) se bajan al SDK.
+  if [[ ! -f /usr/include/vulkan/vulkan_core.h && ! -f "${sdk}/usr/include/vulkan/vulkan_core.h" ]]; then
+    mkdir -p "${sdk}/paquetes"
+    for u in $(pacman -Sp vulkan-headers 2>/dev/null); do
+      f="${sdk}/paquetes/$(basename "${u}")"
+      [[ -f "${f}" ]] || curl -fsSL -o "${f}" "${u}" || { aviso "no se pudo descargar ${u}"; continue; }
+      bsdtar -xf "${f}" -C "${sdk}" usr/include 2>/dev/null || true
+    done
+    [[ -f "${sdk}/usr/include/vulkan/vulkan_core.h" ]] || aviso "faltan las cabeceras de Vulkan (paquete vulkan-headers)"
+  fi
   for p in pixman-1 wayland-server cairo pango pangocairo libdrm xkbcommon; do
     if pkg-config --exists "${p}"; then
       read -r -a extra <<<"$(pkg-config --cflags "${p}")"
