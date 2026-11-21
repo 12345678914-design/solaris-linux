@@ -44,6 +44,7 @@ Window {
     property bool showTitle: true
 
     function glass(c, a) {
+        if (titanTheme.opaco) a = 1   // ventanas opacas: sin transparencia por zonas
         if (!c) return Qt.rgba(0.1, 0.1, 0.1, a !== undefined ? a : 0.5)
         var col = Qt.color(c)
         return Qt.rgba(col.r, col.g, col.b, a !== undefined ? a : col.a)
@@ -168,7 +169,7 @@ Window {
             originY: (typeof Screen !== "undefined" && typeof Screen.virtualY !== "undefined") ? (rootWindow.y - Screen.virtualY) : 0
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
             sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
-            effects: titanTheme.effects
+            effects: titanTheme.effects && !titanTheme.opaco
             showBorder: false
             showHighlight: false
         }

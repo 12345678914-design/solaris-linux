@@ -508,6 +508,8 @@ contiene apps/titan-finder/src/FinderBackend.cpp 'aplicacionesPara' "Finder: Abr
 contiene apps/titan-shell/qml/Dock.qml 'Fondo opaco' "menú del Dock opaco"
 contiene apps/titan-common/ThemeManager.cpp 'SIEMPRE en "Adwaita"' "Firefox: modo oscuro solo por color-scheme (como GNOME)"
 contiene apps/titan-shell/src/main.cpp 'aplicarIdioma' "idioma al momento, sin cerrar sesión"
+contiene apps/titan-theme/qml/TitanTheme.qml 'readonly property bool opaco: true' "ventanas de las apps opacas (como Windows y Tahoe)"
+contiene apps/titan-calc/qml/TitanTheme.qml 'readonly property bool opaco: true' "copia del tema al día (calc)"
 contiene apps/titan-shell/qml/DesktopIcons.qml 'si no' "menú del escritorio se da la vuelta en los bordes"
 contiene iso/titan/airootfs/usr/local/bin/titan-informe 'Solo LEE' "informe de prueba del equipo (titan-informe)"
 contiene paquetes/inti/PKGBUILD 'qt6-base>=' "las apps de Inti piden el Qt con el que se compilaron"
