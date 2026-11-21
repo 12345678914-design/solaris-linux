@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
 
 // Lista de archivos del Finder.
 //  - Selección: clic, Ctrl+clic (añadir/quitar), Mayús+clic (rango) y
@@ -146,11 +146,15 @@ Rectangle {
         folderNameField.forceActiveFocus()
         folderNameField.selectAll()
     }
+    // El menú va en su propia ventana emergente (ver ctxPopup): se abre en el
+    // puntero y, si no cabe, el sistema lo da la vuelta o lo desplaza para que
+    // se vea entero, aunque salga de la ventana del Finder (como en Windows).
     function showContextMenu(posX, posY) {
-        ctxX = Math.max(10, Math.min(fileListRoot.width - 250, posX))
-        ctxY = Math.max(10, Math.min(fileListRoot.height - ctxCol.implicitHeight - 24, posY))
+        ctxX = posX
+        ctxY = posY
         ctxVisible = true
     }
+    onCtxVisibleChanged: ctxVisible ? ctxPopup.open() : ctxPopup.close()
 
     Connections {
         target: finderBackend
@@ -839,23 +843,23 @@ Rectangle {
         return o
     }
 
-    MouseArea {
-        anchors.fill: parent
-        visible: fileListRoot.ctxVisible
-        z: 95
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onPressed: fileListRoot.ctxVisible = false
-    }
-
-    Rectangle {
-        id: contextMenu
-        visible: fileListRoot.ctxVisible
+    Popup {
+        id: ctxPopup
+        popupType: Popup.Window
         x: fileListRoot.ctxX
         y: fileListRoot.ctxY
-        width: 240
-        height: ctxCol.implicitHeight + 14
+        // Si el sistema no admite ventanas emergentes, al menos dentro de la ventana
+        margins: 8
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: null
+        onClosed: fileListRoot.ctxVisible = false
+
+    contentItem: Rectangle {
+        id: contextMenu
+        implicitWidth: 240
+        implicitHeight: ctxCol.implicitHeight + 14
         radius: 10
-        z: 100
         gradient: Gradient {
             GradientStop { position: 0.0; color: theme.isDark ? Qt.rgba(0.18, 0.19, 0.25, 0.97) : Qt.rgba(0.97, 0.97, 0.99, 0.97) }
             GradientStop { position: 1.0; color: theme.isDark ? Qt.rgba(0.13, 0.14, 0.19, 0.97) : Qt.rgba(0.92, 0.93, 0.96, 0.97) }
@@ -930,6 +934,7 @@ Rectangle {
                 }
             }
         }
+    }
     }
 
     // ------------------------------------------------------------ aviso

@@ -1156,6 +1156,7 @@ TitanWindow {
 
     // ================================================================ MENÚS
     Menu {
+        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuCancion
         property var cancion: ({})
         property int indice: -1
@@ -1166,6 +1167,7 @@ TitanWindow {
         MenuItem { text: "Añadir a la cola"; onTriggered: musicaBackend.aLaCola([menuCancion.cancion.ruta]) }
         MenuSeparator {}
         Menu {
+            popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
             id: subListas
             title: "Añadir a lista"
             Instantiator {
@@ -1201,6 +1203,7 @@ TitanWindow {
     }
 
     Menu {
+        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuLista
         property var lista: ({})
         MenuItem { text: "Reproducir"; onTriggered: { musicaBackend.abrir("lista:" + menuLista.lista.id); musicaBackend.reproducirVista(false) } }
@@ -1210,6 +1213,7 @@ TitanWindow {
     }
 
     Menu {
+        popupType: Popup.Window   // ventana propia: se ve entera aunque estés al borde
         id: menuTemporizador
         MenuItem { text: "15 minutos"; onTriggered: musicaBackend.setTemporizador(15) }
         MenuItem { text: "30 minutos"; onTriggered: musicaBackend.setTemporizador(30) }

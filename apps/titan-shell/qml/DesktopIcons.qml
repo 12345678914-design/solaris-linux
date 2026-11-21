@@ -111,8 +111,8 @@ Item {
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
                 desktopIconsRoot.ctxPath = ""
-                desktopIconsRoot.ctxX = Math.min(mouse.x, desktopIconsRoot.width - 242)
-                desktopIconsRoot.ctxY = Math.min(mouse.y, desktopIconsRoot.height - 180)
+                desktopIconsRoot.ctxX = mouse.x
+                desktopIconsRoot.ctxY = mouse.y
                 desktopIconsRoot.ctxVisible = true
             }
         }
@@ -440,8 +440,8 @@ Item {
                         }
                         desktopIconsRoot.ctxPath = modelData.path
                         var pt = iconWrapper.mapToItem(desktopIconsRoot, mouse.x, mouse.y)
-                        desktopIconsRoot.ctxX = Math.min(pt.x, desktopIconsRoot.width - 242)
-                        desktopIconsRoot.ctxY = Math.min(pt.y, desktopIconsRoot.height - 180)
+                        desktopIconsRoot.ctxX = pt.x
+                        desktopIconsRoot.ctxY = pt.y
                         desktopIconsRoot.ctxVisible = true
                     }
                 }
@@ -462,8 +462,19 @@ Item {
     Rectangle {
         id: contextMenu
         visible: desktopIconsRoot.ctxVisible
-        x: desktopIconsRoot.ctxX
-        y: desktopIconsRoot.ctxY
+        // Como en Windows: se abre hacia la derecha y abajo del puntero; si no
+        // cabe, hacia el otro lado (con su tamaño real), y nunca se sale.
+        // ctxX/ctxY siguen siendo el punto del clic (ahí va "Nueva carpeta").
+        x: {
+            var m = 8, w = width, W = desktopIconsRoot.width
+            var px = desktopIconsRoot.ctxX + w + m <= W ? desktopIconsRoot.ctxX : desktopIconsRoot.ctxX - w
+            return Math.max(m, Math.min(px, W - w - m))
+        }
+        y: {
+            var m = 8, h = height, H = desktopIconsRoot.height
+            var py = desktopIconsRoot.ctxY + h + m <= H ? desktopIconsRoot.ctxY : desktopIconsRoot.ctxY - h
+            return Math.max(m, Math.min(py, H - h - m))
+        }
         width: 232
         height: ctxCol.implicitHeight + 16
         radius: 13
