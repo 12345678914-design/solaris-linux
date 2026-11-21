@@ -493,4 +493,38 @@ Item {
             }
         }
     }
+
+    // Sin barra superior en esta vista (la tapa entera): solo la hora y la
+    // fecha arriba a la derecha, con el formato elegido en Ajustes > Barra.
+    Column {
+        id: reloj
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 18
+        anchors.rightMargin: 28
+        spacing: 2
+        opacity: vista.progreso
+        property date ahora: new Date()
+        readonly property bool h24: { prefs.version; return prefs.b("Barra/reloj24h") }
+        Timer {
+            interval: 1000
+            repeat: true
+            running: vista.visible && vista.progreso > 0
+            triggeredOnStart: true
+            onTriggered: reloj.ahora = new Date()
+        }
+        Text {
+            anchors.right: parent.right
+            text: Qt.formatTime(reloj.ahora, reloj.h24 ? "HH:mm" : "h:mm AP")
+            color: "#ffffff"
+            font.pixelSize: 26
+            font.weight: Font.DemiBold
+        }
+        Text {
+            anchors.right: parent.right
+            text: Qt.formatDate(reloj.ahora, "dddd, d 'de' MMMM")
+            color: Qt.rgba(1, 1, 1, 0.7)
+            font.pixelSize: 12
+        }
+    }
 }

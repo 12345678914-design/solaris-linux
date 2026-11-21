@@ -500,6 +500,8 @@ contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'include_minimized
 contiene iso/titan/airootfs/usr/local/bin/titan-rendimiento 'quitar_plugin blur' "modo equipo ligero (titan-rendimiento)"
 contiene iso/titan/airootfs/usr/local/bin/titan-sesion 'titan-rendimiento inicio' "el equipo ligero se decide solo la primera vez"
 contiene apps/titan-settings/qml/EnergiaView.qml 'Equipo ligero' "interruptor de equipo ligero en Ajustes"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini 'minimize_animation = zoom' "minimizar rápido (zoom de 0,2 s)"
+contiene apps/titan-shell/qml/WorkspacesView.qml 'Sin barra superior en esta vista' "selector de escritorios sin barra, solo la hora"
 contiene apps/titan-common/ThemeManager.cpp 'PRIMERO color-scheme' "Firefox: color-scheme antes que el tema GTK"
 contiene iso/titan/airootfs/usr/local/bin/titan-informe 'Solo LEE' "informe de prueba del equipo (titan-informe)"
 contiene paquetes/inti/PKGBUILD 'qt6-base>=' "las apps de Inti piden el Qt con el que se compilaron"

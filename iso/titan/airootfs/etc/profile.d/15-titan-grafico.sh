@@ -313,6 +313,12 @@ if [ -f "${HOME}/.config/wayfire.ini" ] && grep -q '^include_minimized = false$'
   sed -i '/^\[scale\]/,/^\[/{s/^include_minimized = false$/include_minimized = true\nminimized_alpha = 0.55/}' "${HOME}/.config/wayfire.ini"
 fi
 
+# 4c-ter. Minimizar mas rapido (2026-11): "zoom" de 0,2 s en vez de la
+#     succion de 0,42 s. Tambien en la copia del modo "equipo ligero".
+for f in "${HOME}/.config/wayfire.ini" "${HOME}/.config/titan/rendimiento-normal.conf"; do
+  [ -f "$f" ] && sed -i 's/^minimize_animation = squeezimize$/minimize_animation = zoom/; s/^animate minimize_animation squeezimize$/animate minimize_animation zoom/' "$f"
+done
+
 # 4c. Distribucion del teclado (2026-11): la del sistema (la que se eligio al
 #     instalar) si la persona no ha elegido otra en Ajustes > Teclado. Antes
 #     Wayfire usaba siempre "us" y labwc la de XKB_DEFAULT_* (ninguna).

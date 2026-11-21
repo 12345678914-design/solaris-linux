@@ -563,7 +563,9 @@ int main(int argc, char *argv[])
             a |= LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-workspaces"),
+            // -1: tapa también la barra superior (en esta vista solo se ve
+            // la hora, que pinta WorkspacesView); sin recolocar ventanas.
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-workspaces"),
                            LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
             QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.workspacesVisible());
