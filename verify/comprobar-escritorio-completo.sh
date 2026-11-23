@@ -532,6 +532,9 @@ contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy
 contiene apps/titan-settings/src/SettingsBackend.cpp 'titan-idioma' "Ajustes cambia el idioma sin sudo en segundo plano"
 contiene iso/titan/airootfs/usr/local/bin/titan-actualizaciones 'titan-settings --actualizar' "el aviso de actualizaciones empieza a actualizar al pulsar"
 
+contiene iso/titan/airootfs/usr/local/bin/titan-sesion 'Registros de ESTA cuenta' "registros de la sesion por cuenta (cambiar de usuario no deja el fondo azul)"
+contiene iso/titan/airootfs/usr/local/bin/titan-sesion 'try-restart xdg-desktop-portal' "el portal de apariencia arranca con el entorno de la sesion"
+contiene iso/titan/airootfs/usr/share/xdg-desktop-portal/portals.conf 'default=gtk' "portales por defecto aunque falte XDG_CURRENT_DESKTOP"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

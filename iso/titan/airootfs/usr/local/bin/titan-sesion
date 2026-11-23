@@ -3,13 +3,28 @@
 # Lo llaman ~/.config/labwc/autostart y la seccion [autostart] de wayfire.ini.
 export PATH="/usr/local/bin:$PATH"
 
+# Registros de ESTA cuenta. Antes iban a /tmp/titan-*.log, comunes a todas:
+# con dos personas dentro (Cambiar de usuario), la segunda no podia
+# escribirlos (son de la primera) y ni el escritorio ni el Dock arrancaban.
+registros="${XDG_RUNTIME_DIR:-/tmp/titan-$(id -u)}"
+mkdir -p "$registros" 2>/dev/null
+
+# Entorno de la sesion para D-Bus y systemd ANTES de arrancar nada: si el
+# portal de apariencia (xdg-desktop-portal) se activaba sin XDG_CURRENT_DESKTOP
+# no encontraba titan-portals.conf y no avisaba del cambio claro/oscuro
+# (Firefox solo cambiaba al reiniciarlo). Si ya estaba en marcha, se reinicia.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP \
+    XDG_SESSION_TYPE XDG_SESSION_DESKTOP 2>/dev/null ||
+    dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE 2>/dev/null
+systemctl --user try-restart xdg-desktop-portal-gtk.service xdg-desktop-portal.service >/dev/null 2>&1 &
+
 # 0. Servidor de audio PipeWire y WirePlumber (Hardware real y emulado)
 if command -v pipewire >/dev/null 2>&1; then
-    pgrep -x pipewire >/dev/null 2>&1 || pipewire &
+    pgrep -u "$(id -u)" -x pipewire >/dev/null 2>&1 || pipewire &
     sleep 0.3
-    pgrep -x pipewire-pulse >/dev/null 2>&1 || pipewire-pulse &
+    pgrep -u "$(id -u)" -x pipewire-pulse >/dev/null 2>&1 || pipewire-pulse &
     sleep 0.3
-    pgrep -x wireplumber >/dev/null 2>&1 || wireplumber &
+    pgrep -u "$(id -u)" -x wireplumber >/dev/null 2>&1 || wireplumber &
 fi
 
 # Desmutear y calibrar volumen en hardware real ALSA y PipeWire
@@ -26,7 +41,7 @@ fi
 # 0.3 Ventana de contrasena de administrador (agente de polkit). Sin agente,
 #     GNOME Software, las impresoras o los discos no pueden pedir permiso.
 if [ -x /usr/local/bin/titan-polkit ]; then
-    pgrep -u "$(id -u)" -x titan-polkit >/dev/null 2>&1 || /usr/local/bin/titan-polkit >/tmp/titan-polkit.log 2>&1 &
+    pgrep -u "$(id -u)" -x titan-polkit >/dev/null 2>&1 || /usr/local/bin/titan-polkit >"$registros/titan-polkit.log" 2>&1 &
 fi
 
 # 0.3 Equipo ligero (Celeron, poca memoria...): la primera vez se decide
@@ -41,7 +56,7 @@ fi
 
 # 0.5 Pantallas (resolucion, escala, giro) y luz nocturna guardadas en Ajustes,
 #     y el color de acento para GTK, kitty y la pantalla de bloqueo.
-[ -x /usr/local/bin/titan-pantallas ] && /usr/local/bin/titan-pantallas >/tmp/titan-pantallas.log 2>&1 &
+[ -x /usr/local/bin/titan-pantallas ] && /usr/local/bin/titan-pantallas >"$registros/titan-pantallas.log" 2>&1 &
 [ -x /usr/local/bin/titan-luz-nocturna ] && ( sleep 2; /usr/local/bin/titan-luz-nocturna ) >/dev/null 2>&1 &
 [ -x /usr/local/bin/titan-acento ] && /usr/local/bin/titan-acento >/dev/null 2>&1 &
 # Raton y panel tactil de Ajustes tambien en labwc (Wayfire los lee solo)
@@ -52,11 +67,11 @@ fi
 # 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
 lanzar_titan_desktop() {
     if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
-        /usr/local/bin/titan-desktop --escritorio >/tmp/titan-desktop.log 2>&1
+        /usr/local/bin/titan-desktop --escritorio >"$registros/titan-desktop.log" 2>&1
         local ret=$?
         if [ $ret -ne 0 ]; then
-            echo "Aviso: titan-desktop salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-desktop.log
-            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>/tmp/titan-desktop.log 2>&1
+            echo "Aviso: titan-desktop salio con codigo $ret. Reintentando con backend software..." >> "$registros/titan-desktop.log"
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>"$registros/titan-desktop.log" 2>&1
         fi
     fi
 }
@@ -65,11 +80,11 @@ lanzar_titan_desktop() {
 # 2. Inti OS Shell (TopBar, Dock flotante, Iconos y Launchpad) con autorecuperacion
 lanzar_titan_shell() {
     if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
-        /usr/local/bin/titan-shell >/tmp/titan-shell.log 2>&1
+        /usr/local/bin/titan-shell >"$registros/titan-shell.log" 2>&1
         local ret=$?
         if [ $ret -ne 0 ]; then
-            echo "Aviso: titan-shell salio con codigo $ret. Reintentando con backend software..." >> /tmp/titan-shell.log
-            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>/tmp/titan-shell.log 2>&1
+            echo "Aviso: titan-shell salio con codigo $ret. Reintentando con backend software..." >> "$registros/titan-shell.log"
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>"$registros/titan-shell.log" 2>&1
         fi
     fi
 }
@@ -117,7 +132,7 @@ lanzar_titan_shell() {
     # (sistema) lo arranca udev al aparecer el puerto com.redhat.spice.0.
     if [ -e /dev/virtio-ports/com.redhat.spice.0 ] && [ -n "$DISPLAY" ] \
        && command -v spice-vdagent >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -x spice-vdagent >/dev/null; then
-        GDK_BACKEND=x11 spice-vdagent >/tmp/spice-vdagent.log 2>&1 || true
+        GDK_BACKEND=x11 spice-vdagent >"$registros/spice-vdagent.log" 2>&1 || true
     fi
 ) &
 

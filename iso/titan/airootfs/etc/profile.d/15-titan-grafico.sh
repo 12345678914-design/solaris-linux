@@ -77,11 +77,11 @@ if [ "${SESION_DESKTOP}" = "plasma" ]; then
   esac
 
   echo "Iniciando Inti OS (KDE Plasma 6 Wayland)..."
-  dbus-run-session -- startplasma-wayland 2>&1 | tee /tmp/plasma.log
+  dbus-run-session -- startplasma-wayland 2>&1 | tee "${XDG_RUNTIME_DIR:-/tmp}/plasma.log"
   codigo_salida=${PIPESTATUS[0]}
-  if [ $codigo_salida -ne 0 ] && [ -s /tmp/plasma.log ]; then
+  if [ $codigo_salida -ne 0 ] && [ -s "${XDG_RUNTIME_DIR:-/tmp}/plasma.log" ]; then
     echo "Aviso: KDE Plasma finalizó con código ${codigo_salida}."
-    tail -n 25 /tmp/plasma.log
+    tail -n 25 "${XDG_RUNTIME_DIR:-/tmp}/plasma.log"
   fi
   echo "El escritorio se ha cerrado. Volviendo a la consola de texto."
   return 0
@@ -376,11 +376,11 @@ if [ "${COMPOSITOR}" = "wayfire" ]; then
   export KITTY_CONF_DECORACION="hide_window_decorations yes"
   export NO_AT_BRIDGE=1
   echo "Iniciando Inti OS (sesión inmersiva con Wayfire)..."
-  dbus-run-session -- wayfire 2>&1 | tee /tmp/wayfire.log
+  dbus-run-session -- wayfire 2>&1 | tee "${XDG_RUNTIME_DIR:-/tmp}/wayfire.log"
   codigo_salida=${PIPESTATUS[0]}
   if [ $codigo_salida -ne 0 ]; then
     echo "Aviso: Wayfire finalizó con código ${codigo_salida}; se usa labwc."
-    tail -n 15 /tmp/wayfire.log
+    tail -n 15 "${XDG_RUNTIME_DIR:-/tmp}/wayfire.log"
     export XDG_CURRENT_DESKTOP=Titan:labwc
     export MOZ_GTK_TITLEBAR_DECORATION=system
     unset KITTY_CONF_DECORACION
@@ -392,7 +392,7 @@ fi
 
 if [ "${COMPOSITOR}" = "labwc" ]; then
 echo "Iniciando Titan Linux (interfaz gráfica estilo macOS con labwc)..."
-dbus-run-session -- labwc 2>&1 | tee /tmp/labwc.log
+dbus-run-session -- labwc 2>&1 | tee "${XDG_RUNTIME_DIR:-/tmp}/labwc.log"
 codigo_salida=${PIPESTATUS[0]}
 
 # Fallback automático: si labwc falló con el motor acelerado, reintentar automáticamente con compatibilidad software
@@ -404,13 +404,13 @@ if [ $codigo_salida -ne 0 ] && [ "${ES_COMPAT}" -eq 0 ] && [ "${ES_VM}" -eq 0 ] 
   unset NVD_BACKEND 2>/dev/null || true
   unset WLR_DRM_DEVICES 2>/dev/null || true
   aplicar_capa_compatibilidad
-  dbus-run-session -- labwc 2>&1 | tee -a /tmp/labwc.log
+  dbus-run-session -- labwc 2>&1 | tee -a "${XDG_RUNTIME_DIR:-/tmp}/labwc.log"
   codigo_salida=${PIPESTATUS[0]}
 fi
 
-if [ $codigo_salida -ne 0 ] && [ -s /tmp/labwc.log ]; then
+if [ $codigo_salida -ne 0 ] && [ -s "${XDG_RUNTIME_DIR:-/tmp}/labwc.log" ]; then
   echo "Aviso: labwc finalizó con código ${codigo_salida}. Registro de error:"
-  tail -n 25 /tmp/labwc.log
+  tail -n 25 "${XDG_RUNTIME_DIR:-/tmp}/labwc.log"
 fi
 fi
 
