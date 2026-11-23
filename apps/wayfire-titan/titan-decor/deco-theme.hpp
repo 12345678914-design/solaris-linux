@@ -2,6 +2,8 @@
 #include <wayfire/render-manager.hpp>
 #include <wayfire/scene-render.hpp>
 #include "deco-button.hpp"
+#include "estilo-botones.hpp"
+#include <memory>
 
 namespace wf
 {
@@ -73,10 +75,21 @@ class decoration_theme_t
     cairo_surface_t *get_button_surface(button_type_t button,
         const button_state_t& state) const;
 
+    /** Estilo de botones elegido en Ajustes > Ventanas (solo se crea ese). */
+    const medidas_botones_t& get_medidas() const
+    {
+        return medidas;
+    }
+
+    /** Lo que se leyo de theme.conf: si cambia, hay que rehacer la barra. */
+    static std::string firma_tema();
+
   private:
     /** Titan theme read from ~/.config/titan/theme.conf when the window opens. */
     bool dark = true;
     unsigned accent = 0x0071e3;
+    std::unique_ptr<estilo_botones_t> estilo;
+    medidas_botones_t medidas;
     wf::option_wrapper_t<bool> follow_titan_theme{"titan-decor/follow_titan_theme"};
     wf::option_wrapper_t<std::string> font{"titan-decor/font"};
     wf::option_wrapper_t<wf::color_t> font_color{"titan-decor/font_color"};

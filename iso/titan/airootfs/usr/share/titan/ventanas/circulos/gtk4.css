@@ -1,0 +1,6 @@
+/* Inti OS - botones de ventana: Circulos grises. GTK 4. */
+windowcontrols > button { min-width: 24px; min-height: 24px; margin: 0 2px; padding: 0; background: none; box-shadow: none; }
+windowcontrols > button > image { padding: 4px; border-radius: 100%; background-color: alpha(currentColor, 0.10); box-shadow: none; transition: background-color 100ms ease-out; }
+windowcontrols > button:hover > image { background-color: alpha(currentColor, 0.17); }
+windowcontrols > button:active > image { background-color: alpha(currentColor, 0.25); }
+windowcontrols > button:backdrop > image { color: alpha(currentColor, 0.5); }

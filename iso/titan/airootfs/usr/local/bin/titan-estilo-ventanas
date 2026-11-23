@@ -1,0 +1,83 @@
+#!/bin/sh
+# Inti OS - lleva el estilo de los botones de ventana (Ajustes > Ventanas) a
+# lo que no es Qt. Wayfire (titan-decor) y las apps de Inti lo leen solos de
+# ~/.config/titan/theme.conf ([Theme] windowStyle=...).
+#   - GTK 3 y 4 (Firefox, Texto, Calculadora...): ~/.config/gtk-*/titan-ventanas.css
+#     (lo importa gtk.css) y el lado de los botones (button-layout)
+#   - labwc (sesion de respaldo): tema Titan-Inti con los iconos del estilo
+# Cada estilo trae sus ficheros en /usr/share/titan/ventanas/<estilo>/ y aqui
+# solo se copian los del elegido. No necesita permisos de administrador.
+# Lo lanzan Ajustes al cambiar el estilo y titan-acento (modo, acento, entrada).
+# Uso: titan-estilo-ventanas [estilo]
+set -u
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+tema="$dir/titan/theme.conf"
+base=/usr/share/titan/ventanas
+
+leer() { sed -n "s/^$1=//p" "$tema" 2>/dev/null | tail -n 1 | tr -d '"\r'; }
+
+estilo="${1:-$(leer windowStyle)}"
+# Solo nombres de la lista (nada de rutas).
+case "$estilo" in
+    actual|windows|circulos|acento|capsula|contorno|color) ;;
+    *) estilo=actual ;;
+esac
+carpeta="$base/$estilo"
+[ -f "$carpeta/estilo.conf" ] || exit 0
+valor() { sed -n "s/^$1=//p" "$carpeta/estilo.conf" | head -n 1; }
+
+acento=$(leer accent | tr 'A-F' 'a-f')
+printf '%s' "$acento" | grep -Eq '^#[0-9a-f]{6}$' || acento="#0071e3"
+modo=claro
+[ "$(leer isDark)" = true ] && modo=oscuro
+
+# ---- GTK 3 y GTK 4
+orden=$(valor gtk)
+for v in 3 4; do
+    d="$dir/gtk-$v.0"
+    mkdir -p "$d"
+    cp -f "$carpeta/gtk$v.css" "$d/titan-ventanas.css.nuevo" && mv -f "$d/titan-ventanas.css.nuevo" "$d/titan-ventanas.css"
+    css="$d/gtk.css"
+    if ! grep -qs 'titan-ventanas.css' "$css"; then
+        if [ ! -s "$css" ] || grep -qs 'Inti OS - window buttons' "$css"; then
+            # gtk.css de Inti de antes (llevaba los semaforos dentro)
+            printf '@import url("titan-acento.css");\n@import url("titan-ventanas.css");\n' > "$css"
+        else
+            # gtk.css propio: se respeta y solo se añade el import delante
+            { printf '@import url("titan-ventanas.css");\n'; cat "$css"; } > "$css.nuevo" && mv -f "$css.nuevo" "$css"
+        fi
+    fi
+    ini="$d/settings.ini"
+    if [ -f "$ini" ]; then
+        if grep -q '^gtk-decoration-layout=' "$ini"; then
+            sed -i "s/^gtk-decoration-layout=.*/gtk-decoration-layout=$orden/" "$ini"
+        else
+            printf 'gtk-decoration-layout=%s\n' "$orden" >> "$ini"
+        fi
+    fi
+done
+command -v gsettings >/dev/null 2>&1 &&
+    gsettings set org.gnome.desktop.wm.preferences button-layout "$orden" 2>/dev/null
+
+# ---- labwc: tema propio Titan-Inti = themerc de Titan-macOS + iconos del estilo
+ob="${XDG_DATA_HOME:-$HOME/.local/share}/themes/Titan-Inti/openbox-3"
+mkdir -p "$ob"
+{
+    cat /usr/share/themes/Titan-macOS/openbox-3/themerc 2>/dev/null
+    printf '\n# Botones del estilo "%s" (titan-estilo-ventanas)\n' "$estilo"
+    printf 'window.button.width: %s\n' "$(valor labwc_ancho)"
+    printf 'window.button.spacing: %s\n' "$(valor labwc_separacion)"
+} > "$ob/themerc"
+rm -f "$ob"/*.svg
+for f in "$carpeta/labwc/$modo"/*.svg; do
+    [ -f "$f" ] && sed "s/#ACENTO/$acento/g" "$f" > "$ob/${f##*/}"
+done
+rc="$dir/labwc/rc.xml"
+if [ -f "$rc" ]; then
+    sed -i -e 's|<name>Titan-macOS</name>|<name>Titan-Inti</name>|' \
+           -e "s|<layout>[^<]*</layout>|<layout>$(valor labwc)</layout>|" "$rc"
+fi
+if pgrep -u "$(id -u)" -x labwc >/dev/null 2>&1; then
+    labwc --reconfigure >/dev/null 2>&1
+fi
+exit 0

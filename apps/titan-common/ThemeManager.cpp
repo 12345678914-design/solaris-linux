@@ -50,6 +50,9 @@ void ThemeManager::load()
         m_isDark = s.value(QStringLiteral("isDark"), false).toBool();
         m_accent = s.value(QStringLiteral("accent"), QStringLiteral("#0071e3")).toString();
         m_wallpaper = s.value(QStringLiteral("wallpaper")).toString();
+        m_windowStyle = s.value(QStringLiteral("windowStyle"), QStringLiteral("actual")).toString();
+        if (!estiloValido(m_windowStyle))
+            m_windowStyle = QStringLiteral("actual");
         s.endGroup();
     } else {
         m_isDark = false;
@@ -74,6 +77,7 @@ void ThemeManager::save()
     s.setValue(QStringLiteral("isDark"), m_isDark);
     s.setValue(QStringLiteral("accent"), m_accent);
     s.setValue(QStringLiteral("wallpaper"), m_wallpaper);
+    s.setValue(QStringLiteral("windowStyle"), m_windowStyle);
     s.endGroup();
     s.sync();
 
@@ -90,8 +94,12 @@ void ThemeManager::onConfigFileChanged()
     bool oldDark = m_isDark;
     QString oldAccent = m_accent;
     QString oldWp = m_wallpaper;
+    const QString oldEstilo = m_windowStyle;
 
     load();
+
+    if (oldEstilo != m_windowStyle)
+        emit windowStyleChanged();
 
     if (oldDark != m_isDark || oldAccent != m_accent) {
         aplicarPaleta();
@@ -180,6 +188,29 @@ void ThemeManager::setAccent(const QString &accent)
         syncLabwcTheme();
         emit themeChanged();
     }
+}
+
+bool ThemeManager::estiloValido(const QString &estilo)
+{
+    static const QStringList validos = {
+        QStringLiteral("actual"), QStringLiteral("windows"), QStringLiteral("circulos"),
+        QStringLiteral("acento"), QStringLiteral("capsula"), QStringLiteral("contorno"),
+        QStringLiteral("color")
+    };
+    return validos.contains(estilo);
+}
+
+// Ajustes > Ventanas. Las apps de Inti y Wayfire lo leen de theme.conf al
+// momento; GTK (Firefox...) y labwc los prepara titan-estilo-ventanas.
+void ThemeManager::setWindowStyle(const QString &estilo)
+{
+    if (!estiloValido(estilo) || estilo == m_windowStyle)
+        return;
+    m_windowStyle = estilo;
+    save();
+    emit windowStyleChanged();
+    if (QFile::exists(QStringLiteral("/usr/local/bin/titan-estilo-ventanas")))
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-estilo-ventanas"), {estilo});
 }
 
 void ThemeManager::setWallpaper(const QString &wallpaper)
@@ -373,8 +404,7 @@ void ThemeManager::sincronizarGtk()
         QStringLiteral("-c"),
         QStringLiteral("gsettings set org.gnome.desktop.interface color-scheme '%2'; "
                        "[ \"$(gsettings get org.gnome.desktop.interface gtk-theme)\" = \"'%1'\" ] || "
-                       "gsettings set org.gnome.desktop.interface gtk-theme '%1'; "
-                       "gsettings set org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'")
+                       "gsettings set org.gnome.desktop.interface gtk-theme '%1'")
             .arg(gtkTheme, gtkColorScheme)
     });
 

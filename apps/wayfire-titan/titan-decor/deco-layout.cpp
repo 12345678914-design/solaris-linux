@@ -6,6 +6,7 @@
 #include <wayfire/nonstd/wlroots-full.hpp>
 #include <wayfire/util.hpp>
 #include <sstream>
+#include <cmath>
 
 namespace wf
 {
@@ -58,14 +59,10 @@ decoration_layout_t::decoration_layout_t(const decoration_theme_t& th,
 
     titlebar_size(th.get_title_height()),
     border_size(th.get_border_size()),
-    /**
-     * This is necessary. Otherwise, we will draw an
-     * overly huge button. 70% of the titlebar height
-     * is a decent size. (Equals 21 px by default)
-     */
-    button_width(titlebar_size * th.get_button_scale()),
-    button_height(titlebar_size * th.get_button_scale()),
-    button_padding_width(th.get_button_padding()),
+    // Medidas del estilo de Ajustes > Ventanas (pensadas para 28 px de barra).
+    button_width(std::lround(th.get_medidas().ancho * titlebar_size / 28.0)),
+    button_height(std::lround(th.get_medidas().alto * titlebar_size / 28.0)),
+    button_padding_width(std::lround(th.get_medidas().separacion * titlebar_size / 28.0)),
     button_padding_height((titlebar_size - button_height) / 2),
     theme(th),
     damage_callback(callback)
@@ -73,7 +70,8 @@ decoration_layout_t::decoration_layout_t(const decoration_theme_t& th,
 
 wf::geometry_t decoration_layout_t::create_buttons(int width, int)
 {
-    std::stringstream stream((std::string)button_order);
+    const auto& m = theme.get_medidas();
+    std::stringstream stream(std::string(m.orden));
     std::vector<button_type_t> buttons;
     std::string button_name;
     while (stream >> button_name)
@@ -94,12 +92,14 @@ wf::geometry_t decoration_layout_t::create_buttons(int width, int)
         }
     }
 
-    // Inti OS: traffic lights on the left, in the order of button_order
-    // (close minimize maximize), like macOS.
-    int per_button = 2 * button_padding_width + button_width;
-    const int start = border_size + button_padding_width + button_padding_height;
+    // Inti OS: los botones van a la izquierda o a la derecha segun el estilo.
+    const int margen = std::lround(m.margen * titlebar_size / 28.0);
+    const int n = (int)buttons.size();
+    const int total = n > 0 ? n * button_width + (n - 1) * button_padding_width : 0;
+    const int x0 = m.derecha ? (width - border_size - margen - total) : (border_size + margen);
+
     wf::geometry_t button_geometry = {
-        (double)(start + button_padding_width),
+        (double)x0,
         (double)(button_padding_height + border_size),
         (double)button_width,
         (double)button_height,
@@ -111,15 +111,17 @@ wf::geometry_t decoration_layout_t::create_buttons(int width, int)
             button_geometry, damage_callback, theme));
         this->layout_areas.back()->as_button().set_button_type(type);
         this->layout_areas.back()->as_button().set_active(active);
-        button_geometry.x += per_button;
+        button_geometry.x += button_width + button_padding_width;
     }
 
-    int total_width = (int)buttons.size() * per_button + button_padding_width;
+    // Zona de los botones con su margen (para mover la ventana entre ellos).
+    if (m.derecha)
+    {
+        return {(double)x0, (double)border_size, (double)(width - border_size - x0), (double)titlebar_size};
+    }
 
-    return {
-        (double)start, (double)border_size,
-        (double)total_width, (double)titlebar_size
-    };
+    return {(double)border_size, (double)border_size, (double)(x0 + total + margen - border_size),
+        (double)titlebar_size};
 }
 
 /** Regenerate layout using the new size */
@@ -128,29 +130,25 @@ void decoration_layout_t::resize(int width, int height)
     this->layout_areas.clear();
     if (this->titlebar_size > 0)
     {
-        auto button_geometry_expanded = create_buttons(width, height);
+        auto zona = create_buttons(width, height);
 
-        /* Padding around the button, allows move */
+        /* Padding around the buttons, allows move */
         this->layout_areas.push_back(std::make_unique<decoration_area_t>(
-            DECORATION_AREA_MOVE, button_geometry_expanded));
+            DECORATION_AREA_MOVE, zona));
 
-        /* Titlebar dragging area (for move). The title is centred on the
-         * window: it leaves the same gap on the right as the lights take on
-         * the left. */
-        const double left_end = button_geometry_expanded.x + button_geometry_expanded.width;
-        const double gap = left_end - border_size;
+        /* Titulo centrado en la ventana: deja el mismo hueco en los dos lados
+         * que ocupan los botones. El resto de la barra tambien mueve. */
+        const double hueco = zona.width;
         wf::geometry_t title_geometry = {
-            left_end,
+            border_size + hueco,
             (double)border_size,
-            std::max(0.0, width - border_size - gap - left_end),
+            std::max(0.0, width - 2.0 * (border_size + hueco)),
             (double)titlebar_size,
         };
-        /* Right side of the bar: also used to move the window. */
+        const double lado_libre_x = theme.get_medidas().derecha ? border_size : title_geometry.x + title_geometry.width;
         this->layout_areas.push_back(std::make_unique<decoration_area_t>(
-            DECORATION_AREA_MOVE, wf::geometry_t{
-                    title_geometry.x + title_geometry.width, (double)border_size,
-                    std::max(0.0, width - border_size - (title_geometry.x + title_geometry.width)),
-                    (double)titlebar_size}));
+            DECORATION_AREA_MOVE, wf::geometry_t{lado_libre_x, (double)border_size,
+                std::max(0.0, hueco), (double)titlebar_size}));
         this->layout_areas.push_back(std::make_unique<decoration_area_t>(
             DECORATION_AREA_TITLE, title_geometry));
     }

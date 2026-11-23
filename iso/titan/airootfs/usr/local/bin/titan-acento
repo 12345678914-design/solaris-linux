@@ -87,4 +87,8 @@ inactive_tab_background $fondo_sel
 KITTY
 pkill -USR1 -u "$(id -u)" -x kitty 2>/dev/null
 
+# ---- Botones de ventana (Ajustes > Ventanas): sus iconos de labwc llevan el
+#      acento y cambian con claro/oscuro.
+[ -x /usr/local/bin/titan-estilo-ventanas ] && /usr/local/bin/titan-estilo-ventanas >/dev/null 2>&1
+
 exit 0

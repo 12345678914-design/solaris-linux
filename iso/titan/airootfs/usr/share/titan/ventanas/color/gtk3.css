@@ -1,0 +1,13 @@
+/* Inti OS - botones de ventana: Color a la derecha. GTK 3. */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 16px; min-height: 16px; margin: 0 3px; padding: 0;
+  border: none; border-radius: 100%; background-image: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  color: rgba(0, 0, 0, 0.62); -gtk-icon-shadow: none; -gtk-icon-transform: scale(0.7);
+}
+headerbar button.titlebutton.close, .titlebar button.titlebutton.close { background-color: #ff5f57; }
+headerbar button.titlebutton.minimize, .titlebar button.titlebutton.minimize { background-color: #febc2e; }
+headerbar button.titlebutton.maximize, .titlebar button.titlebutton.maximize { background-color: #28c840; }
+headerbar button.titlebutton:active, .titlebar button.titlebutton:active { background-image: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18)); }
+headerbar:backdrop button.titlebutton, .titlebar:backdrop button.titlebutton { background-color: alpha(currentColor, 0.22); color: rgba(0, 0, 0, 0.35); }

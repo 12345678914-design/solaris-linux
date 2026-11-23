@@ -89,9 +89,11 @@ void button_t::update_texture()
      * to 70% of the titlebar height. Thus we will have
      * a very crisp image
      */
+    // Medidas del estilo de Ajustes > Ventanas, para una barra de 28 px.
+    const double esc = theme.get_title_height() / 28.0;
     decoration_theme_t::button_state_t state = {
-        .width  = 1.0 * theme.get_title_height(),
-        .height = 1.0 * theme.get_title_height(),
+        .width  = theme.get_medidas().ancho * esc,
+        .height = theme.get_medidas().alto * esc,
         .border = 1.0,
         .hover_progress = hover,
         .active = is_active,

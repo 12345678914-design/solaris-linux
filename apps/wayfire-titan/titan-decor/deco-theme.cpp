@@ -11,9 +11,9 @@
 /*
  * Inti OS: Wayfire window bar with the Titan look.
  * Based on Wayfire's "decoration" plugin (MIT, see LICENSE-wayfire).
- * Changes: macOS traffic lights (always in colour, grey when inactive,
- * symbol on hover), buttons on the left, centred title, and colours from
- * the Titan theme (light/dark).
+ * Changes: window buttons drawn by the style chosen in Ajustes > Ventanas
+ * (estilo-*.cpp, one class per style), centred title, and colours from the
+ * Titan theme (light/dark, accent).
  */
 namespace
 {
@@ -67,6 +67,32 @@ unsigned titan_accent()
     return 0x0071e3;
 }
 
+/** windowStyle from ~/.config/titan/theme.conf ([Theme] windowStyle=acento). */
+std::string titan_estilo()
+{
+    const char *home = std::getenv("HOME");
+    if (home)
+    {
+        std::ifstream f(std::string(home) + "/.config/titan/theme.conf");
+        std::string line;
+        while (std::getline(f, line))
+        {
+            if (line.rfind("windowStyle=", 0) == 0)
+            {
+                std::string v = line.substr(12);
+                while (!v.empty() && ((v.back() == '\r') || (v.back() == ' ')))
+                {
+                    v.pop_back();
+                }
+
+                return v;
+            }
+        }
+    }
+
+    return "actual";
+}
+
 wf::color_t hex(unsigned rgb, double a = 1.0)
 {
     return {((rgb >> 16) & 0xff) / 255.0, ((rgb >> 8) & 0xff) / 255.0, (rgb & 0xff) / 255.0, a};
@@ -80,8 +106,15 @@ namespace titan_decor
 /** Create a new theme with the default parameters */
 decoration_theme_t::decoration_theme_t()
 {
-    dark   = titan_dark();
-    accent = titan_accent();
+    dark    = titan_dark();
+    accent  = titan_accent();
+    estilo  = crear_estilo_botones(titan_estilo());
+    medidas = estilo->medidas();
+}
+
+std::string decoration_theme_t::firma_tema()
+{
+    return std::string(titan_dark() ? "1" : "0") + "/" + std::to_string(titan_accent()) + "/" + titan_estilo();
 }
 
 wf::color_t decoration_theme_t::get_bar_color(bool active) const
@@ -210,102 +243,20 @@ cairo_surface_t*decoration_theme_t::render_text(std::string text,
 cairo_surface_t*decoration_theme_t::get_button_surface(button_type_t button,
     const button_state_t& state) const
 {
+    // Se pinta al doble de tamaño: se ve nítido aunque la pantalla escale.
+    const double k = 2.0;
     cairo_surface_t *button_surface = cairo_image_surface_create(
-        CAIRO_FORMAT_ARGB32, state.width, state.height);
+        CAIRO_FORMAT_ARGB32, std::ceil(state.width * k), std::ceil(state.height * k));
 
     auto cr = cairo_create(button_surface);
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_BEST);
-
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+    cairo_scale(cr, k, k);
 
-    // macOS traffic lights (the same as TitanWindow.qml).
-    wf::color_t fill;
-    switch (button)
-    {
-      case BUTTON_CLOSE:
-        fill = hex(0xff5f57);
-        break;
-
-      case BUTTON_MINIMIZE:
-        fill = hex(0xfebc2e);
-        break;
-
-      case BUTTON_TOGGLE_MAXIMIZE:
-        fill = hex(0x28c840);
-        break;
-
-      default:
-        assert(false);
-    }
-
-    // Inactive window: grey lights, unless the pointer is over them.
-    const double hover = std::clamp(state.hover_progress, -1.0, 1.0);
-    if (!state.active && (hover <= 1e-3))
-    {
-        fill = dark ? hex(0x4b4e58) : hex(0xcfcfd3);
-    }
-
-    // Pressed (negative hover): darker.
-    if (hover < 0)
-    {
-        const double k = 1.0 + 0.35 * hover;
-        fill = {fill.r * k, fill.g * k, fill.b * k, fill.a};
-    }
-
-    const double cx = state.width / 2.0, cy = state.height / 2.0;
-    const double r  = state.width / 2.0 - 0.5;
-
-    cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
-    cairo_set_source_rgba(cr, fill.r, fill.g, fill.b, 1.0);
-    cairo_fill_preserve(cr);
-    // Thin edge, like macOS.
-    cairo_set_line_width(cr, std::max(1.0, state.width / 14.0));
-    cairo_set_source_rgba(cr, 0, 0, 0, dark ? 0.25 : 0.12);
-    cairo_stroke(cr);
-
-    // Symbol only on hover (fades in with the animation).
-    const double glyph = std::fabs(hover);
-    if (glyph > 1e-3)
-    {
-        const double s = state.width * 0.24;
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_width(cr, std::max(1.2, state.width / 9.0));
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.55 * glyph);
-        switch (button)
-        {
-          case BUTTON_CLOSE:
-            cairo_move_to(cr, cx - s, cy - s);
-            cairo_line_to(cr, cx + s, cy + s);
-            cairo_move_to(cr, cx + s, cy - s);
-            cairo_line_to(cr, cx - s, cy + s);
-            cairo_stroke(cr);
-            break;
-
-          case BUTTON_MINIMIZE:
-            cairo_move_to(cr, cx - s * 1.15, cy);
-            cairo_line_to(cr, cx + s * 1.15, cy);
-            cairo_stroke(cr);
-            break;
-
-          case BUTTON_TOGGLE_MAXIMIZE:
-            // Two triangles on the diagonal, like the macOS full-screen button.
-            cairo_move_to(cr, cx - s, cy - s * 0.15);
-            cairo_line_to(cr, cx - s, cy - s);
-            cairo_line_to(cr, cx - s * 0.15, cy - s);
-            cairo_close_path(cr);
-            cairo_move_to(cr, cx + s, cy + s * 0.15);
-            cairo_line_to(cr, cx + s, cy + s);
-            cairo_line_to(cr, cx + s * 0.15, cy + s);
-            cairo_close_path(cr);
-            cairo_fill(cr);
-            break;
-
-          default:
-            break;
-        }
-    }
+    const pintura_t p{dark, accent, state.active, std::clamp(state.hover_progress, -1.0, 1.0)};
+    estilo->dibujar(cr, button, state.width, state.height, p);
 
     cairo_destroy(cr);
     return button_surface;

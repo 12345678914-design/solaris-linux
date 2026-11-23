@@ -42,6 +42,17 @@ QtObject {
     readonly property color contentTextPrimary: isDark ? "#ffffff" : "#1d1d1f"
     readonly property color contentTextSecondary: isDark ? "#a2aab8" : "#6e6e73"
 
+    // Estilo de los botones de ventana (Ajustes > Ventanas). Cada estilo es un
+    // fichero aparte en botones/; TitanWindow carga solo el elegido.
+    readonly property string estiloVentana: (typeof titanThemeManager !== "undefined" && titanThemeManager.windowStyle) ? titanThemeManager.windowStyle : "actual"
+    readonly property var ficherosBotones: ({
+        "actual": "BotonesActual.qml", "windows": "BotonesWindows.qml",
+        "circulos": "BotonesCirculos.qml", "acento": "BotonesAcento.qml",
+        "capsula": "BotonesCapsula.qml", "contorno": "BotonesContorno.qml",
+        "color": "BotonesColor.qml"
+    })
+    readonly property string ficheroBotones: "botones/" + (ficherosBotones[estiloVentana] || "BotonesActual.qml")
+
     // Acentos y estados de selección estilo macOS
     // El acento lo elige el usuario en Ajustes (ThemeManager); si no hay gestor, azul.
     readonly property color accent: (typeof titanThemeManager !== "undefined" && titanThemeManager.accent) ? titanThemeManager.accent : "#0071e3"

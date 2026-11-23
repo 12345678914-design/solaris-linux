@@ -71,6 +71,7 @@ void SettingsBackend::initSections()
     add(QStringLiteral("Accesibilidad"), QStringLiteral("Accesibilidad"), QStringLiteral("♿"), QStringLiteral("#007aff"));
     add(QStringLiteral("Apariencia"), QStringLiteral("Apariencia"), QStringLiteral("◐"), QStringLiteral("#1c1c1e"));
     add(QStringLiteral("Fondo de pantalla"), QStringLiteral("Fondo de pantalla"), QStringLiteral("🖼️"), QStringLiteral("#007aff"));
+    add(QStringLiteral("Ventanas"), QStringLiteral("Ventanas"), QStringLiteral("❐"), QStringLiteral("#5856d6"));
     add(QStringLiteral("Pantallas"), QStringLiteral("Pantallas"), QStringLiteral("☀️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Batería"), QStringLiteral("Batería"), QStringLiteral("🔋"), QStringLiteral("#34c759"));
     add(QStringLiteral("Escritorio y Dock"), QStringLiteral("Escritorio y Dock"), QStringLiteral("⊞"), QStringLiteral("#5856d6"));

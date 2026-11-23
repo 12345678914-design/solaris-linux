@@ -8,6 +8,11 @@
 #include <wayfire/txn/transaction-manager.hpp>
 
 #include "deco-subsurface.hpp"
+#include "deco-theme.hpp"
+#include <sys/inotify.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <string>
 #include "wayfire/core.hpp"
 #include "wayfire/plugin.hpp"
 #include "wayfire/signal-provider.hpp"
@@ -66,9 +71,82 @@ class wayfire_titan_decor : public wf::plugin_interface_t
         update_view_decoration(ev->view);
     };
 
+    /* Ajustes escribe ~/.config/titan/theme.conf. Un solo vigilante (inotify)
+     * para todo el plugin: si cambia el modo, el acento o el estilo de los
+     * botones, se rehacen las barras de las ventanas abiertas. */
+    int vigilante = -1;
+    wl_event_source *fuente_vigilante = nullptr;
+    wf::wl_timer<false> espera_tema;
+    std::string firma;
+
+    static int al_cambiar_tema(int fd, uint32_t, void *data)
+    {
+        char buf[4096];
+        while (read(fd, buf, sizeof(buf)) > 0)
+        {}
+
+        auto self = static_cast<wayfire_titan_decor*>(data);
+        // Ajustes puede escribir varias veces seguidas: se espera un momento.
+        self->espera_tema.disconnect();
+        self->espera_tema.set_timeout(150, [self] () { self->rehacer_si_cambio(); });
+        return 0;
+    }
+
+    void rehacer_si_cambio()
+    {
+        const auto nueva = wf::titan_decor::decoration_theme_t::firma_tema();
+        if (nueva == firma)
+        {
+            return;
+        }
+
+        firma = nueva;
+        for (auto& view : wf::get_core().get_all_views())
+        {
+            auto toplevel = wf::toplevel_cast(view);
+            if (!toplevel || !is_toplevel_decorated(toplevel->toplevel()))
+            {
+                continue;
+            }
+
+            // Se destruye la barra vieja (con su estilo) y se crea la nueva.
+            remove_decoration(toplevel);
+            adjust_new_decorations(toplevel);
+            wf::get_core().tx_manager->schedule_object(toplevel->toplevel());
+        }
+    }
+
+    void vigilar_tema()
+    {
+        const char *home = std::getenv("HOME");
+        if (!home)
+        {
+            return;
+        }
+
+        vigilante = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+        if (vigilante < 0)
+        {
+            return;
+        }
+
+        const std::string dir = std::string(home) + "/.config/titan";
+        if (inotify_add_watch(vigilante, dir.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0)
+        {
+            close(vigilante);
+            vigilante = -1;
+            return;
+        }
+
+        fuente_vigilante = wl_event_loop_add_fd(wf::get_core().ev_loop, vigilante,
+            WL_EVENT_READABLE, al_cambiar_tema, this);
+    }
+
   public:
     void init() override
     {
+        firma = wf::titan_decor::decoration_theme_t::firma_tema();
+        vigilar_tema();
         wf::get_core().connect(&on_decoration_state_changed);
         wf::get_core().tx_manager->connect(&on_new_tx);
         wf::get_core().connect(&on_view_tiled);
@@ -81,6 +159,19 @@ class wayfire_titan_decor : public wf::plugin_interface_t
 
     void fini() override
     {
+        espera_tema.disconnect();
+        if (fuente_vigilante)
+        {
+            wl_event_source_remove(fuente_vigilante);
+            fuente_vigilante = nullptr;
+        }
+
+        if (vigilante >= 0)
+        {
+            close(vigilante);
+            vigilante = -1;
+        }
+
         for (auto view : wf::get_core().get_all_views())
         {
             if (auto toplevel = wf::toplevel_cast(view))

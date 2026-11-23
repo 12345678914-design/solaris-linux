@@ -1,0 +1,12 @@
+/* Inti OS - botones de ventana: Estilo Windows. GTK 3. */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 34px; min-height: 26px; margin: 0; padding: 0 6px;
+  border: none; border-radius: 0; background: none; box-shadow: none;
+  -gtk-icon-shadow: none; transition: background-color 90ms ease-out;
+}
+headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover { background-color: alpha(currentColor, 0.09); }
+headerbar button.titlebutton:active, .titlebar button.titlebutton:active { background-color: alpha(currentColor, 0.05); }
+headerbar button.titlebutton.close:hover, .titlebar button.titlebutton.close:hover { background-color: #c42b1c; color: #ffffff; }
+headerbar button.titlebutton.close:active, .titlebar button.titlebutton.close:active { background-color: #b3261e; color: #ffffff; }
+headerbar:backdrop button.titlebutton, .titlebar:backdrop button.titlebutton { color: alpha(currentColor, 0.45); }

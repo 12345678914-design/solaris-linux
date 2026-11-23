@@ -174,7 +174,7 @@ Window {
             showHighlight: false
         }
 
-        // ---------- 1. BARRA SUPERIOR (título + semáforos) ----------
+        // ---------- 1. BARRA SUPERIOR (título + botones de ventana) ----------
         Rectangle {
             id: headerPanel
             anchors.top: parent.top
@@ -249,9 +249,11 @@ Window {
             Item {
                 id: headerSlot
                 anchors.left: parent.left
-                anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14) : (trafficLightsRow.x + trafficLightsRow.width + 16)
+                anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14)
+                                    : botonesVentana.derecha ? 16 : (botonesVentana.x + botonesVentana.width + 16)
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                // Con los botones a la derecha, la barra propia de la app termina antes.
+                anchors.rightMargin: botonesVentana.derecha ? (parent.width - botonesVentana.x + 10) : 14
                 height: parent.height
                 anchors.verticalCenter: parent.verticalCenter
                 Behavior on anchors.leftMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -339,55 +341,36 @@ Window {
             }
         }
 
-        // Semáforos (grises cuando la ventana no tiene el foco). Como en macOS,
-        // al pasar el ratón por el grupo aparecen los símbolos de los tres.
-        Row {
-            id: trafficLightsRow
-            x: 18
-            y: Math.round((headerPanel.height - height) / 2)
-            spacing: 8
+        // Botones de la ventana (_ □ X). El estilo se elige en Ajustes >
+        // Ventanas: cada uno es un fichero aparte (botones/Botones*.qml) y
+        // solo se carga el elegido; al cambiarlo, el Loader destruye el
+        // anterior y crea el nuevo, sin gastar memoria en los demás.
+        Loader {
+            id: botonesVentana
+            source: titanTheme.ficheroBotones
             z: 30
-
-            HoverHandler { id: lightsHover }
-
-            Repeater {
-                model: [
-                    { col: "#ff5f57", edge: "#e0443e", glyph: "\u00d7", act: "close" },
-                    { col: "#febc2e", edge: "#dea123", glyph: "\u2212", act: "min" },
-                    { col: "#28c840", edge: "#1aab29", glyph: "+",      act: "max" }
-                ]
-                delegate: Rectangle {
-                    required property var modelData
-                    readonly property bool lit: rootWindow.active || lightsHover.hovered
-                    width: 12; height: 12; radius: 6
-                    color: lit ? modelData.col : (titanTheme.isDark ? "#5c5c60" : "#c8c8cc")
-                    border.color: lit ? modelData.edge : (titanTheme.isDark ? "#4a4a4e" : "#b4b4b8")
-                    border.width: 0.5
-                    scale: lightMouse.pressed ? 0.9 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 90 } }
-                    Behavior on color { ColorAnimation { duration: 150 } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        anchors.verticalCenterOffset: -0.5
-                        text: modelData.glyph
-                        visible: lightsHover.hovered
-                        color: Qt.rgba(0, 0, 0, 0.6)
-                        font.pixelSize: 11
-                        font.weight: Font.Bold
-                    }
-
-                    MouseArea {
-                        id: lightMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            if (modelData.act === "close") closeContainerAnim.start()
-                            else if (modelData.act === "min") { rootWindow.isMinimizing = true; minimizeContainerAnim.start() }
-                            else rootWindow.toggleMaximize()
-                        }
-                    }
-                }
+            readonly property bool derecha: item ? item.derecha : false
+            readonly property bool todoElAlto: item ? item.height >= headerPanel.height : false
+            readonly property real margen: item ? item.margen : 18
+            // Con anclas (no x): leer el ancho del botón en x hacía un bucle.
+            anchors.left: derecha ? undefined : parent.left
+            anchors.right: derecha ? parent.right : undefined
+            anchors.leftMargin: margen
+            anchors.rightMargin: margen
+            y: todoElAlto ? 0 : Math.round((headerPanel.height - height) / 2)
+            onLoaded: {
+                item.tema = titanTheme
+                item.activa = Qt.binding(function() { return rootWindow.active })
+                item.altoBarra = Qt.binding(function() { return headerPanel.height })
+                item.radioEsquina = Qt.binding(function() { return rootWindow.cornerRadius })
             }
+        }
+        Connections {
+            target: botonesVentana.item
+            ignoreUnknownSignals: true
+            function onCerrar() { closeContainerAnim.start() }
+            function onMinimizar() { rootWindow.isMinimizing = true; minimizeContainerAnim.start() }
+            function onMaximizar() { rootWindow.toggleMaximize() }
         }
 
         // ---------- 3. BARRA DE ESTADO ----------

@@ -329,8 +329,10 @@ TitanWindow {
         "Centro de control": centroControlComponent,
         "Notificaciones": notificacionesComponent,
         "Concentración": concentracionComponent,
-        "Usuarios y grupos": usuariosComponent
+        "Usuarios y grupos": usuariosComponent,
+        "Ventanas": ventanasComponent
     })
+    Component { id: ventanasComponent; VentanasView {} }
     Component { id: pantallasComponent; PantallasView {} }
     Component { id: sonidoComponent; SonidoView {} }
     Component { id: escritorioDockComponent; EscritorioDockView {} }

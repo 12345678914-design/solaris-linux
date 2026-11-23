@@ -3,6 +3,13 @@
         <file>qml/Calc.qml</file>
         <file>qml/TitanWindow.qml</file>
         <file>qml/GlassPanel.qml</file>
+        <file>qml/botones/BotonesActual.qml</file>
+        <file>qml/botones/BotonesWindows.qml</file>
+        <file>qml/botones/BotonesCirculos.qml</file>
+        <file>qml/botones/BotonesAcento.qml</file>
+        <file>qml/botones/BotonesCapsula.qml</file>
+        <file>qml/botones/BotonesContorno.qml</file>
+        <file>qml/botones/BotonesColor.qml</file>
         <file>qml/TitanTheme.qml</file>
         <file>icons/calculator.png</file>
     </qresource>
