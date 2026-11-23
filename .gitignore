@@ -47,6 +47,7 @@ iso/titan/airootfs/usr/local/bin/*
 !iso/titan/airootfs/usr/local/bin/titan-bloquear
 !iso/titan/airootfs/usr/local/bin/titan-bloquear-avisar
 !iso/titan/airootfs/usr/local/bin/titan-cambiar-usuario
+!iso/titan/airootfs/usr/local/bin/titan-desinstalar
 !iso/titan/airootfs/usr/local/bin/titan-inactividad
 !iso/titan/airootfs/usr/local/bin/titan-captura
 !iso/titan/airootfs/usr/local/bin/titan-grabar

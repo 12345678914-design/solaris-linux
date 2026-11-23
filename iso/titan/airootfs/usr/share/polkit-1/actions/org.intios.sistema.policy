@@ -81,4 +81,15 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-instantaneas</annotate>
   </action>
+  <action id="org.intios.desinstalar">
+    <description>Desinstalar un programa</description>
+    <message>Por tu seguridad, para desinstalar un programa del sistema hace falta la contraseña de administrador.</message>
+    <icon_name>edit-delete</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-desinstalar</annotate>
+  </action>
 </policyconfig>

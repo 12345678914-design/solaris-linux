@@ -70,6 +70,7 @@ file_permissions=(
   # Escritorio completo (bloqueo, inactividad, capturas, cortafuegos, etc.)
   ["/usr/local/bin/titan-bloquear"]="0:0:755"
   ["/usr/local/bin/titan-cambiar-usuario"]="0:0:755"
+  ["/usr/local/bin/titan-desinstalar"]="0:0:755"
   ["/usr/local/bin/titan-bloquear-avisar"]="0:0:755"
   ["/usr/local/bin/titan-inactividad"]="0:0:755"
   ["/usr/local/bin/titan-pantallas"]="0:0:755"

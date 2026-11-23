@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 class QFileSystemWatcher;
 
@@ -27,6 +28,16 @@ public:
     // enDock: rebota en el Dock (sin indicador junto al puntero)
     Q_INVOKABLE void launch(const QString &exec, bool enDock = false, const QString &icono = QString());
     Q_INVOKABLE void reload();
+
+    // Menú del clic derecho de cada app (desktop = su fichero .desktop)
+    //   {acciones: [{id, t}], desinstalable, motivo}
+    Q_INVOKABLE QVariantMap opcionesApp(const QString &desktop) const;
+    Q_INVOKABLE void lanzarAccion(const QString &desktop, const QString &accion, const QString &icono = QString());
+    Q_INVOKABLE QString enviarAlEscritorio(const QString &desktop) const;
+    // [{k, v}] para la ventana de Propiedades
+    Q_INVOKABLE QVariantList propiedadesApp(const QString &desktop) const;
+    // Con contraseña de administrador (pkexec titan-desinstalar) o flatpak
+    Q_INVOKABLE void desinstalar(const QString &desktop, const QString &nombre);
     QVariantList categorias() const { return m_categorias; }
     QString categoria() const { return m_categoria; }
     void setCategoria(const QString &c);
@@ -34,6 +45,7 @@ public:
 signals:
     void appsChanged();
     void recentAppsChanged();
+    void desinstalacionTerminada(const QString &nombre, bool ok, const QString &mensaje);
     
 private:
     void loadApps();

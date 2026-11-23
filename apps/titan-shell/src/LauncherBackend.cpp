@@ -188,6 +188,237 @@ void LauncherBackend::filtrar()
     emit appsChanged();
 }
 
+namespace {
+// Programas de Inti (en pruebas, TITAN_BIN apunta a otros)
+QString binTitan(const QString &nombre)
+{
+    return qEnvironmentVariable("TITAN_BIN", QStringLiteral("/usr/local/bin/")) + nombre;
+}
+
+const QStringList &carpetasApps()
+{
+    static const QStringList d = {
+        QDir::homePath() + QStringLiteral("/.local/share/applications"),
+        QStringLiteral("/usr/local/share/applications"),
+        QStringLiteral("/usr/share/applications"),
+        QStringLiteral("/var/lib/flatpak/exports/share/applications"),
+        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications")};
+    return d;
+}
+
+// .desktop de una app integrada (Finder, Firefox...) por su orden
+QString buscarDesktop(const QString &exec)
+{
+    const QString prog = exec.section(QLatin1Char(' '), 0, 0).section(QLatin1Char('/'), -1);
+    QStringList nombres{prog + QStringLiteral(".desktop")};
+    if (prog == QLatin1String("plasma-discover"))
+        nombres.prepend(QStringLiteral("org.kde.discover.desktop"));
+    for (const QString &d : carpetasApps())
+        for (const QString &n : nombres)
+            if (QFile::exists(d + QLatin1Char('/') + n))
+                return d + QLatin1Char('/') + n;
+    return QString();
+}
+
+bool desktopValido(const QString &ruta)
+{
+    if (!ruta.endsWith(QStringLiteral(".desktop")) || !QFile::exists(ruta))
+        return false;
+    const QString canon = QFileInfo(ruta).canonicalFilePath();
+    for (const QString &d : carpetasApps()) {
+        const QString c = QFileInfo(d).canonicalFilePath();
+        if (!c.isEmpty() && (canon.startsWith(c + QLatin1Char('/')) || QFileInfo(ruta).absolutePath() == d))
+            return true;
+    }
+    return false;
+}
+
+// Grupos de un .desktop: {"Desktop Entry": {...}, "Desktop Action new-window": {...}}
+QHash<QString, QHash<QString, QString>> gruposDesktop(const QString &ruta)
+{
+    QHash<QString, QHash<QString, QString>> g;
+    QFile f(ruta);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return g;
+    QString actual;
+    while (!f.atEnd()) {
+        const QString l = QString::fromUtf8(f.readLine()).trimmed();
+        if (l.isEmpty() || l.startsWith(QLatin1Char('#')))
+            continue;
+        if (l.startsWith(QLatin1Char('[')) && l.endsWith(QLatin1Char(']'))) {
+            actual = l.mid(1, l.size() - 2);
+            continue;
+        }
+        const int i = l.indexOf(QLatin1Char('='));
+        if (i > 0 && !actual.isEmpty() && !g[actual].contains(l.left(i).trimmed()))
+            g[actual].insert(l.left(i).trimmed(), l.mid(i + 1).trimmed());
+    }
+    return g;
+}
+
+QString traducido(const QHash<QString, QString> &h, const QString &clave)
+{
+    for (const QString &k : {clave + QStringLiteral("[es_ES]"), clave + QStringLiteral("[es]"), clave})
+        if (!h.value(k).isEmpty())
+            return h.value(k);
+    return QString();
+}
+
+QString paqueteDe(const QString &ruta)
+{
+    QProcess p;
+    p.start(QStringLiteral("pacman"), {QStringLiteral("-Qqo"), QFileInfo(ruta).canonicalFilePath()});
+    if (!p.waitForFinished(3000) || p.exitCode() != 0)
+        return QString();
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed().section(QLatin1Char('\n'), 0, 0);
+}
+
+bool esFlatpak(const QString &ruta) { return ruta.contains(QStringLiteral("/flatpak/exports/")); }
+}
+
+QVariantMap LauncherBackend::opcionesApp(const QString &desktop) const
+{
+    QVariantMap r;
+    QVariantList acciones;
+    r[QStringLiteral("desinstalable")] = false;
+    if (!desktopValido(desktop)) {
+        r[QStringLiteral("acciones")] = acciones;
+        r[QStringLiteral("motivo")] = QStringLiteral("Parte del sistema");
+        return r;
+    }
+    const auto g = gruposDesktop(desktop);
+    for (const QString &id : g.value(QStringLiteral("Desktop Entry")).value(QStringLiteral("Actions")).split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const auto a = g.value(QStringLiteral("Desktop Action ") + id);
+        const QString t = traducido(a, QStringLiteral("Name"));
+        if (!t.isEmpty() && !a.value(QStringLiteral("Exec")).isEmpty())
+            acciones.append(QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("t"), t}});
+    }
+    r[QStringLiteral("acciones")] = acciones;
+
+    if (QDir(QStringLiteral("/run/archiso")).exists()) {
+        r[QStringLiteral("motivo")] = QStringLiteral("No disponible en la sesión de prueba");
+    } else if (esFlatpak(desktop)) {
+        r[QStringLiteral("desinstalable")] = true;
+    } else {
+        const QString paquete = paqueteDe(desktop);
+        QProcess puede;
+        if (!paquete.isEmpty())
+            puede.start(binTitan(QStringLiteral("titan-desinstalar")), {QStringLiteral("--puede"), paquete});
+        const bool si = !paquete.isEmpty() && puede.waitForFinished(3000)
+                        && QString::fromUtf8(puede.readAllStandardOutput()).trimmed() == QLatin1String("si");
+        r[QStringLiteral("desinstalable")] = si;
+        if (!si)
+            r[QStringLiteral("motivo")] = QStringLiteral("Parte del sistema");
+    }
+    return r;
+}
+
+void LauncherBackend::lanzarAccion(const QString &desktop, const QString &accion, const QString &icono)
+{
+    if (!desktopValido(desktop))
+        return;
+    QString exec = gruposDesktop(desktop).value(QStringLiteral("Desktop Action ") + accion).value(QStringLiteral("Exec"));
+    exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
+    exec = exec.trimmed();
+    if (!exec.isEmpty())
+        launch(exec, false, icono);
+}
+
+QString LauncherBackend::enviarAlEscritorio(const QString &desktop) const
+{
+    if (!desktopValido(desktop))
+        return QStringLiteral("No se pudo crear el acceso directo");
+    QString escritorio = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    if (escritorio.isEmpty())
+        escritorio = QDir::homePath() + QStringLiteral("/Escritorio");
+    QDir().mkpath(escritorio);
+    const QString destino = escritorio + QLatin1Char('/') + QFileInfo(desktop).fileName();
+    if (QFile::exists(destino))
+        return QStringLiteral("Ya está en el escritorio");
+    if (!QFile::copy(desktop, destino))
+        return QStringLiteral("No se pudo crear el acceso directo");
+    QFile::setPermissions(destino, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ReadGroup | QFile::ReadOther);
+    return QStringLiteral("Acceso directo creado en el escritorio");
+}
+
+QVariantList LauncherBackend::propiedadesApp(const QString &desktop) const
+{
+    QVariantList l;
+    auto poner = [&l](const QString &k, const QString &v) {
+        if (!v.trimmed().isEmpty())
+            l.append(QVariantMap{{QStringLiteral("k"), k}, {QStringLiteral("v"), v.trimmed()}});
+    };
+    if (!desktopValido(desktop))
+        return l;
+    const auto e = gruposDesktop(desktop).value(QStringLiteral("Desktop Entry"));
+    poner(QStringLiteral("Nombre"), traducido(e, QStringLiteral("Name")));
+    poner(QStringLiteral("Descripción"), traducido(e, QStringLiteral("Comment")));
+    poner(QStringLiteral("Tipo"), traducido(e, QStringLiteral("GenericName")));
+    if (esFlatpak(desktop)) {
+        poner(QStringLiteral("Origen"), QStringLiteral("Flatpak (%1)").arg(QFileInfo(desktop).completeBaseName()));
+    } else {
+        const QString paquete = paqueteDe(desktop);
+        if (!paquete.isEmpty()) {
+            QProcess qi;
+            qi.setProcessEnvironment([] { auto e = QProcessEnvironment::systemEnvironment(); e.insert(QStringLiteral("LC_ALL"), QStringLiteral("C")); return e; }());
+            qi.start(QStringLiteral("pacman"), {QStringLiteral("-Qi"), paquete});
+            QString version, tam, fecha;
+            if (qi.waitForFinished(3000)) {
+                for (const QString &lin : QString::fromUtf8(qi.readAllStandardOutput()).split(QLatin1Char('\n'))) {
+                    const QString k = lin.section(QLatin1Char(':'), 0, 0).trimmed();
+                    const QString v = lin.section(QLatin1Char(':'), 1).trimmed();
+                    if (k == QLatin1String("Version")) version = v;
+                    else if (k == QLatin1String("Installed Size")) tam = v;
+                    else if (k == QLatin1String("Install Date")) fecha = v;
+                }
+            }
+            poner(QStringLiteral("Paquete"), paquete);
+            poner(QStringLiteral("Versión"), version);
+            poner(QStringLiteral("Tamaño"), tam);
+            poner(QStringLiteral("Instalado"), fecha);
+        }
+    }
+    poner(QStringLiteral("Orden"), e.value(QStringLiteral("Exec")).remove(QRegularExpression(QStringLiteral("%[a-zA-Z]"))));
+    poner(QStringLiteral("Archivo"), desktop);
+    return l;
+}
+
+void LauncherBackend::desinstalar(const QString &desktop, const QString &nombre)
+{
+    if (!desktopValido(desktop) || QDir(QStringLiteral("/run/archiso")).exists()) {
+        emit desinstalacionTerminada(nombre, false, QStringLiteral("No se puede desinstalar"));
+        return;
+    }
+    auto *p = new QProcess(this);
+    if (esFlatpak(desktop)) {
+        const bool usuario = desktop.startsWith(QDir::homePath());
+        p->setProgram(QStringLiteral("flatpak"));
+        p->setArguments({QStringLiteral("uninstall"), usuario ? QStringLiteral("--user") : QStringLiteral("--system"),
+                         QStringLiteral("--noninteractive"), QFileInfo(desktop).completeBaseName()});
+    } else {
+        const QString paquete = paqueteDe(desktop);
+        if (paquete.isEmpty()) {
+            p->deleteLater();
+            emit desinstalacionTerminada(nombre, false, QStringLiteral("No se encontró el paquete"));
+            return;
+        }
+        p->setProgram(QStringLiteral("pkexec"));
+        p->setArguments({binTitan(QStringLiteral("titan-desinstalar")), paquete});
+    }
+    connect(p, &QProcess::finished, this, [this, p, nombre](int codigo, QProcess::ExitStatus) {
+        const QString error = QString::fromUtf8(p->readAllStandardError()).trimmed().section(QLatin1Char('\n'), -1);
+        p->deleteLater();
+        if (codigo == 0) {
+            loadApps();
+            emit desinstalacionTerminada(nombre, true, nombre + QStringLiteral(" se ha desinstalado"));
+        } else {
+            emit desinstalacionTerminada(nombre, false, codigo == 126 ? QStringLiteral("Cancelado")
+                                                          : (error.isEmpty() ? QStringLiteral("No se pudo desinstalar") : error));
+        }
+    });
+    p->start();
+}
+
 void LauncherBackend::reload()
 {
     loadApps();
@@ -211,6 +442,7 @@ void LauncherBackend::loadApps()
         app[QStringLiteral("icon")] = icon;
         app[QStringLiteral("categoria")] = categoriaDe(QString(), exec, QString());
         app[QStringLiteral("herramienta")] = false;
+        app[QStringLiteral("desktop")] = buscarDesktop(exec);
         m_apps.append(app);
     };
 
@@ -342,6 +574,7 @@ void LauncherBackend::loadApps()
             QVariantMap app;
             app[QStringLiteral("name")] = nombre;
             app[QStringLiteral("exec")] = exec;
+            app[QStringLiteral("desktop")] = info.absoluteFilePath();
             QString iconoFinal = resolverIcono(icono, exec);
             if (!titan::iconoExiste(iconoFinal))
                 iconoFinal = titan::iconoGenerado(nombre, exec + QLatin1Char(' ') + icono + QLatin1Char(' ') +
