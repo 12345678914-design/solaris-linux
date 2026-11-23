@@ -1,0 +1,13 @@
+# Inti OS - pantalla de inicio extra para "Cambiar de usuario" (desde la
+# pantalla de bloqueo). La arranca titan-otro-usuario@N.service en la consola
+# N (8-12, --vt), mientras la sesion de quien la pidio sigue abierta y
+# bloqueada en la suya. Es la misma pantalla de inicio que la de tty1: para
+# entrar hace falta la contrasena de la otra persona.
+
+[terminal]
+vt = 8
+switch = true
+
+[default_session]
+command = "env TITAN_GREETER_CAMBIO=1 /usr/lib/titan/titan-greeter-sesion"
+user = "greeter"

@@ -1,0 +1,19 @@
+# Inti OS - "Cambiar de usuario": otra pantalla de inicio (greetd + titan-greeter)
+# en la consola %i, sin cerrar ni desbloquear la sesion que ya esta abierta.
+# La arranca titan-cambiar-usuario (boton de la pantalla de bloqueo); polkit
+# solo deja arrancar las consolas 8 a 12 (50-titan-cambiar-usuario.rules).
+# Cuando la pantalla de inicio vuelve a una sesion abierta, se para sola.
+[Unit]
+Description=Inti OS - pantalla de inicio para cambiar de usuario (tty%i)
+After=systemd-user-sessions.service greetd.service getty@tty%i.service
+Conflicts=getty@tty%i.service
+ConditionPathExists=/dev/tty%i
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/greetd --config /etc/greetd/cambio.toml --vt %i --socket-path /run/greetd-cambio-%i.sock
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+TimeoutStopSec=30s
+KeyringMode=shared
+Restart=no

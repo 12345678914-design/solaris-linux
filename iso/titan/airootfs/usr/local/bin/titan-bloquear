@@ -49,6 +49,16 @@ acento="$(sed -n 's/^accent=//p' "$HOME/.config/titan/theme.conf" 2>/dev/null | 
 printf '%s' "$acento" | grep -Eq '^#[0-9a-fA-F]{6}$' || acento=""
 
 umask 077
+
+# Boton "Cambiar de usuario" (powerbar): solo con la pantalla de inicio de
+# Inti (greetd) y si hay mas de una cuenta de persona en el equipo.
+config="$dir_runtime/titan-bloqueo.ini"
+cp "$base/config.ini" "$config"
+personas=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/' | wc -l)
+if [ "$personas" -gt 1 ] && systemctl is-active -q greetd.service 2>/dev/null; then
+    sed -i 's|^\[powerbar\]$|&\nuserswitch-command=/usr/local/bin/titan-cambiar-usuario|' "$config"
+fi
+
 {
     cat "$base/estilo.css"
     printf '\nwindow {\n'
@@ -62,7 +72,7 @@ umask 077
 } > "$estilo"
 
 gtklock --daemonize \
-    --config "$base/config.ini" \
+    --config "$config" \
     --style "$estilo" \
     --layout "$base/diseno.ui" \
     --modules userinfo-module \

@@ -19,6 +19,9 @@ Window {
     property string textoError: ""
     property bool panelAbierto: false
 
+    // La cuenta elegida ya tiene la sesion abierta (bloqueada): se vuelve a
+    // ella en vez de entrar dos veces.
+    readonly property bool conSesion: elegido !== "" && sistema.sesiones[elegido] !== undefined
     readonly property var cuenta: {
         var l = usuarios.usuarios
         for (var i = 0; i < l.length; ++i)
@@ -35,8 +38,16 @@ Window {
 
     function entrar() {
         if (!cuenta || greetd.ocupado) return
+        if (conSesion) { volver(); return }
         hayError = false
         greetd.entrar(elegido, clave.text)
+    }
+
+    function volver() {
+        if (!sistema.irASesion(elegido)) {
+            textoError = "No se pudo volver a esa sesión"
+            hayError = true
+        }
     }
 
     function colorDe(nombre) {
@@ -52,7 +63,20 @@ Window {
         var elegible = l.length > 0 ? l[0].usuario : ""
         for (var i = 0; i < l.length; ++i)
             if (l[i].usuario === ultimo) elegible = ultimo
+        // Al cambiar de usuario, se propone una cuenta que no este ya dentro
+        if (sistema.modoCambio && sistema.sesiones[elegible] !== undefined) {
+            for (var j = 0; j < l.length; ++j)
+                if (sistema.sesiones[l[j].usuario] === undefined) { elegible = l[j].usuario; break }
+        }
         elegir(elegible)
+    }
+
+    // Las sesiones se abren y cierran mientras esta pantalla espera
+    Timer {
+        interval: 3000
+        repeat: true
+        running: true
+        onTriggered: sistema.actualizarSesiones()
     }
 
     Connections {
@@ -168,7 +192,7 @@ Window {
                 width: 240
                 height: 36
                 radius: 18
-                visible: ventana.cuenta !== null
+                visible: ventana.cuenta !== null && !ventana.conSesion
                 color: Qt.rgba(0, 0, 0, 0.24)
                 border.color: ventana.hayError ? "#ff453a" : (clave.activeFocus ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.24))
                 border.width: clave.activeFocus || ventana.hayError ? 1.5 : 1
@@ -206,6 +230,42 @@ Window {
                         onClicked: ventana.entrar()
                     }
                 }
+            }
+
+            // Cuenta con la sesion abierta: volver a ella (pide su contrasena
+            // en su pantalla de bloqueo, que sigue puesta)
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: ventana.conSesion
+                width: volverTexto.implicitWidth + 36
+                height: 36
+                radius: 18
+                color: volverRaton.pressed ? "#0062cc" : (volverRaton.containsMouse ? "#2b95ff" : "#0a84ff")
+                Text {
+                    id: volverTexto
+                    anchors.centerIn: parent
+                    text: "Volver a su sesión"
+                    color: "#ffffff"
+                    font.pixelSize: 13
+                    font.bold: true
+                }
+                MouseArea {
+                    id: volverRaton
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: ventana.volver()
+                }
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: ventana.conSesion
+                text: "La sesión ya está abierta"
+                color: "#ffffff"
+                font.pixelSize: 12
+                font.bold: true
+                style: Text.Raised
+                styleColor: Qt.rgba(0, 0, 0, 0.45)
             }
 
             Text {
@@ -256,6 +316,16 @@ Window {
                         anchors.centerIn: parent
                         text: modelData.nombre.charAt(0).toUpperCase()
                         color: "#ffffff"; font.pixelSize: 22; font.bold: true
+                    }
+                    // Sesion abierta
+                    Rectangle {
+                        visible: sistema.sesiones[modelData.usuario] !== undefined
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        width: 14; height: 14; radius: 7
+                        color: "#30d158"
+                        border.color: "#ffffff"
+                        border.width: 2
                     }
                     MouseArea {
                         id: otraRaton
