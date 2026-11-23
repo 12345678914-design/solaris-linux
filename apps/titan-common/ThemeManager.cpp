@@ -57,7 +57,7 @@ void ThemeManager::load()
     }
 
     if (m_wallpaper.isEmpty() || !QFile::exists(m_wallpaper)) {
-        const QString defaultWp = QStringLiteral("/usr/share/titan/wallpapers/01-macos-golden.jpg");
+        const QString defaultWp = QStringLiteral("/usr/share/titan/wallpapers/01-machu-picchu.jpg");
         if (QFile::exists(defaultWp)) {
             m_wallpaper = defaultWp;
         } else if (QFile::exists(QStringLiteral("/usr/share/titan/wallpaper.jpg"))) {
@@ -256,7 +256,14 @@ void ThemeManager::scanWallpapers()
             QVariantMap item;
             QString base = fi.baseName();
             QString title = base;
-            // Limpiar prefijo numérico como "01-macos-golden" -> "macOS Golden"
+            // Nombres de los fondos de serie (con tildes y ñ); los demás se
+            // sacan del fichero: "05-mi-foto" -> "Mi Foto"
+            static const QHash<QString, QString> nombres = {
+                {QStringLiteral("01-machu-picchu"), QStringLiteral("Machu Picchu")},
+                {QStringLiteral("02-montana-de-colores"), QStringLiteral("Montaña de Colores")},
+                {QStringLiteral("03-chimborazo"), QStringLiteral("Chimborazo")},
+                {QStringLiteral("04-machu-picchu-nubes"), QStringLiteral("Machu Picchu entre nubes")},
+            };
             if (title.length() > 3 && title.at(2) == QLatin1Char('-')) {
                 title = title.mid(3);
             }
@@ -269,7 +276,7 @@ void ThemeManager::scanWallpapers()
             }
             title = words.join(QLatin1Char(' '));
 
-            item[QStringLiteral("name")] = title;
+            item[QStringLiteral("name")] = nombres.value(base, title);
             item[QStringLiteral("path")] = fi.absoluteFilePath();
             
             QString thumb = fi.absolutePath() + QStringLiteral("/thumbnails/") + fi.fileName();

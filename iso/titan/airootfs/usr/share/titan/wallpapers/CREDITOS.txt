@@ -1,0 +1,10 @@
+Fondos de pantalla de Inti OS
+
+01-machu-picchu.jpg        Machu Picchu (Perú). Foto de Fabien Moline, Unsplash.
+02-montana-de-colores.jpg  Montaña de Colores, Vinicunca (Perú). Foto de McKayla Crump, Unsplash.
+03-chimborazo.jpg          Chimborazo (Ecuador). Origen por confirmar.
+04-machu-picchu-nubes.jpg  Machu Picchu entre nubes (Perú). Origen por confirmar.
+
+Las fotos de Unsplash se usan con la licencia de Unsplash
+(https://unsplash.com/license). Se han reducido y se les han quitado los
+metadatos.
