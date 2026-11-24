@@ -184,6 +184,18 @@ verificar_tmux || exit 1
 # puede hacer unshare (y avisa con "not a mountpoint"). Con esos montajes puestos,
 # 'rm -rf' del arbol falla con "Permission denied" aunque el directorio este
 # vacio, y el build entero se queda sin herramienta.
+# Cache de paquetes FUERA del work dir, para que sobreviva a la limpieza: antes
+# vivia en ${WORK_DIR}/x86_64/cache y cada build volvia a bajar varios GB (con
+# una conexion lenta, horas), y si la descarga fallaba a mitad se perdia todo.
+# Ahora un build que falla deja lo ya descargado y el siguiente sigue desde ahi.
+CACHE_DIR="${TITAN_CACHE:-${PROJECT}/build/cache-paquetes}"
+mkdir -p "${CACHE_DIR}"
+if [[ -d "${WORK_DIR}/x86_64/cache" ]]; then
+  # Lo que dejo un build anterior con la cache vieja se aprovecha.
+  find "${WORK_DIR}/x86_64/cache" -maxdepth 1 -type f -name '*.pkg.tar.*' \
+    -exec mv -n -t "${CACHE_DIR}" {} + 2>/dev/null || true
+fi
+
 info "limpiando ${WORK_DIR}"
 montajes_dentro() {
   findmnt -rn -o TARGET 2>/dev/null | grep "^${WORK_DIR}/" || true
@@ -727,9 +739,9 @@ info "espejos para el build -> ${generated_mirrorlist} (CDNs oficiales al frente
 # Que es un error de lo mas tonto del mundo (no queda espacio) expresado de la
 # forma mas dificil de entender, y solo cuando ya se ha descargado un gigabyte.
 # Aqui se le dice donde puede dejar los paquetes, en el disco de verdad, que
-# tiene 20 GB libres. Y luego se borran, porque 1,5 GB de .pkg.tar.zst en un
-# directorio de trabajo no se pueden quedar dando vueltas.
-cache_dir="${WORK_DIR}/x86_64/cache"
+# tiene 20 GB libres. Va en ${CACHE_DIR} (fuera del work dir, ver arriba) y al
+# terminar bien se queda solo la ultima version de cada paquete.
+cache_dir="${CACHE_DIR}"
 mkdir -p "${cache_dir}"
 sed -i "s|^#\?CacheDir.*|CacheDir = ${cache_dir}|" "${generated_conf}"
 if ! grep -q "^CacheDir = ${cache_dir}$" "${generated_conf}"; then
@@ -895,6 +907,11 @@ iso="$(find "${OUT_DIR}" -maxdepth 1 -name '*.iso' -printf '%T@ %p\n' | sort -rn
 [[ -n "$iso" ]] || { red "No se encontro ninguna ISO en ${OUT_DIR}"; exit 1; }
 
 grn "ISO construida: ${iso}"
+# Cache: solo la ultima version de cada paquete (las viejas no se vuelven a usar).
+if command -v paccache >/dev/null 2>&1; then
+  paccache -q -r -k1 -c "${CACHE_DIR}" >/dev/null 2>&1 || true
+fi
+info "cache de paquetes: ${CACHE_DIR} ($(du -sh "${CACHE_DIR}" 2>/dev/null | cut -f1))"
 ls -lh -- "${iso}" | awk '{print "   tamano: " $5}'
 ( cd "$(dirname "$iso")" && sha256sum "$(basename "$iso")" >"$(basename "$iso").sha256" )
 info "sha256: $(cut -d' ' -f1 <"${iso}.sha256")"
