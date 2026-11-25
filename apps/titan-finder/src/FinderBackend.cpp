@@ -731,6 +731,17 @@ void FinderBackend::openItem(const QString &path)
         }
     }
 
+    // Instaladores de Ubuntu/Debian (.deb) y Fedora (.rpm): titan-paquete
+    // ofrece la App Store o instalarlo solo en la cuenta.
+    if (info.suffix().compare(QStringLiteral("deb"), Qt::CaseInsensitive) == 0
+        || info.suffix().compare(QStringLiteral("rpm"), Qt::CaseInsensitive) == 0) {
+        const QString paquete = resolveFinderBinary(QStringLiteral("titan-paquete"));
+        if (QFile::exists(paquete)) {
+            QProcess::startDetached(paquete, {info.absoluteFilePath()});
+            return;
+        }
+    }
+
     // Programas de Windows (.exe/.msi): titan-exe los abre con Wine y, si no
     // está, ofrece instalarlo (con la ventana de contraseña de Inti).
     if (info.suffix().compare(QStringLiteral("exe"), Qt::CaseInsensitive) == 0

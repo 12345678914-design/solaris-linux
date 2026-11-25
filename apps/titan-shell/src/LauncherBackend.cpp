@@ -282,6 +282,13 @@ bool esAppImage(const QString &ruta)
     return QFileInfo(ruta).fileName().startsWith(QStringLiteral("inti-appimage-"))
            && ruta.startsWith(QDir::homePath() + QStringLiteral("/.local/share/applications/"));
 }
+
+// .deb/.rpm instalado en la cuenta con doble clic (titan-paquete).
+bool esPaqueteCuenta(const QString &ruta)
+{
+    return QFileInfo(ruta).fileName().startsWith(QStringLiteral("inti-paquete-"))
+           && ruta.startsWith(QDir::homePath() + QStringLiteral("/.local/share/applications/"));
+}
 }
 
 QVariantMap LauncherBackend::opcionesApp(const QString &desktop) const
@@ -303,7 +310,7 @@ QVariantMap LauncherBackend::opcionesApp(const QString &desktop) const
     }
     r[QStringLiteral("acciones")] = acciones;
 
-    if (esAppImage(desktop)) {
+    if (esAppImage(desktop) || esPaqueteCuenta(desktop)) {
         r[QStringLiteral("desinstalable")] = true;
     } else if (QDir(QStringLiteral("/run/archiso")).exists()) {
         r[QStringLiteral("motivo")] = QStringLiteral("No disponible en la sesión de prueba");
@@ -371,6 +378,11 @@ QVariantList LauncherBackend::propiedadesApp(const QString &desktop) const
             poner(QStringLiteral("Tamaño"), QLocale().formattedDataSize(prog.size()));
             poner(QStringLiteral("Instalado"), QLocale().toString(prog.lastModified(), QLocale::ShortFormat));
         }
+    } else if (esPaqueteCuenta(desktop)) {
+        const QFileInfo dir(e.value(QStringLiteral("X-Inti-Paquete")));
+        poner(QStringLiteral("Origen"), QStringLiteral("Paquete .deb/.rpm (instalado en tu cuenta)"));
+        if (dir.exists())
+            poner(QStringLiteral("Instalado"), QLocale().toString(dir.lastModified(), QLocale::ShortFormat));
     } else if (esFlatpak(desktop)) {
         poner(QStringLiteral("Origen"), QStringLiteral("Flatpak (%1)").arg(QFileInfo(desktop).completeBaseName()));
     } else {
@@ -402,7 +414,7 @@ QVariantList LauncherBackend::propiedadesApp(const QString &desktop) const
 
 void LauncherBackend::desinstalar(const QString &desktop, const QString &nombre)
 {
-    if (!desktopValido(desktop) || (QDir(QStringLiteral("/run/archiso")).exists() && !esAppImage(desktop))) {
+    if (!desktopValido(desktop) || (QDir(QStringLiteral("/run/archiso")).exists() && !esAppImage(desktop) && !esPaqueteCuenta(desktop))) {
         emit desinstalacionTerminada(nombre, false, QStringLiteral("No se puede desinstalar"));
         return;
     }
@@ -410,6 +422,10 @@ void LauncherBackend::desinstalar(const QString &desktop, const QString &nombre)
     if (esAppImage(desktop)) {
         // Solo borra el AppImage, su icono y su lanzador: sin contraseña.
         p->setProgram(binTitan(QStringLiteral("titan-appimage")));
+        p->setArguments({QStringLiteral("quitar"), desktop});
+    } else if (esPaqueteCuenta(desktop)) {
+        // Solo borra su carpeta en la cuenta y sus lanzadores: sin contraseña.
+        p->setProgram(binTitan(QStringLiteral("titan-paquete")));
         p->setArguments({QStringLiteral("quitar"), desktop});
     } else if (esFlatpak(desktop)) {
         const bool usuario = desktop.startsWith(QDir::homePath());

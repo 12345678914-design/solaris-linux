@@ -699,6 +699,13 @@ void DesktopBackend::openItem(const QString &path, bool enDock)
         return;
     }
 
+    // Instaladores .deb (Ubuntu) y .rpm (Fedora): titan-paquete
+    if ((ext.compare(QStringLiteral("deb"), Qt::CaseInsensitive) == 0 || ext.compare(QStringLiteral("rpm"), Qt::CaseInsensitive) == 0)
+        && QFile::exists(resolveDesktopBinary(QStringLiteral("titan-paquete")))) {
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-paquete")), {realFi.absoluteFilePath()});
+        return;
+    }
+
     // Programas de Windows (.exe/.msi): con Wine (titan-exe lo ofrece si falta)
     if ((ext.compare(QStringLiteral("exe"), Qt::CaseInsensitive) == 0 || ext.compare(QStringLiteral("msi"), Qt::CaseInsensitive) == 0)
         && QFile::exists(resolveDesktopBinary(QStringLiteral("titan-exe")))) {

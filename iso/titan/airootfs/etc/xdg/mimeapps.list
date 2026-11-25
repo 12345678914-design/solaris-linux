@@ -4,6 +4,11 @@
 [Default Applications]
 application/vnd.appimage=inti-appimage.desktop
 application/x-iso9660-appimage=inti-appimage.desktop
+application/vnd.debian.binary-package=inti-paquete.desktop
+application/x-deb=inti-paquete.desktop
+application/x-debian-package=inti-paquete.desktop
+application/x-rpm=inti-paquete.desktop
+application/x-redhat-package-manager=inti-paquete.desktop
 application/x-ms-dos-executable=inti-exe.desktop
 application/x-msdownload=inti-exe.desktop
 application/x-msdos-program=inti-exe.desktop
