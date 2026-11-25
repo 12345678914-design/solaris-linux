@@ -192,6 +192,13 @@
       <action name="Execute" command="titan-shell --toggle-theme"/>
     </keybind>
     
+    <!-- Como Windows: Ctrl+Alt+Supr, Win+I (Ajustes), Win+V (portapapeles),
+         Win+. (emojis), Win+F1 (atajos). Alt+F4 ya viene con <default/>. -->
+    <keybind key="C-A-Delete"><action name="Execute" command="titan-shell --tecla seguridad"/></keybind>
+    <keybind key="W-i"><action name="Execute" command="titan-shell --tecla ajustes"/></keybind>
+    <keybind key="W-v"><action name="Execute" command="titan-shell --tecla portapapeles"/></keybind>
+    <keybind key="W-period"><action name="Execute" command="titan-shell --tecla emojis"/></keybind>
+    <keybind key="W-F1"><action name="Execute" command="titan-shell --tecla atajos"/></keybind>
     <!-- Ctrl+Mayús+Esc: Monitor de recursos (como el Administrador de tareas de Windows) -->
     <keybind key="C-S-Escape">
       <action name="Execute" command="titan-monitor"/>

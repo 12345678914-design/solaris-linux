@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Programa de Windows
+Name[en]=Windows program
+Comment=Abre programas de Windows (.exe, .msi) con Wine
+Exec=/usr/local/bin/titan-exe %f
+Icon=application-x-ms-dos-executable
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msdos-program;application/vnd.microsoft.portable-executable;application/x-msi;application/x-ms-installer;application/x-ms-shortcut;
+NoDisplay=true
+Terminal=false

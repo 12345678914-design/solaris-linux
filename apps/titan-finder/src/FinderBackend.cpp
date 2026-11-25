@@ -731,6 +731,17 @@ void FinderBackend::openItem(const QString &path)
         }
     }
 
+    // Programas de Windows (.exe/.msi): titan-exe los abre con Wine y, si no
+    // está, ofrece instalarlo (con la ventana de contraseña de Inti).
+    if (info.suffix().compare(QStringLiteral("exe"), Qt::CaseInsensitive) == 0
+        || info.suffix().compare(QStringLiteral("msi"), Qt::CaseInsensitive) == 0) {
+        const QString exe = resolveFinderBinary(QStringLiteral("titan-exe"));
+        if (QFile::exists(exe)) {
+            QProcess::startDetached(exe, {info.absoluteFilePath()});
+            return;
+        }
+    }
+
     // AppImage: preguntar e instalar como en Windows (titan-appimage). Por
     // tipo no se puede: xdg-mime lo ve como un ejecutable cualquiera.
     if (info.suffix().compare(QStringLiteral("appimage"), Qt::CaseInsensitive) == 0) {

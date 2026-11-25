@@ -431,6 +431,7 @@ build_qt_app titan-musica || exit 1
 build_qt_app titan-settings || exit 1
 build_qt_app titan-calc || exit 1
 build_qt_app titan-monitor || exit 1
+build_qt_app titan-bienvenida || exit 1
 build_qt_app titan-calendar || exit 1
 build_qt_app titan-clock || exit 1
 build_qt_app titan-video || exit 1

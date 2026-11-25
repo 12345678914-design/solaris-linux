@@ -699,6 +699,13 @@ void DesktopBackend::openItem(const QString &path, bool enDock)
         return;
     }
 
+    // Programas de Windows (.exe/.msi): con Wine (titan-exe lo ofrece si falta)
+    if ((ext.compare(QStringLiteral("exe"), Qt::CaseInsensitive) == 0 || ext.compare(QStringLiteral("msi"), Qt::CaseInsensitive) == 0)
+        && QFile::exists(resolveDesktopBinary(QStringLiteral("titan-exe")))) {
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-exe")), {realFi.absoluteFilePath()});
+        return;
+    }
+
     // AppImage: preguntar e instalar como en Windows (titan-appimage)
     if (ext.compare(QStringLiteral("appimage"), Qt::CaseInsensitive) == 0
         && QFile::exists(resolveDesktopBinary(QStringLiteral("titan-appimage")))) {
@@ -718,6 +725,20 @@ void DesktopBackend::openItem(const QString &path, bool enDock)
 void DesktopBackend::openInFinder()
 {
     QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-finder")), {m_desktopPath});
+}
+
+QString DesktopBackend::nuevaCarpeta(qreal x, qreal y)
+{
+    QDir dir(m_desktopPath);
+    QString nombre = QStringLiteral("Nueva carpeta");
+    for (int n = 2; dir.exists(nombre) && n < 1000; ++n)
+        nombre = QStringLiteral("Nueva carpeta (%1)").arg(n);
+    if (!dir.mkdir(nombre))
+        return QString();
+    const QString ruta = dir.filePath(nombre);
+    moveItem(ruta, x, y);
+    refresh();
+    return ruta;
 }
 
 void DesktopBackend::refresh()

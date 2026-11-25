@@ -23,6 +23,9 @@ public slots:
     // enDock: la app rebota en el Dock (sin indicador junto al puntero)
     Q_INVOKABLE void openItem(const QString &path, bool enDock = false);
     Q_INVOKABLE void openInFinder();
+    // "Nueva carpeta" en el escritorio (clic derecho, como Windows): la deja
+    // en la casilla del clic y devuelve su ruta ("" si no se pudo).
+    Q_INVOKABLE QString nuevaCarpeta(qreal x, qreal y);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void removeItem(const QString &path);
     Q_INVOKABLE void moveItem(const QString &path, qreal x, qreal y);

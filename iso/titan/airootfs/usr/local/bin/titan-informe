@@ -9,7 +9,10 @@
 #
 #   titan-informe            escribe ~/informe-inti-FECHA.txt
 #   titan-informe FICHERO    lo escribe en FICHERO (p. ej. en un USB)
+#   titan-informe --abrir    (menú de inicio) lo escribe y lo abre para verlo
 set -u
+abrir=false
+[ "${1:-}" = --abrir ] && { abrir=true; shift; }
 export LC_ALL=C
 salida="${1:-$HOME/informe-inti-$(date +%Y%m%d-%H%M).txt}"
 
@@ -128,3 +131,8 @@ seccion "Firefox"
 
 echo "Informe guardado en: $salida"
 echo "Revísalo antes de compartirlo; no contiene contraseñas ni nombres de redes."
+if $abrir; then
+    command -v notify-send >/dev/null 2>&1 && notify-send -a "Inti" -i utilities-system-monitor \
+        "Informe del equipo listo" "Guardado en tu Carpeta personal: $(basename "$salida")"
+    xdg-open "$salida" >/dev/null 2>&1 &
+fi

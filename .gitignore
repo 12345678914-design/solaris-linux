@@ -50,6 +50,8 @@ iso/titan/airootfs/usr/local/bin/*
 !iso/titan/airootfs/usr/local/bin/titan-desinstalar
 !iso/titan/airootfs/usr/local/bin/titan-estilo-ventanas
 !iso/titan/airootfs/usr/local/bin/titan-appimage
+!iso/titan/airootfs/usr/local/bin/titan-exe
+!iso/titan/airootfs/usr/local/bin/titan-manual
 !iso/titan/airootfs/usr/local/bin/titan-inactividad
 !iso/titan/airootfs/usr/local/bin/titan-captura
 !iso/titan/airootfs/usr/local/bin/titan-grabar
@@ -96,6 +98,7 @@ apps/*/Makefile
 apps/*/titan-acerca
 apps/*/titan-calc
 apps/*/titan-monitor
+apps/*/titan-bienvenida
 apps/*/titan-calendar
 apps/*/titan-cli
 apps/*/titan-clock

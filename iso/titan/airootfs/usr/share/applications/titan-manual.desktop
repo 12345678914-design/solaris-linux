@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Manual de Inti
+Name[en]=Inti manual
+Comment=Cómo hacer cada cosa en Inti OS, paso a paso, y todos los atajos de teclado
+Exec=titan-manual
+Icon=/usr/share/titan/icons/about.png
+Terminal=false
+Categories=System;Documentation;
+Keywords=ayuda;help;manual;atajos;guía;instrucciones;como;

@@ -4,6 +4,12 @@
 [Default Applications]
 application/vnd.appimage=inti-appimage.desktop
 application/x-iso9660-appimage=inti-appimage.desktop
+application/x-ms-dos-executable=inti-exe.desktop
+application/x-msdownload=inti-exe.desktop
+application/x-msdos-program=inti-exe.desktop
+application/vnd.microsoft.portable-executable=inti-exe.desktop
+application/x-msi=inti-exe.desktop
+application/x-ms-installer=inti-exe.desktop
 x-scheme-handler/mailto=org.mozilla.Thunderbird.desktop
 message/rfc822=org.mozilla.Thunderbird.desktop
 text/calendar=org.mozilla.Thunderbird.desktop

@@ -24,6 +24,8 @@
 #include <QSaveFile>
 #include <QHash>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
 
 NotificationsAdaptor::NotificationsAdaptor(ShellBackend *parent)
     : QDBusAbstractAdaptor(parent)
@@ -1479,6 +1481,15 @@ void ShellBackend::tecla(const QString &accion)
         QProcess::startDetached(QStringLiteral("playerctl"), {orden.value(accion)});
     } else if (accion == QStringLiteral("alt-tab") || accion == QStringLiteral("alt-tab-atras")) {
         emit altTab(accion == QStringLiteral("alt-tab") ? 1 : -1);
+    } else if (accion == QStringLiteral("seguridad") || accion == QStringLiteral("portapapeles")
+               || accion == QStringLiteral("emojis") || accion == QStringLiteral("atajos")) {
+        // Ctrl+Alt+Supr siempre abre (no alterna): es la tecla de "socorro"
+        if (accion == QStringLiteral("seguridad"))
+            setPanel(accion);
+        else
+            abrirPanel(accion);
+    } else if (accion == QStringLiteral("monitor")) {
+        abrirApp(QStringLiteral("titan-monitor"));
     } else if (accion == QStringLiteral("calculadora")) {
         QProcess::startDetached(QStringLiteral("titan-calc"), {});
     } else if (accion == QStringLiteral("navegador")) {
@@ -1496,6 +1507,45 @@ void ShellBackend::tecla(const QString &accion)
     } else if (accion == QStringLiteral("pantallas")) {
         QProcess::startDetached(QStringLiteral("titan-elegir-pantalla"), {});
     }
+}
+
+void ShellBackend::setPanel(const QString &p)
+{
+    static const QSet<QString> validos{QString(), QStringLiteral("seguridad"), QStringLiteral("portapapeles"),
+                                       QStringLiteral("emojis"), QStringLiteral("atajos")};
+    if (!validos.contains(p) || p == m_panel)
+        return;
+    m_panel = p;
+    emit panelChanged();
+}
+
+QVariantList ShellBackend::emojis()
+{
+    if (m_emojis.isEmpty()) {
+        QFile f(QStringLiteral(":/datos/emojis.json"));
+        if (f.open(QIODevice::ReadOnly))
+            m_emojis = QJsonDocument::fromJson(f.readAll()).array().toVariantList();
+    }
+    return m_emojis;
+}
+
+void ShellBackend::abrirApp(const QString &programa)
+{
+    // Solo los de Inti que se abren desde los paneles del sistema
+    static const QSet<QString> permitidos{QStringLiteral("titan-monitor"), QStringLiteral("titan-settings"),
+                                          QStringLiteral("titan-bienvenida"), QStringLiteral("titan-manual")};
+    if (permitidos.contains(programa))
+        QProcess::startDetached(programa, {});
+}
+
+void ShellBackend::cambiarUsuarioSinCerrar()
+{
+    if (!canSwitchUser())
+        return;
+    lockScreen();
+    QTimer::singleShot(900, this, [] {
+        QProcess::startDetached(QStringLiteral("titan-cambiar-usuario"), {});
+    });
 }
 
 void ShellBackend::setPrefs(TitanPrefs *p)

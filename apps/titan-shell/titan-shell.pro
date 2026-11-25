@@ -26,6 +26,7 @@ SOURCES += \
     src/WayfireIpc.cpp \
     src/ColaApps.cpp \
     src/Mpris.cpp \
+    src/Portapapeles.cpp \
     ../titan-common/ThemeManager.cpp \
     ../titan-common/TitanPrefs.cpp \
     ../titan-panel/src/tareas.cpp \
@@ -33,6 +34,7 @@ SOURCES += \
 
 HEADERS += \
     src/ShellBackend.h \
+    src/Portapapeles.h \
     ../titan-greeter/src/Usuarios.h \
     src/WindowTracker.h \
     src/DockModel.h \

@@ -1,6 +1,7 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <RCC>
     <qresource prefix="/">
+        <file>datos/emojis.json</file>
         <file>qml/Shell.qml</file>
         <file>qml/TopBar.qml</file>
         <file>qml/GlassPanel.qml</file>
@@ -16,6 +17,7 @@
         <file>qml/BotonMedio.qml</file>
         <file>qml/AvisosBloqueo.qml</file>
         <file>qml/CambiadorVentanas.qml</file>
+        <file>qml/PanelSistema.qml</file>
         <file>qml/WorkspacesView.qml</file>
         <file>qml/BootSplash.qml</file>
         <file>qml/LockScreen.qml</file>

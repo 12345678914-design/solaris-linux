@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps repo-inti publicar-inti clave-inti apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps repo-inti publicar-inti clave-inti apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-bienvenida apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -58,7 +58,7 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-bienvenida apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan
 	@# Ver scripts/fijar-isa-baseline.py: en CachyOS v4 todo sale marcado "necesita v4"
 	@python3 -I scripts/fijar-isa-baseline.py $$(find iso/titan/airootfs/usr/local/bin iso/titan/airootfs/usr/lib/titan iso/titan/airootfs/usr/lib/wayfire -type f -exec sh -c 'head -c4 "$$1" | grep -q ELF && echo "$$1"' _ {} \; 2>/dev/null)
 
@@ -128,6 +128,11 @@ apps/titan-monitor:
 	@echo "Compilando titan-monitor..."
 	cd $(APPS)/titan-monitor && qmake6 titan-monitor.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-monitor/titan-monitor iso/titan/airootfs/usr/local/bin/
+
+apps/titan-bienvenida:
+	@echo "Compilando titan-bienvenida..."
+	cd $(APPS)/titan-bienvenida && qmake6 titan-bienvenida.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-bienvenida/titan-bienvenida iso/titan/airootfs/usr/local/bin/
 
 apps/titan-calendar:
 	@echo "Compilando titan-calendar..."
@@ -220,6 +225,7 @@ clean:
 	@find $(APPS)/titan-settings -name 'titan-settings' -type f -executable -delete
 	@find $(APPS)/titan-calc -name 'titan-calc' -type f -executable -delete
 	@find $(APPS)/titan-monitor -name 'titan-monitor' -type f -executable -delete
+	@find $(APPS)/titan-bienvenida -name 'titan-bienvenida' -type f -executable -delete
 	@find $(APPS)/titan-calendar -name 'titan-calendar' -type f -executable -delete
 	@find $(APPS)/titan-clock -name 'titan-clock' -type f -executable -delete
 	@find $(APPS)/titan-video -name 'titan-video' -type f -executable -delete

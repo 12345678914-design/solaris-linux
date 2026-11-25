@@ -9,6 +9,7 @@
 #include "DesktopBackend.h"
 #include "ThemeManager.h"
 #include "Mpris.h"
+#include "Portapapeles.h"
 #include "TitanPrefs.h"
 #include <QQuickItem>
 #include <QRegion>
@@ -393,6 +394,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("launcherBackend"), &launcherBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopBackend"), &desktopBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("mpris"), &mpris);
+    // Hija de la aplicación: vive más que el motor QML que la usa
+    engine.rootContext()->setContextProperty(QStringLiteral("portapapeles"), new Portapapeles(&app));
     // Usuarios y grupos (panel compartido con titan-greeter, en la pantalla de bloqueo)
     Usuarios usuarios;
     engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
@@ -615,6 +618,20 @@ int main(int argc, char *argv[])
                            LayerShellQt::Window::KeyboardInteractivityExclusive, false);
             QObject::connect(&shellBackend, &ShellBackend::cambiadorVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.cambiadorVisible());
+                if (win->isVisible())
+                    win->requestActivate();
+            });
+        } else if (name == QStringLiteral("panelSistemaWindow")) {
+            // Ctrl+Alt+Supr, Win+V, Win+. y Win+F1 (PanelSistema.qml). Teclado
+            // exclusivo: Esc, flechas e Intro van al panel, no a la app.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-panel-sistema"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, false);
+            QObject::connect(&shellBackend, &ShellBackend::panelChanged, win, [win, &shellBackend]() {
+                win->setVisible(!shellBackend.panel().isEmpty());
                 if (win->isVisible())
                     win->requestActivate();
             });

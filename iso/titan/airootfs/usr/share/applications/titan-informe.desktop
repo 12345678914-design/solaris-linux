@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Informe del equipo
+Name[en]=System report
+Comment=Prepara un archivo con lo necesario para informar de un fallo (sin contraseñas ni datos personales)
+Exec=titan-informe --abrir
+Icon=/usr/share/titan/icons/system.png
+Terminal=false
+Categories=System;
+Keywords=informe;fallo;error;soporte;ayuda;report;bug;

@@ -139,6 +139,7 @@ binarios=(
     "titan-panel"
     "titan-calc"
     "titan-monitor"
+    "titan-bienvenida"
     "titan-calendar"
     "titan-clock"
     "titan-video"

@@ -83,6 +83,9 @@ class ShellBackend : public QObject
     Q_PROPERTY(QVariantMap indicador READ indicador NOTIFY indicadorChanged)
     Q_PROPERTY(bool indicadorActivo READ indicadorActivo NOTIFY indicadorChanged)
     Q_PROPERTY(bool cambiadorVisible READ cambiadorVisible WRITE setCambiadorVisible NOTIFY cambiadorVisibleChanged)
+    // Panel del sistema abierto con una tecla: "" | seguridad (Ctrl+Alt+Supr) |
+    // portapapeles (Win+V) | emojis (Win+.) | atajos (Win+F1)
+    Q_PROPERTY(QString panel READ panel WRITE setPanel NOTIFY panelChanged)
     Q_PROPERTY(bool workspacesVisible READ workspacesVisible WRITE setWorkspacesVisible NOTIFY workspacesVisibleChanged)
     Q_PROPERTY(QStringList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace NOTIFY currentWorkspaceChanged)
@@ -185,6 +188,14 @@ public:
     bool indicadorActivo() const { return m_indicadorActivo; }
     bool cambiadorVisible() const { return m_cambiadorVisible; }
     void setCambiadorVisible(bool v) { if (v != m_cambiadorVisible) { m_cambiadorVisible = v; emit cambiadorVisibleChanged(); } }
+    QString panel() const { return m_panel; }
+    void setPanel(const QString &p);
+    Q_INVOKABLE void abrirPanel(const QString &p) { setPanel(m_panel == p ? QString() : p); }
+    // Emojis con nombre y palabras clave en español: [emoji, nombre, claves, grupo]
+    Q_INVOKABLE QVariantList emojis();
+    Q_INVOKABLE void abrirApp(const QString &programa);
+    // Bloquea y abre otra pantalla de inicio (la sesión sigue abierta)
+    Q_INVOKABLE void cambiarUsuarioSinCerrar();
     // ¿Sigue pulsada Alt? (el cambiador se cierra al soltarla)
     Q_INVOKABLE bool altPulsada() const;
     // Teclas especiales (volumen, brillo, multimedia...): las manda el
@@ -291,6 +302,7 @@ signals:
     // Alt+Tab (+1) / Alt+Mayus+Tab (-1): lo pinta CambiadorVentanas.qml
     void altTab(int paso);
     void cambiadorVisibleChanged();
+    void panelChanged();
     void notificationCenterVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
@@ -315,6 +327,8 @@ private:
     QVariantMap m_indicador;
     bool m_indicadorActivo = false;
     bool m_cambiadorVisible = false;
+    QString m_panel;
+    QVariantList m_emojis;
     class QTimer *m_indicadorTimer = nullptr;
 
     void updateBatteryStatus();

@@ -458,7 +458,7 @@ Item {
         }
     }
 
-    // ── Menú Contextual Liquid Glass (Orden estricto: Copiar, Mover, Eliminar) ──────────────────────────────────────────
+    // ── Menú contextual (orden: Copiar, Mover, Eliminar; en el fondo: Nueva carpeta, Pegar...) ──────────────────────────────────────────
     Rectangle {
         id: contextMenu
         visible: desktopIconsRoot.ctxVisible
@@ -565,7 +565,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌘C"
+                    text: "Ctrl+C"
                     color: titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -644,7 +644,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌫"
+                    text: "Supr"
                     color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -659,6 +659,44 @@ Item {
                         desktopBackend.deleteItems(desktopIconsRoot.selectedPaths)
                         desktopIconsRoot.selectedPaths = []
                     }
+                }
+            }
+
+            // Fondo del escritorio (como Windows): Nueva carpeta, y abajo
+            // Cambiar fondo / Configuración de pantalla / Personalizar
+            component OpcionFondo: Rectangle {
+                id: of
+                property string icono: ""
+                property string texto: ""
+                signal elegida()
+                width: parent ? parent.width : 0
+                height: 32
+                radius: 6
+                visible: desktopIconsRoot.selectedPaths.length === 0
+                color: zof.containsMouse ? titanTheme.itemHover : "transparent"
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    spacing: 8
+                    Text { text: of.icono; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                    Text { text: of.texto; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                }
+                MouseArea {
+                    id: zof
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { desktopIconsRoot.ctxVisible = false; of.elegida() }
+                }
+            }
+
+            OpcionFondo {
+                icono: "📁"
+                texto: "Nueva carpeta"
+                onElegida: {
+                    var p = desktopIconsRoot.snapToGrid(desktopIconsRoot.ctxX, desktopIconsRoot.ctxY, "")
+                    desktopBackend.nuevaCarpeta(p.x, p.y)
                 }
             }
 
@@ -684,7 +722,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌘V"
+                    text: "Ctrl+V"
                     color: titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -717,7 +755,7 @@ Item {
                     anchors.leftMargin: 12
                     spacing: 8
                     Text { text: "📂"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
-                    Text { text: "Abrir en Finder"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                    Text { text: "Abrir en el Explorador"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
                 }
 
                 MouseArea {
@@ -731,6 +769,18 @@ Item {
                     }
                 }
             }
+
+            Rectangle {
+                width: parent.width - 16
+                height: 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: titanTheme.glassBorder
+                opacity: 0.6
+                visible: desktopIconsRoot.selectedPaths.length === 0
+            }
+            OpcionFondo { icono: "🖼"; texto: "Cambiar fondo de pantalla"; onElegida: shellBackend.toggleWallpaperPicker() }
+            OpcionFondo { icono: "🖥"; texto: "Configuración de pantalla"; onElegida: shellBackend.openSettings("Pantallas") }
+            OpcionFondo { icono: "🎨"; texto: "Personalizar"; onElegida: shellBackend.openSettings("Apariencia") }
         }
     }
 }
