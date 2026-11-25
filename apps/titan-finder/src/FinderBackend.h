@@ -36,6 +36,9 @@ class FinderBackend : public QObject
     Q_PROPERTY(QString textoDeshacer READ textoDeshacer NOTIFY deshacerChanged)
     // Recientes: lista virtual con lo último abierto (recently-used.xbel)
     Q_PROPERTY(bool enRecientes READ enRecientes NOTIFY currentPathChanged)
+    // Red: otros equipos y carpetas compartidas (Red.h)
+    Q_PROPERTY(bool enRed READ enRed NOTIFY currentPathChanged)
+    Q_PROPERTY(bool buscandoRed READ buscandoRed NOTIFY currentPathChanged)
     // La búsqueda también mira dentro de las subcarpetas (en otro hilo)
     Q_PROPERTY(bool buscando READ buscando NOTIFY busquedaChanged)
     Q_PROPERTY(bool panelDetalles READ panelDetalles WRITE setPanelDetalles NOTIFY panelDetallesChanged)
@@ -80,6 +83,8 @@ public:
     bool panelDetalles() const { return m_panelDetalles; }
     QString textoDeshacer() const;
     bool enRecientes() const { return m_currentPath == rutaRecientes(); }
+    bool enRed() const;
+    bool buscandoRed() const { return m_buscandoRed; }
     bool buscando() const { return m_buscando; }
     static QString rutaRecientes() { return QStringLiteral("recent:///"); }
     void setPanelDetalles(bool v);
@@ -135,6 +140,9 @@ public:
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void openItem(const QString &path);
+    // Usuario y contraseña de una carpeta compartida (ver credencialesRed)
+    Q_INVOKABLE void responderCredenciales(bool aceptar, const QString &usuario, const QString &dominio,
+                                           const QString &clave, bool anonimo);
     Q_INVOKABLE void openTerminal(const QString &path = QString());
     Q_INVOKABLE bool createFolder(const QString &name = QString());
     Q_INVOKABLE bool deleteItem(const QString &path);
@@ -176,6 +184,7 @@ signals:
     void avisoChanged();
     void deshacerChanged();
     void busquedaChanged();
+    void credencialesRed(const QString &mensaje, const QString &usuario, const QString &dominio, bool anonimoPosible);
 
 private slots:
     void onDirectoryChanged(const QString &path);
@@ -224,6 +233,8 @@ private:
 
     // Recientes y búsqueda en subcarpetas
     void cargarRecientes();
+    class Red *m_red = nullptr;
+    bool m_buscandoRed = false;
     void apuntarReciente(const QString &path);
     void buscarEnSubcarpetas();
     QVariantMap entradaDe(const QFileInfo &info) const;

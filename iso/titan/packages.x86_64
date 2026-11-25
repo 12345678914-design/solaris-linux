@@ -330,6 +330,8 @@ exfatprogs
 gvfs
 gvfs-mtp
 gvfs-smb
+gvfs-wsdd
+gvfs-dnssd
 gvfs-gphoto2
 gnome-disk-utility
 smartmontools

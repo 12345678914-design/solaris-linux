@@ -364,6 +364,116 @@ Rectangle {
     }
 
     // Diálogo para renombrar archivo o carpeta estilo macOS
+    // Usuario y contraseña de una carpeta compartida de otro equipo (Red)
+    Connections {
+        target: finderBackend
+        function onCredencialesRed(mensaje, usuario, dominio, anonimoPosible) {
+            credDialog.mensaje = mensaje
+            credDialog.anonimoPosible = anonimoPosible
+            credUsuario.text = usuario
+            credDominio.text = dominio
+            credClave.text = ""
+            credDialog.respondido = false
+            credDialog.open()
+            credClave.campo.forceActiveFocus()
+        }
+    }
+    Popup {
+        id: credDialog
+        property string mensaje: ""
+        property bool anonimoPosible: false
+        property bool respondido: false
+        function responder(ok, anonimo) {
+            respondido = true
+            finderBackend.responderCredenciales(ok, credUsuario.text, credDominio.text, credClave.text, anonimo)
+            credClave.text = ""
+            close()
+        }
+        onClosed: if (!respondido) { respondido = true; finderBackend.responderCredenciales(false, "", "", "", false) }
+        anchors.centerIn: parent
+        width: 380
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        padding: 20
+        background: Rectangle {
+            color: theme.isDark ? "#24252a" : "#ffffff"
+            radius: 14
+            border.color: theme.glassBorder
+            border.width: 1
+        }
+        contentItem: Column {
+            id: colCred
+            spacing: 10
+            Text {
+                text: "Conectar con otro equipo"
+                color: theme.contentTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            Text {
+                width: colCred.width
+                wrapMode: Text.Wrap
+                text: (credDialog.mensaje !== "" ? credDialog.mensaje + "\n" : "")
+                      + "Escribe el usuario y la contraseña de ese equipo (en un PC con Windows, los de su cuenta)."
+                color: theme.contentTextSecondary
+                font.pixelSize: 11
+            }
+            CampoCred { id: credUsuario; width: colCred.width; etiqueta: "Usuario" }
+            CampoCred { id: credDominio; width: colCred.width; etiqueta: "Dominio o grupo de trabajo (normalmente WORKGROUP)" }
+            CampoCred { id: credClave; width: colCred.width; etiqueta: "Contraseña"; secreto: true }
+            Text {
+                width: colCred.width
+                wrapMode: Text.Wrap
+                text: "La contraseña solo se recuerda hasta que cierres la sesión."
+                color: theme.contentTextSecondary
+                font.pixelSize: 10
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Repeater {
+                    model: [
+                        { t: "Cancelar", ok: false, anon: false, ver: true, principal: false },
+                        { t: "Como invitado", ok: true, anon: true, ver: credDialog.anonimoPosible, principal: false },
+                        { t: "Conectar", ok: true, anon: false, ver: true, principal: true }
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        visible: modelData.ver
+                        width: etiquetaCred.implicitWidth + 26; height: 28; radius: 6
+                        color: modelData.principal ? theme.accent
+                               : (zonaCred.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : (theme.isDark ? "#2e2f36" : "#f5f5f7"))
+                        border.color: modelData.principal ? "transparent" : theme.glassBorder
+                        Text { id: etiquetaCred; anchors.centerIn: parent; text: modelData.t; color: modelData.principal ? "white" : theme.contentTextPrimary; font.pixelSize: 12 }
+                        MouseArea { id: zonaCred; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onClicked: credDialog.responder(modelData.ok, modelData.anon) }
+                    }
+                }
+            }
+        }
+    }
+    component CampoCred: Rectangle {
+        property alias campo: entrada
+        property alias text: entrada.text
+        property string etiqueta: ""
+        property bool secreto: false
+        height: 32; radius: 6
+        color: theme.isDark ? "#1a1b1f" : "#f5f5f7"
+        border.color: entrada.activeFocus ? theme.accent : theme.glassBorder
+        border.width: entrada.activeFocus ? 2 : 1
+        TextField {
+            id: entrada
+            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
+            placeholderText: parent.etiqueta
+            echoMode: parent.secreto ? TextInput.Password : TextInput.Normal
+            color: theme.contentTextPrimary
+            font.pixelSize: 12
+            background: null
+            verticalAlignment: Text.AlignVCenter
+            Keys.onReturnPressed: credDialog.responder(true, false)
+            Keys.onEnterPressed: credDialog.responder(true, false)
+        }
+    }
+
     Dialog {
         id: renameDialog
         anchors.centerIn: parent
@@ -847,6 +957,12 @@ Rectangle {
         var cuantos = n > 1 ? " (" + n + ")" : ""
         var o = []
         var pap = finderBackend.enPapelera
+        if (finderBackend.enRed) {
+            // En Red solo se entra en los equipos y carpetas compartidas
+            if (n === 1) o.push({ t: "Abrir", i: "↗", k: "↵", a: function () { finderBackend.openItem(fileListRoot.selectedPaths[0]) } })
+            else o.push({ t: "Volver a buscar equipos", i: "↻", a: function () { finderBackend.goTo(finderBackend.currentPath) } })
+            return o
+        }
         if (n > 0) {
             if (pap) {
                 o.push({ t: "Recuperar" + cuantos, i: "↩", a: function () { finderBackend.restaurar(fileListRoot.objetivo()); fileListRoot.limpiarSeleccion() } })
@@ -1287,7 +1403,7 @@ Rectangle {
             spacing: 12
             visible: finderBackend.entries.length === 0
             Image {
-                source: finderBackend.enPapelera ? "qrc:/icons/trash.png" : "qrc:/icons/folder.png"
+                source: finderBackend.enPapelera ? "qrc:/icons/trash.png" : finderBackend.enRed ? "qrc:/icons/monitor.png" : "qrc:/icons/folder.png"
                 width: 72; height: 72
                 anchors.horizontalCenter: parent.horizontalCenter
                 opacity: 0.35
@@ -1296,9 +1412,21 @@ Rectangle {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: finderBackend.searchQuery.length > 0 ? "No se encontraron resultados"
-                      : finderBackend.enPapelera ? "La Papelera está vacía" : "Esta carpeta está vacía"
+                      : finderBackend.enPapelera ? "La Papelera está vacía"
+                      : finderBackend.enRed ? (finderBackend.buscandoRed ? "Buscando equipos en la red…" : "No se ve ningún equipo")
+                      : "Esta carpeta está vacía"
                 color: theme.contentTextSecondary
                 font.pixelSize: 14
+            }
+            Text {
+                visible: finderBackend.enRed && !finderBackend.buscandoRed && finderBackend.searchQuery.length === 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 380
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: "Si conoces el nombre del equipo, pulsa Ctrl+L y escribe su dirección como en Windows: \\\\NOMBRE-PC\\Carpeta"
+                color: theme.contentTextSecondary
+                font.pixelSize: 12
             }
         }
 

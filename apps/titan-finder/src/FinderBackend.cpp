@@ -1,5 +1,6 @@
 #include "FinderBackend.h"
 #include "TitanPredeterminadas.h"
+#include "Red.h"
 #include "TitanDesktopEntry.h"
 
 #include <QDir>
@@ -109,6 +110,40 @@ FinderBackend::FinderBackend(QObject *parent)
     connect(m_deviceTimer, &QTimer::timeout, this, &FinderBackend::refreshDevices);
     m_deviceTimer->start();
 
+    // Red: los equipos llegan cuando contestan; se pintan si se sigue ahí
+    m_red = new Red(this);
+    connect(m_red, &Red::listado, this, [this](const QString &uri, const QVariantList &entradas, const QString &error) {
+        if (uri != m_currentPath) return;
+        m_buscandoRed = false;
+        m_rawEntries.clear();
+        for (const QVariant &v : entradas) {
+            QVariantMap e = v.toMap();
+            const bool equipo = e.value(QStringLiteral("equipo")).toBool();
+            e[QStringLiteral("isSymLink")] = false;
+            e[QStringLiteral("isHidden")] = false;
+            e[QStringLiteral("isExecutable")] = false;
+            e[QStringLiteral("size")] = QString();
+            e[QStringLiteral("sizeBytes")] = 0;
+            e[QStringLiteral("modified")] = QString();
+            e[QStringLiteral("modifiedTimestamp")] = 0;
+            e[QStringLiteral("type")] = equipo ? QStringLiteral("Equipo de la red") : QStringLiteral("Carpeta compartida");
+            e[QStringLiteral("icon")] = equipo ? QStringLiteral("qrc:/icons/monitor.png") : QStringLiteral("qrc:/icons/folder.png");
+            e[QStringLiteral("foto")] = false;
+            e[QStringLiteral("red")] = true;
+            m_rawEntries.append(e);
+        }
+        if (!error.isEmpty()) ponerAviso(error);
+        filterAndSortEntries();
+        emit currentPathChanged();
+    });
+    connect(m_red, &Red::abierto, this, [this](const QString &, const QString &local, const QString &error) {
+        m_buscandoRed = false;
+        emit currentPathChanged();
+        if (!local.isEmpty()) goTo(local);
+        else if (!error.isEmpty()) ponerAviso(error);
+    });
+    connect(m_red, &Red::credencialesPedidas, this, &FinderBackend::credencialesRed);
+
     // Lo que copian otras apps también cuenta para "Pegar".
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FinderBackend::clipboardChanged);
 
@@ -124,7 +159,7 @@ void FinderBackend::initFavorites()
     m_favorites.clear();
 
     auto addFav = [this](const QString &name, const QString &path, const QString &icon, const QString &section) {
-        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:")) || path == rutaRecientes()) {
+        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:")) || path == rutaRecientes() || path == Red::raiz()) {
             QVariantMap item;
             item[QStringLiteral("name")] = name;
             item[QStringLiteral("path")] = path;
@@ -197,6 +232,7 @@ void FinderBackend::initFavorites()
     QString trash = home + QStringLiteral("/.local/share/Trash/files");
     QDir().mkpath(trash);
     addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Este equipo"));
+    addFav(QStringLiteral("Red"), Red::raiz(), QStringLiteral("qrc:/icons/monitor.png"), QStringLiteral("Este equipo"));
 
     // Sección Dispositivos (USBs y Discos detectados bajo demanda)
     for (const QVariant &v : m_devices) {
@@ -220,6 +256,10 @@ QString FinderBackend::currentPathName() const
     if (m_currentPath == QDir::homePath()) return QStringLiteral("Carpeta personal");
     if (m_currentPath == rutaRecientes()) return QStringLiteral("Recientes");
     if (m_currentPath == QStringLiteral("/")) return QStringLiteral("Sistema");
+    if (enRed()) {
+        const QStringList p = Red::partes(m_currentPath);
+        return p.isEmpty() ? QStringLiteral("Red") : p.last();
+    }
 
     QDir dir(m_currentPath);
     QString name = dir.dirName();
@@ -229,7 +269,7 @@ QString FinderBackend::currentPathName() const
 
 bool FinderBackend::canGoUp() const
 {
-    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty() && m_currentPath != rutaRecientes();
+    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty() && m_currentPath != rutaRecientes() && !enRed();
 }
 
 QVariantList FinderBackend::pathSegments() const
@@ -238,6 +278,15 @@ QVariantList FinderBackend::pathSegments() const
     if (m_currentPath.isEmpty()) return segments;
     if (m_currentPath == rutaRecientes())
         return {QVariantMap{{QStringLiteral("name"), QStringLiteral("Recientes")}, {QStringLiteral("path"), rutaRecientes()}}};
+    if (enRed()) {
+        QVariantList r{QVariantMap{{QStringLiteral("name"), QStringLiteral("Red")}, {QStringLiteral("path"), Red::raiz()}}};
+        const QUrl u(m_currentPath);
+        if (u.scheme() != QLatin1String("network")) {
+            QString acumulado = u.scheme() + QStringLiteral("://") + u.authority() + QLatin1Char('/');
+            r << QVariantMap{{QStringLiteral("name"), u.host()}, {QStringLiteral("path"), acumulado}};
+        }
+        return r;
+    }
 
     QVariantMap rootSeg;
     rootSeg[QStringLiteral("name")] = QStringLiteral("Sistema");
@@ -262,10 +311,31 @@ QVariantList FinderBackend::pathSegments() const
     return segments;
 }
 
+bool FinderBackend::enRed() const
+{
+    return Red::esRed(m_currentPath);
+}
+
+void FinderBackend::responderCredenciales(bool aceptar, const QString &usuario, const QString &dominio,
+                                          const QString &clave, bool anonimo)
+{
+    m_red->responder(aceptar, usuario, dominio, clave, anonimo);
+}
+
 void FinderBackend::goTo(const QString &path)
 {
-    QString canonical = path;
-    if (path != rutaRecientes()) {
+    // \\PC\Carpeta (como en Windows), smb://, network:// ...
+    const QString uriRed = Red::normalizar(path);
+    if (!uriRed.isEmpty() && Red::esCarpetaCompartida(uriRed)) {
+        // Se monta y, al estar, se abre su ruta local (Red::abierto)
+        m_buscandoRed = true;
+        emit currentPathChanged();
+        ponerAviso(QStringLiteral("Conectando con %1…").arg(Red::partes(uriRed).value(0)));
+        m_red->abrir(uriRed);
+        return;
+    }
+    QString canonical = uriRed.isEmpty() ? path : uriRed;
+    if (canonical != rutaRecientes() && uriRed.isEmpty()) {
         canonical = QDir(path).canonicalPath();
         if (canonical.isEmpty()) canonical = path;
         if (!QDir(canonical).exists()) return;
@@ -339,6 +409,17 @@ void FinderBackend::loadDirectory(const QString &path)
 
     m_rawEntries.clear();
     m_extraBusqueda.clear();
+
+    if (Red::esRed(path)) {
+        m_currentPath = path;
+        m_buscandoRed = true;
+        m_red->listar(path);
+        m_freeSpaceText.clear();
+        emit freeSpaceTextChanged();
+        filterAndSortEntries();
+        emit currentPathChanged();
+        return;
+    }
 
     if (path == rutaRecientes()) {
         cargarRecientes();
@@ -704,6 +785,10 @@ void FinderBackend::sort(const QString &criteria)
 
 void FinderBackend::openItem(const QString &path)
 {
+    if (Red::esRed(path)) {
+        goTo(path);
+        return;
+    }
     QFileInfo info(path);
     if (!info.exists()) return;
 

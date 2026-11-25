@@ -23,6 +23,9 @@ class Dispositivos : public QObject
     Q_PROPERTY(QVariantList salidas READ salidas NOTIFY sonidoCambiado)
     Q_PROPERTY(QVariantList entradas READ entradas NOTIFY sonidoCambiado)
     Q_PROPERTY(bool sonidoDisponible READ sonidoDisponible NOTIFY sonidoCambiado)
+    // Mezclador (como el de Windows): apps que suenan ahora
+    //   [{id, nombre, detalle, icono, volumen, silencio}]
+    Q_PROPERTY(QVariantList appsSonido READ appsSonido NOTIFY appsSonidoCambiado)
     Q_PROPERTY(QString aviso READ aviso NOTIFY avisoCambiado)
 
 public:
@@ -35,6 +38,7 @@ public:
     QVariantMap luzNocturna() const { return m_luz; }
     QVariantList salidas() const { return m_salidas; }
     QVariantList entradas() const { return m_entradas; }
+    QVariantList appsSonido() const { return m_appsSonido; }
     bool sonidoDisponible() const { return m_sonidoOk; }
     QString aviso() const { return m_aviso; }
 
@@ -57,6 +61,9 @@ public:
     Q_INVOKABLE void setVolumen(bool salida, const QString &nombre, int porcentaje);
     Q_INVOKABLE void setSilencio(bool salida, const QString &nombre, bool silencio);
     Q_INVOKABLE void probarSonido();
+    Q_INVOKABLE void leerAppsSonido();
+    Q_INVOKABLE void setVolumenApp(int id, int porcentaje);
+    Q_INVOKABLE void setSilencioApp(int id, bool silencio);
 
 signals:
     void pantallasCambiadas();
@@ -64,6 +71,7 @@ signals:
     void brilloCambiado();
     void luzCambiada();
     void sonidoCambiado();
+    void appsSonidoCambiado();
     void avisoCambiado();
 
 private:
@@ -82,6 +90,7 @@ private:
     QVariantMap m_luz;
     QVariantList m_salidas;
     QVariantList m_entradas;
+    QVariantList m_appsSonido;
     bool m_sonidoOk = false;
     QString m_aviso;
     QTimer *m_volumenTimer = nullptr;

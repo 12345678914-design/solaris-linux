@@ -9,9 +9,11 @@ PaginaAjustes {
 
     TitanTheme { id: tema }
 
-    Component.onCompleted: dispositivos.leerSonido()
+    Component.onCompleted: { dispositivos.leerSonido(); dispositivos.leerAppsSonido() }
     // Auriculares conectados mientras la ventana está abierta, etc.
     Timer { running: true; repeat: true; interval: 4000; onTriggered: dispositivos.leerSonido() }
+    // Apps que empiezan o dejan de sonar
+    Timer { running: true; repeat: true; interval: 2000; onTriggered: dispositivos.leerAppsSonido() }
 
     component Lista: Grupo {
         id: lista
@@ -105,6 +107,48 @@ PaginaAjustes {
         spacing: 8
         visible: dispositivos.salidas.length > 0
         Boton { texto: "Probar sonido"; onPulsado: dispositivos.probarSonido() }
+    }
+
+    // Mezclador de volumen, como en Windows: cada app con su volumen
+    Grupo {
+        etiqueta: "Volumen de las aplicaciones"
+        nota: dispositivos.appsSonido.length === 0 ? "Ahora no suena ninguna aplicación. Cuando una reproduzca algo (música, un vídeo, una llamada) aparecerá aquí con su propio volumen."
+                                                    : "Baja una app sin cambiar las demás. El volumen general está arriba, en Salida."
+        visible: dispositivos.sonidoDisponible
+        Repeater {
+            model: dispositivos.appsSonido
+            delegate: Fila {
+                required property var modelData
+                required property int index
+                separador: index < dispositivos.appsSonido.length - 1
+                titulo: modelData.nombre
+                detalle: modelData.detalle
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 10
+                    Boton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: modelData.silencio ? "🔇" : "🔊"
+                        onPulsado: dispositivos.setSilencioApp(modelData.id, !modelData.silencio)
+                    }
+                    Deslizador {
+                        anchors.verticalCenter: parent.verticalCenter
+                        ancho: 200
+                        desde: 0; hasta: 100
+                        habilitado: !modelData.silencio
+                        valor: modelData.volumen
+                        onMovido: (v) => dispositivos.setVolumenApp(modelData.id, Math.round(v))
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 62
+                        text: modelData.silencio ? "Silenciada" : modelData.volumen + " %"
+                        color: tema.contentTextSecondary
+                        font.pixelSize: 11
+                    }
+                }
+            }
+        }
     }
 
     Lista {

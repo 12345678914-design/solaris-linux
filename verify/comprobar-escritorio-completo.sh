@@ -636,6 +636,13 @@ contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini 'binding_herramientas =
 contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini 'binding_proyectar = <super> KEY_P' "Win+P: proyectar"
 contiene apps/titan-shell/qml/PanelSistema.qml 'modosProyeccion' "Panel Proyectar (Win+P)"
 contiene iso/titan/profiledef.sh 'titan-proyectar' "titan-proyectar ejecutable en la ISO"
+contiene apps/titan-settings/src/Dispositivos.cpp 'set-sink-input-volume' "Sonido: volumen por aplicación (mezclador)"
+contiene apps/titan-settings/qml/SonidoView.qml 'Volumen de las aplicaciones' "Sonido: sección del mezclador"
+contiene apps/titan-finder/src/Red.cpp 'g_file_mount_enclosing_volume' "Explorador > Red: entra en carpetas compartidas (gvfs)"
+contiene apps/titan-finder/src/Red.cpp 'G_PASSWORD_SAVE_FOR_SESSION' "Explorador > Red: la contraseña no se guarda en disco"
+contiene apps/titan-finder/src/FinderBackend.cpp 'Red::raiz()' "Explorador: Red en la barra lateral"
+contiene apps/titan-finder/qml/FileList.qml 'credDialog' "Explorador > Red: pide usuario y contraseña"
+contiene iso/titan/packages.x86_64 '^gvfs-wsdd$' "Red: ver los PC con Windows (gvfs-wsdd, solo descubrir)"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

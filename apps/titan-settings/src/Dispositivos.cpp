@@ -365,6 +365,53 @@ void Dispositivos::setPredeterminado(bool salida, const QString &nombre)
            [this](int, const QByteArray &, const QString &) { leerSonido(); });
 }
 
+void Dispositivos::leerAppsSonido()
+{
+    correr(QStringLiteral("pactl"), {QStringLiteral("-f"), QStringLiteral("json"), QStringLiteral("list"), QStringLiteral("sink-inputs")},
+           [this](int codigo, const QByteArray &salida, const QString &) {
+        QVariantList r;
+        if (codigo == 0) {
+            for (const QJsonValue &v : QJsonDocument::fromJson(salida).array()) {
+                const QJsonObject o = v.toObject();
+                const QJsonObject pr = o.value(QStringLiteral("properties")).toObject();
+                // Los sonidos de aviso del sistema no se listan
+                if (pr.value(QStringLiteral("media.role")).toString() == QLatin1String("event"))
+                    continue;
+                QString nombre = pr.value(QStringLiteral("application.name")).toString();
+                if (nombre.isEmpty()) nombre = pr.value(QStringLiteral("application.process.binary")).toString();
+                if (nombre.isEmpty()) nombre = QStringLiteral("Aplicación");
+                r << QVariantMap{
+                    {QStringLiteral("id"), o.value(QStringLiteral("index")).toInt()},
+                    {QStringLiteral("nombre"), nombre},
+                    {QStringLiteral("detalle"), pr.value(QStringLiteral("media.name")).toString()},
+                    {QStringLiteral("icono"), pr.value(QStringLiteral("application.icon_name")).toString()},
+                    {QStringLiteral("volumen"), porcentaje(o.value(QStringLiteral("volume")).toObject())},
+                    {QStringLiteral("silencio"), o.value(QStringLiteral("mute")).toBool()},
+                };
+            }
+        }
+        if (r != m_appsSonido) {
+            m_appsSonido = r;
+            emit appsSonidoCambiado();
+        }
+    });
+}
+
+void Dispositivos::setVolumenApp(int id, int porcentaje)
+{
+    if (id < 0) return;
+    correr(QStringLiteral("pactl"), {QStringLiteral("set-sink-input-volume"), QString::number(id),
+                                     QString::number(qBound(0, porcentaje, 150)) + QLatin1Char('%')},
+           [](int, const QByteArray &, const QString &) {});
+}
+
+void Dispositivos::setSilencioApp(int id, bool silencio)
+{
+    if (id < 0) return;
+    correr(QStringLiteral("pactl"), {QStringLiteral("set-sink-input-mute"), QString::number(id), silencio ? QStringLiteral("1") : QStringLiteral("0")},
+           [this](int, const QByteArray &, const QString &) { leerAppsSonido(); });
+}
+
 void Dispositivos::setVolumen(bool salida, const QString &nombre, int porcentaje)
 {
     porcentaje = qBound(0, porcentaje, 150);

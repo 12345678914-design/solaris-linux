@@ -166,17 +166,17 @@ Rectangle {
                     onPulsado: titanThemeManager.wallpaper = panel.ruta
                 }
                 Accion {
-                    visible: panel.nSel === 0 && !finderBackend.enPapelera && !finderBackend.enRecientes
+                    visible: panel.nSel === 0 && !finderBackend.enPapelera && !finderBackend.enRecientes && !finderBackend.enRed
                     texto: "Abrir en Terminal"
                     onPulsado: finderBackend.openTerminal()
                 }
                 Accion {
-                    visible: !finderBackend.enPapelera && (panel.nSel > 0 || !finderBackend.enRecientes)
+                    visible: !finderBackend.enPapelera && !finderBackend.enRed && (panel.nSel > 0 || !finderBackend.enRecientes)
                     texto: panel.nSel > 1 ? "Copiar las rutas" : "Copiar ruta"
                     onPulsado: finderBackend.copiarRuta(panel.nSel > 0 ? panel.lista.objetivo() : [finderBackend.currentPath])
                 }
                 Accion {
-                    visible: panel.nSel > 0 && !finderBackend.enPapelera
+                    visible: panel.nSel > 0 && !finderBackend.enPapelera && !finderBackend.enRed
                     texto: "Propiedades"
                     onPulsado: panel.lista.openProperties(panel.nSel === 1 ? panel.ruta : panel.lista.selectedPath)
                 }
