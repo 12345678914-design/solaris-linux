@@ -51,7 +51,7 @@ paquetes=(polkit-qt6 gnome-keyring libsecret xdg-desktop-portal-wlr xdg-desktop-
           hunspell-es_any hunspell-en_us fprintd bolt pacman-contrib cryptsetup os-prober
           efibootmgr parted wlsunset sound-theme-freedesktop wlr-randr brightnessctl
           nvidia-open-dkms dkms linux-headers gnome-text-editor zip 7zip unrar file-roller
-          gnome-system-monitor gparted xorg-xhost wf-recorder wtype apparmor
+          gparted xorg-xhost wf-recorder wtype apparmor
           openboard xournalpp libreoffice-fresh libreoffice-fresh-es pdfarranger obs-studio
           kdenlive auto-multiple-choice joplin-desktop obsidian anki calibre kalzium kstars
           kmplot kig geogebra stellarium gcompris-qt gutenprint foomatic-db
@@ -582,6 +582,13 @@ contiene apps/titan-finder/src/Explorador.cpp 'buscarEnSubcarpetas' "Explorador:
 contiene apps/titan-finder/src/Explorador.cpp 'recently-used.xbel' "Explorador: Recientes de verdad (estándar freedesktop)"
 contiene apps/titan-finder/src/Explorador.cpp 'void FinderBackend::anclar' "Explorador: Anclar a Acceso rápido"
 contiene apps/titan-finder/src/FinderBackend.cpp 'Carpeta personal' "Explorador: Carpeta personal en el panel izquierdo"
+contiene apps/titan-monitor/qml/Grafica.qml 'theme.accent' "Monitor de recursos: gráficas con el color de acento"
+contiene apps/titan-monitor/qml/VistaProcesos.qml 'Finalizar tarea' "Monitor de recursos: Finalizar tarea"
+contiene apps/titan-monitor/src/MonitorBackend.cpp 'criticos()' "Monitor: no deja cerrar lo que sostiene el escritorio"
+contiene apps/titan-monitor/src/MonitorBackend.cpp 'Hidden=%1' "Monitor: aplicaciones de inicio sin contraseña ni borrar nada"
+contiene scripts/build-iso.sh 'build_qt_app titan-monitor' "Monitor de recursos se compila en la ISO"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini 'command_monitor = titan-monitor' "Ctrl+Mayús+Esc abre el Monitor (Wayfire)"
+contiene iso/titan/airootfs/etc/skel/.config/labwc/rc.xml 'C-S-Escape' "Ctrl+Mayús+Esc abre el Monitor (labwc)"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

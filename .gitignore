@@ -95,6 +95,7 @@ apps/*/build.*/
 apps/*/Makefile
 apps/*/titan-acerca
 apps/*/titan-calc
+apps/*/titan-monitor
 apps/*/titan-calendar
 apps/*/titan-cli
 apps/*/titan-clock

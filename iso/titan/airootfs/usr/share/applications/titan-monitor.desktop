@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Monitor de recursos
+Name[es]=Monitor de recursos
+Name[en]=Resource Monitor
+Comment=Procesos, uso de CPU, memoria, disco y red, y programas de inicio
+Comment[es]=Procesos, uso de CPU, memoria, disco y red, y programas de inicio
+Exec=titan-monitor
+Icon=/usr/share/titan/icons/monitor.png
+Terminal=false
+Categories=System;Monitor;
+Keywords=administrador de tareas;task manager;procesos;rendimiento;cpu;memoria;ram;monitor del sistema;system monitor;finalizar tarea;
+StartupWMClass=titan-monitor

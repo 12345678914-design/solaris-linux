@@ -123,6 +123,7 @@ static QString categoriaDe(const QString &fichero, const QString &exec, const QS
         {QStringLiteral("titan-video"), QStringLiteral("multimedia")}, {QStringLiteral("firefox"), QStringLiteral("internet")},
         {QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("productividad")},
         {QStringLiteral("plasma-discover"), QStringLiteral("sistema")}, {QStringLiteral("titan-settings"), QStringLiteral("sistema")},
+        {QStringLiteral("titan-monitor"), QStringLiteral("sistema")},
         {QStringLiteral("titan-acerca"), QStringLiteral("sistema")}, {QStringLiteral("titan-installer"), QStringLiteral("sistema")},
         {QStringLiteral("titan-instalar"), QStringLiteral("sistema")},
         {QStringLiteral("simple-scan"), QStringLiteral("utilidades")}, {QStringLiteral("joplin-desktop"), QStringLiteral("productividad")},
@@ -480,6 +481,7 @@ void LauncherBackend::loadApps()
     addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music-app.png"));
     addApp(QStringLiteral("Terminal"), QStringLiteral("titan-terminal"), QStringLiteral("qrc:/icons/terminal.png"));
     addApp(QStringLiteral("Calculadora"), QStringLiteral("titan-calc"), QStringLiteral("qrc:/icons/calculator.png"));
+    addApp(QStringLiteral("Monitor de recursos"), QStringLiteral("titan-monitor"), QStringLiteral("qrc:/icons/monitor.png"));
     addApp(QStringLiteral("Calendario"), QStringLiteral("titan-calendar"), QStringLiteral("qrc:/icons/calendar.png"));
     addApp(QStringLiteral("Reloj"), QStringLiteral("titan-clock"), QStringLiteral("qrc:/icons/clock.png"));
     addApp(QStringLiteral("Reproductor de Video"), QStringLiteral("titan-video"), QStringLiteral("qrc:/icons/video.png"));

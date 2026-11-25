@@ -399,7 +399,6 @@ zip
 unrar
 file-roller
 # Monitor del sistema (procesos, CPU, memoria, discos)
-gnome-system-monitor
 # Particionar a mano (boton "Abrir GParted" del instalador). Corre como root
 # por XWayland: necesita xhost para dar permiso a root en la pantalla
 gparted

@@ -12,6 +12,7 @@
         <file>qml/botones/BotonesColor.qml</file>
         <file>qml/TitanTheme.qml</file>
         <file>icons/calculator.png</file>
+        <file>icons/monitor.png</file>
     </qresource>
 </RCC>
 

@@ -118,6 +118,7 @@ inline QString iconoPropio(const QString &exec)
         {QStringLiteral("titan-terminal"), QStringLiteral("qrc:/icons/terminal.png")},
         {QStringLiteral("kitty"), QStringLiteral("qrc:/icons/terminal.png")},
         {QStringLiteral("titan-calc"), QStringLiteral("qrc:/icons/calculator.png")},
+        {QStringLiteral("titan-monitor"), QStringLiteral("qrc:/icons/monitor.png")},
         {QStringLiteral("titan-calendar"), QStringLiteral("qrc:/icons/calendar.png")},
         {QStringLiteral("titan-clock"), QStringLiteral("qrc:/icons/clock.png")},
         {QStringLiteral("titan-video"), QStringLiteral("qrc:/icons/video.png")},

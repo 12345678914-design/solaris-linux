@@ -32,6 +32,7 @@
     <windowRule identifier="titan-shell" serverDecoration="no" />
     <windowRule identifier="titan-desktop" serverDecoration="no" />
     <windowRule title="*Explorador de archivos*" serverDecoration="no" />
+    <windowRule identifier="titan-monitor" serverDecoration="no" />
     <windowRule title="*Fotos*" serverDecoration="no" />
     <windowRule title="*Música*" serverDecoration="no" />
     <windowRule title="*Terminal*" serverDecoration="no" />
@@ -191,6 +192,10 @@
       <action name="Execute" command="titan-shell --toggle-theme"/>
     </keybind>
     
+    <!-- Ctrl+Mayús+Esc: Monitor de recursos (como el Administrador de tareas de Windows) -->
+    <keybind key="C-S-Escape">
+      <action name="Execute" command="titan-monitor"/>
+    </keybind>
     <!-- Super/Mod + E: Explorador de archivos -->
     <keybind key="W-e">
       <action name="Execute" command="titan-finder"/>
