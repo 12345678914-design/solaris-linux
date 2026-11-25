@@ -2,6 +2,8 @@
 # Las apps propias (Fotos, Música, Vídeo, Finder) van primero; Celluloid queda
 # como alternativa para vídeo en "Abrir con".
 [Default Applications]
+application/vnd.appimage=inti-appimage.desktop
+application/x-iso9660-appimage=inti-appimage.desktop
 x-scheme-handler/mailto=org.mozilla.Thunderbird.desktop
 message/rfc822=org.mozilla.Thunderbird.desktop
 text/calendar=org.mozilla.Thunderbird.desktop

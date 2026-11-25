@@ -491,6 +491,7 @@ QString FinderBackend::resolveType(const QFileInfo &info) const
     if (info.isDir()) return QStringLiteral("Carpeta");
 
     const QString ext = info.suffix().toLower();
+    if (ext == QStringLiteral("appimage")) return QStringLiteral("Aplicación (AppImage)");
     if (ext == QStringLiteral("png")) return QStringLiteral("Imagen PNG");
     if (ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg")) return QStringLiteral("Imagen JPEG");
     if (ext == QStringLiteral("svg")) return QStringLiteral("Gráfico vectorial SVG");
@@ -620,6 +621,16 @@ void FinderBackend::openItem(const QString &path)
                 QProcess::startDetached(prog, parts);
                 return;
             }
+        }
+    }
+
+    // AppImage: preguntar e instalar como en Windows (titan-appimage). Por
+    // tipo no se puede: xdg-mime lo ve como un ejecutable cualquiera.
+    if (info.suffix().compare(QStringLiteral("appimage"), Qt::CaseInsensitive) == 0) {
+        const QString instalador = resolveFinderBinary(QStringLiteral("titan-appimage"));
+        if (QFile::exists(instalador)) {
+            QProcess::startDetached(instalador, {info.absoluteFilePath()});
+            return;
         }
     }
 

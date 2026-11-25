@@ -274,6 +274,13 @@ QString paqueteDe(const QString &ruta)
 }
 
 bool esFlatpak(const QString &ruta) { return ruta.contains(QStringLiteral("/flatpak/exports/")); }
+
+// AppImage instalado con doble clic (titan-appimage): vive en la cuenta.
+bool esAppImage(const QString &ruta)
+{
+    return QFileInfo(ruta).fileName().startsWith(QStringLiteral("inti-appimage-"))
+           && ruta.startsWith(QDir::homePath() + QStringLiteral("/.local/share/applications/"));
+}
 }
 
 QVariantMap LauncherBackend::opcionesApp(const QString &desktop) const
@@ -295,7 +302,9 @@ QVariantMap LauncherBackend::opcionesApp(const QString &desktop) const
     }
     r[QStringLiteral("acciones")] = acciones;
 
-    if (QDir(QStringLiteral("/run/archiso")).exists()) {
+    if (esAppImage(desktop)) {
+        r[QStringLiteral("desinstalable")] = true;
+    } else if (QDir(QStringLiteral("/run/archiso")).exists()) {
         r[QStringLiteral("motivo")] = QStringLiteral("No disponible en la sesión de prueba");
     } else if (esFlatpak(desktop)) {
         r[QStringLiteral("desinstalable")] = true;
@@ -354,7 +363,14 @@ QVariantList LauncherBackend::propiedadesApp(const QString &desktop) const
     poner(QStringLiteral("Nombre"), traducido(e, QStringLiteral("Name")));
     poner(QStringLiteral("Descripción"), traducido(e, QStringLiteral("Comment")));
     poner(QStringLiteral("Tipo"), traducido(e, QStringLiteral("GenericName")));
-    if (esFlatpak(desktop)) {
+    if (esAppImage(desktop)) {
+        const QFileInfo prog(e.value(QStringLiteral("X-Inti-AppImage")));
+        poner(QStringLiteral("Origen"), QStringLiteral("AppImage (instalada en tu cuenta)"));
+        if (prog.exists()) {
+            poner(QStringLiteral("Tamaño"), QLocale().formattedDataSize(prog.size()));
+            poner(QStringLiteral("Instalado"), QLocale().toString(prog.lastModified(), QLocale::ShortFormat));
+        }
+    } else if (esFlatpak(desktop)) {
         poner(QStringLiteral("Origen"), QStringLiteral("Flatpak (%1)").arg(QFileInfo(desktop).completeBaseName()));
     } else {
         const QString paquete = paqueteDe(desktop);
@@ -385,12 +401,16 @@ QVariantList LauncherBackend::propiedadesApp(const QString &desktop) const
 
 void LauncherBackend::desinstalar(const QString &desktop, const QString &nombre)
 {
-    if (!desktopValido(desktop) || QDir(QStringLiteral("/run/archiso")).exists()) {
+    if (!desktopValido(desktop) || (QDir(QStringLiteral("/run/archiso")).exists() && !esAppImage(desktop))) {
         emit desinstalacionTerminada(nombre, false, QStringLiteral("No se puede desinstalar"));
         return;
     }
     auto *p = new QProcess(this);
-    if (esFlatpak(desktop)) {
+    if (esAppImage(desktop)) {
+        // Solo borra el AppImage, su icono y su lanzador: sin contraseña.
+        p->setProgram(binTitan(QStringLiteral("titan-appimage")));
+        p->setArguments({QStringLiteral("quitar"), desktop});
+    } else if (esFlatpak(desktop)) {
         const bool usuario = desktop.startsWith(QDir::homePath());
         p->setProgram(QStringLiteral("flatpak"));
         p->setArguments({QStringLiteral("uninstall"), usuario ? QStringLiteral("--user") : QStringLiteral("--system"),

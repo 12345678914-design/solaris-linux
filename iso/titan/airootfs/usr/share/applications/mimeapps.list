@@ -1,4 +1,6 @@
 [Default Applications]
+application/vnd.appimage=inti-appimage.desktop
+application/x-iso9660-appimage=inti-appimage.desktop
 application/vnd.openxmlformats-officedocument.wordprocessingml.document=onlyoffice-desktopeditors.desktop
 application/vnd.openxmlformats-officedocument.wordprocessingml.template=onlyoffice-desktopeditors.desktop
 application/msword=onlyoffice-desktopeditors.desktop

@@ -156,6 +156,17 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        // titan-appimage: el menu de inicio vuelve a leer las apps al momento
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--recargar-apps")) {
+            QLocalSocket socket;
+            socket.connectToServer(QStringLiteral("titan-shell-ipc-") + qgetenv("USER"));
+            if (socket.waitForConnected(600)) {
+                socket.write("apps\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-workspaces")) {
             const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
             QLocalSocket socket;
@@ -304,11 +315,11 @@ int main(int argc, char *argv[])
     QLocalServer server;
     server.removeServer(socketName);
     if (server.listen(socketName)) {
-        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend, &windowTracker]() {
+        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend, &windowTracker, &launcherBackend]() {
             while (QLocalSocket *client = server.nextPendingConnection()) {
                 // Se procesa tambien lo que ya llego antes de conectar readyRead:
                 // con varias teclas seguidas (volumen, brillo) se perdia alguna.
-                auto procesar = [client, &shellBackend, &windowTracker]() {
+                auto procesar = [client, &shellBackend, &windowTracker, &launcherBackend]() {
                     if (client->bytesAvailable() <= 0)
                         return;
                     const QByteArray cmd = client->readAll().trimmed();
@@ -324,6 +335,8 @@ int main(int argc, char *argv[])
                         shellBackend.toggleNotificationCenter();
                     } else if (cmd == "toggle-control-center") {
                         shellBackend.toggleControlCenter();
+                    } else if (cmd == "apps") {
+                        launcherBackend.reload();
                     } else if (cmd == "idioma") {
                         aplicarIdioma();
                     } else if (cmd == "lock") {

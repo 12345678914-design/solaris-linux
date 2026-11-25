@@ -699,6 +699,13 @@ void DesktopBackend::openItem(const QString &path, bool enDock)
         return;
     }
 
+    // AppImage: preguntar e instalar como en Windows (titan-appimage)
+    if (ext.compare(QStringLiteral("appimage"), Qt::CaseInsensitive) == 0
+        && QFile::exists(resolveDesktopBinary(QStringLiteral("titan-appimage")))) {
+        QProcess::startDetached(resolveDesktopBinary(QStringLiteral("titan-appimage")), {realFi.absoluteFilePath()});
+        return;
+    }
+
     if (realFi.isExecutable() && (ext == QStringLiteral("sh") || ext == QStringLiteral("bin") || ext.isEmpty())) {
         QProcess::startDetached(realFi.absoluteFilePath(), QStringList());
         return;
