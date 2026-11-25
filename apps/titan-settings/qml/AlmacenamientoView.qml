@@ -99,7 +99,7 @@ PaginaAjustes {
     }
     Text {
         width: parent.width
-        text: "Discos formatea, crea particiones, comprueba la salud (SMART) y crea imágenes. Las memorias USB, los móviles (MTP) y las carpetas compartidas de la red se abren desde Finder."
+        text: "Discos formatea, crea particiones, comprueba la salud (SMART) y crea imágenes. Las memorias USB, los móviles (MTP) y las carpetas compartidas de la red se abren desde el Explorador de archivos."
         color: tema.contentTextSecondary
         font.pixelSize: 11
         wrapMode: Text.WordWrap

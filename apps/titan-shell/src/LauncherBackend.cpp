@@ -474,7 +474,7 @@ void LauncherBackend::loadApps()
 
     // Las apps propias de Inti OS van primero: así ganan la deduplicación por
     // nombre frente a las de GNOME (que también vienen en la ISO como respaldo).
-    addApp(QStringLiteral("Finder"), QStringLiteral("titan-finder"), QStringLiteral("qrc:/icons/finder.png"));
+    addApp(QStringLiteral("Explorador de archivos"), QStringLiteral("titan-finder"), QStringLiteral("qrc:/icons/finder.png"));
     addApp(QStringLiteral("Firefox"), QStringLiteral("firefox"), QStringLiteral("qrc:/icons/firefox.png"));
     addApp(QStringLiteral("Fotos"), QStringLiteral("titan-fotos"), QStringLiteral("qrc:/icons/pictures.png"));
     addApp(QStringLiteral("Música"), QStringLiteral("titan-musica"), QStringLiteral("qrc:/icons/music-app.png"));

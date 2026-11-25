@@ -703,7 +703,7 @@ TitanWindow {
         MenuSeparator {}
         MenuItem { text: menuFoto.una ? "Copiar" : "Copiar " + menuFoto.rutas.length + " fotos"; onTriggered: fotosBackend.copiarAlPortapapeles(menuFoto.rutas) }
         MenuItem { text: "Usar como fondo de pantalla"; visible: menuFoto.una; height: visible ? implicitHeight : 0; onTriggered: fotosBackend.setAsWallpaper(menuFoto.rutas[0]) }
-        MenuItem { text: "Mostrar en el Finder"; visible: menuFoto.una; height: visible ? implicitHeight : 0; onTriggered: fotosBackend.openInFinder(menuFoto.rutas[0]) }
+        MenuItem { text: "Mostrar en el Explorador"; visible: menuFoto.una; height: visible ? implicitHeight : 0; onTriggered: fotosBackend.openInFinder(menuFoto.rutas[0]) }
         MenuItem { text: "Cambiar nombre…"; visible: menuFoto.una; height: visible ? implicitHeight : 0; onTriggered: dlgNombre.abrirPara(menuFoto.rutas[0]) }
         MenuItem { text: "Presentación"; onTriggered: ventana.empezarPresentacion() }
         MenuSeparator {}
@@ -739,7 +739,7 @@ TitanWindow {
     Menu {
         id: menuCarpeta
         property string ruta: ""
-        MenuItem { text: "Mostrar en el Finder"; onTriggered: fotosBackend.openInFinder(menuCarpeta.ruta) }
+        MenuItem { text: "Mostrar en el Explorador"; onTriggered: fotosBackend.openInFinder(menuCarpeta.ruta) }
         MenuItem { text: "Quitar de Fotos (no se borra nada)"; onTriggered: fotosBackend.quitarCarpeta(menuCarpeta.ruta) }
     }
 
@@ -774,7 +774,7 @@ TitanWindow {
             }
             Text {
                 width: parent.width
-                text: "Se quitan de Fotos y de sus álbumes. Puedes recuperarlas desde la Papelera del Finder."
+                text: "Se quitan de Fotos y de sus álbumes. Puedes recuperarlas desde la Papelera del Explorador de archivos."
                 wrapMode: Text.Wrap
                 color: theme.contentTextSecondary
                 font.pixelSize: 12

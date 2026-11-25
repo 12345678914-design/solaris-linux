@@ -3,6 +3,9 @@
         <file>qml/Finder.qml</file>
         <file>qml/Sidebar.qml</file>
         <file>qml/FileList.qml</file>
+        <file>qml/BarraComandos.qml</file>
+        <file>qml/PanelDetalles.qml</file>
+        <file>qml/Icono.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>

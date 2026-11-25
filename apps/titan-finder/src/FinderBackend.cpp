@@ -29,6 +29,17 @@
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QSet>
+#include <QImageReader>
+
+namespace {
+bool esFoto(const QString &ext)
+{
+    static const QSet<QString> fotos = {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                        QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("bmp"),
+                                        QStringLiteral("svg")};
+    return fotos.contains(ext);
+}
+}
 
 static QString resolveFinderBinary(const QString &program)
 {
@@ -59,12 +70,21 @@ FinderBackend::FinderBackend(QObject *parent)
     , m_historyIndex(-1)
     , m_showHiddenFiles(false)
     , m_searchQuery(QString())
-    , m_viewMode(QStringLiteral("list"))
+    , m_viewMode(QStringLiteral("grid"))
     , m_sortBy(QStringLiteral("name"))
     , m_sortAscending(true)
     , m_watcher(new QFileSystemWatcher(this))
 {
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &FinderBackend::onDirectoryChanged);
+
+    // Explorador de archivos: iconos grandes y panel de detalles por defecto;
+    // lo que el usuario elige se recuerda.
+    {
+        QSettings ajustes(QStringLiteral("titan"), QStringLiteral("explorador"));
+        const QString vista = ajustes.value(QStringLiteral("vista"), QStringLiteral("grid")).toString();
+        m_viewMode = (vista == QLatin1String("list")) ? vista : QStringLiteral("grid");
+        m_panelDetalles = ajustes.value(QStringLiteral("detalles"), true).toBool();
+    }
 
     m_deviceTimer = new QTimer(this);
     m_deviceTimer->setInterval(2000);
@@ -98,53 +118,52 @@ void FinderBackend::initFavorites()
 
     const QString home = QDir::homePath();
 
-    // Sección Favoritos estilo macOS
-    addFav(QStringLiteral("Recientes"), home, QStringLiteral("qrc:/icons/notes.png"), QStringLiteral("Favoritos"));
+    // Acceso rápido (como el Explorador de Windows). Las carpetas del usuario
+    // salen de xdg-user-dirs (Imágenes, Música, Vídeos...); no se crean
+    // carpetas en inglés.
+    const QString rapido = QStringLiteral("Acceso rápido");
+    auto carpetaUsuario = [&home](QStandardPaths::StandardLocation donde, const QStringList &nombres) {
+        const QString p = QStandardPaths::writableLocation(donde);
+        if (!p.isEmpty() && p != home && QDir(p).exists())
+            return p;
+        for (const QString &n : nombres) {
+            if (QDir(home + QLatin1Char('/') + n).exists())
+                return home + QLatin1Char('/') + n;
+        }
+        return QString();
+    };
+    addFav(QStringLiteral("Inicio"), home, QStringLiteral("qrc:/icons/folder.png"), rapido);
 
-    QString desktop = home + QStringLiteral("/Escritorio");
-    QDir().mkpath(desktop);
-    addFav(QStringLiteral("Escritorio"), desktop, QStringLiteral("qrc:/icons/desktop.png"), QStringLiteral("Favoritos"));
+    QString desktop = carpetaUsuario(QStandardPaths::DesktopLocation, {QStringLiteral("Escritorio")});
+    if (desktop.isEmpty()) { desktop = home + QStringLiteral("/Escritorio"); QDir().mkpath(desktop); }
+    addFav(QStringLiteral("Escritorio"), desktop, QStringLiteral("qrc:/icons/desktop.png"), rapido);
 
-    addFav(QStringLiteral("Aplicaciones"), QStringLiteral("/usr/share/applications"), QStringLiteral("qrc:/icons/apps-folder.png"), QStringLiteral("Favoritos"));
+    QString downloads = carpetaUsuario(QStandardPaths::DownloadLocation, {QStringLiteral("Descargas")});
+    if (downloads.isEmpty()) { downloads = home + QStringLiteral("/Descargas"); QDir().mkpath(downloads); }
+    addFav(QStringLiteral("Descargas"), downloads, QStringLiteral("qrc:/icons/downloads.png"), rapido);
 
-    QString documents = home + QStringLiteral("/Documentos");
-    QDir().mkpath(documents);
-    addFav(QStringLiteral("Documentos"), documents, QStringLiteral("qrc:/icons/files.png"), QStringLiteral("Favoritos"));
+    QString documents = carpetaUsuario(QStandardPaths::DocumentsLocation, {QStringLiteral("Documentos")});
+    if (documents.isEmpty()) { documents = home + QStringLiteral("/Documentos"); QDir().mkpath(documents); }
+    addFav(QStringLiteral("Documentos"), documents, QStringLiteral("qrc:/icons/files.png"), rapido);
 
-    QString downloads = home + QStringLiteral("/Descargas");
-    QDir().mkpath(downloads);
-    addFav(QStringLiteral("Descargas"), downloads, QStringLiteral("qrc:/icons/downloads.png"), QStringLiteral("Favoritos"));
+    const QString pictures = carpetaUsuario(QStandardPaths::PicturesLocation, {QStringLiteral("Imágenes"), QStringLiteral("Pictures")});
+    if (!pictures.isEmpty())
+        addFav(QStringLiteral("Imágenes"), pictures, QStringLiteral("qrc:/icons/pictures.png"), rapido);
+    const QString music = carpetaUsuario(QStandardPaths::MusicLocation, {QStringLiteral("Música"), QStringLiteral("Musica"), QStringLiteral("Music")});
+    if (!music.isEmpty())
+        addFav(QStringLiteral("Música"), music, QStringLiteral("qrc:/icons/music-folder.png"), rapido);
+    const QString videos = carpetaUsuario(QStandardPaths::MoviesLocation, {QStringLiteral("Vídeos"), QStringLiteral("Videos")});
+    if (!videos.isEmpty())
+        addFav(QStringLiteral("Vídeos"), videos, QStringLiteral("qrc:/icons/file-video.png"), rapido);
+    if (QDir(home + QStringLiteral("/Proyectos")).exists())
+        addFav(QStringLiteral("Proyectos"), home + QStringLiteral("/Proyectos"), QStringLiteral("qrc:/icons/developer.png"), rapido);
 
-    QString pictures = home + QStringLiteral("/Pictures");
-    if (!QDir(pictures).exists() && QDir(home + QStringLiteral("/Imágenes")).exists()) {
-        pictures = home + QStringLiteral("/Imágenes");
-    } else {
-        QDir().mkpath(pictures);
-    }
-    addFav(QStringLiteral("Pictures"), pictures, QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("Favoritos"));
-
-    QString music = home + QStringLiteral("/Musica");
-    if (!QDir(music).exists() && QDir(home + QStringLiteral("/Música")).exists()) {
-        music = home + QStringLiteral("/Música");
-    } else {
-        QDir().mkpath(music);
-    }
-    addFav(QStringLiteral("Musica"), music, QStringLiteral("qrc:/icons/music-folder.png"), QStringLiteral("Favoritos"));
-
-    QString videos = home + QStringLiteral("/Videos");
-    QDir().mkpath(videos);
-    addFav(QStringLiteral("Videos"), videos, QStringLiteral("qrc:/icons/file-video.png"), QStringLiteral("Favoritos"));
-
-    QString proyectos = home + QStringLiteral("/Proyectos");
-    QDir().mkpath(proyectos);
-    addFav(QStringLiteral("Proyectos"), proyectos, QStringLiteral("qrc:/icons/developer.png"), QStringLiteral("Favoritos"));
-
-    // Sección Ubicaciones
-    addFav(QStringLiteral("Disco del Sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Ubicaciones"));
+    // Este equipo
+    addFav(QStringLiteral("Disco del sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Este equipo"));
 
     QString trash = home + QStringLiteral("/.local/share/Trash/files");
     QDir().mkpath(trash);
-    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Ubicaciones"));
+    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Este equipo"));
 
     // Sección Dispositivos (USBs y Discos detectados bajo demanda)
     for (const QVariant &v : m_devices) {
@@ -302,7 +321,7 @@ void FinderBackend::loadDirectory(const QString &path)
         if (info.isDir()) {
             QDir sub(info.absoluteFilePath());
             const uint count = sub.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
-            entry[QStringLiteral("size")] = QStringLiteral("%1 elementos").arg(count);
+            entry[QStringLiteral("size")] = count == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(count);
             entry[QStringLiteral("sizeBytes")] = static_cast<qint64>(count);
         } else {
             entry[QStringLiteral("size")] = formatBytes(info.size());
@@ -315,6 +334,8 @@ void FinderBackend::loadDirectory(const QString &path)
 
         entry[QStringLiteral("type")] = resolveType(info);
         entry[QStringLiteral("icon")] = resolveIcon(info);
+        // Las fotos se ven en miniatura en la vista de iconos
+        entry[QStringLiteral("foto")] = !info.isDir() && esFoto(info.suffix().toLower());
 
         m_rawEntries.append(entry);
     }
@@ -562,10 +583,55 @@ void FinderBackend::setSearchQuery(const QString &query)
 
 void FinderBackend::setViewMode(const QString &mode)
 {
-    if (m_viewMode != mode) {
+    if (m_viewMode != mode && (mode == QLatin1String("grid") || mode == QLatin1String("list"))) {
         m_viewMode = mode;
+        QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).setValue(QStringLiteral("vista"), mode);
         emit viewModeChanged();
     }
+}
+
+void FinderBackend::setPanelDetalles(bool v)
+{
+    if (m_panelDetalles == v)
+        return;
+    m_panelDetalles = v;
+    QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).setValue(QStringLiteral("detalles"), v);
+    emit panelDetallesChanged();
+}
+
+
+QVariantMap FinderBackend::detalles(const QString &path) const
+{
+    QVariantMap m;
+    const QFileInfo fi(path.isEmpty() ? m_currentPath : path);
+    if (!fi.exists())
+        return m;
+    const QLocale es(QLocale::Spanish);
+    const QString ext = fi.suffix().toLower();
+    m[QStringLiteral("nombre")] = fi.fileName().isEmpty() ? fi.absoluteFilePath() : fi.fileName();
+    m[QStringLiteral("ruta")] = fi.absoluteFilePath();
+    m[QStringLiteral("carpeta")] = QFileInfo(fi.absolutePath()).fileName();
+    m[QStringLiteral("esCarpeta")] = fi.isDir();
+    m[QStringLiteral("tipo")] = resolveType(fi);
+    m[QStringLiteral("icono")] = resolveIcon(fi);
+    if (fi.isDir()) {
+        const int n = QDir(fi.absoluteFilePath()).entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
+        m[QStringLiteral("tamano")] = n == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(n);
+    } else {
+        m[QStringLiteral("tamano")] = formatBytes(fi.size());
+    }
+    m[QStringLiteral("modificado")] = es.toString(fi.lastModified(), QStringLiteral("d MMM yyyy, HH:mm"));
+    const QDateTime creado = fi.birthTime().isValid() ? fi.birthTime() : fi.metadataChangeTime();
+    m[QStringLiteral("creado")] = es.toString(creado, QStringLiteral("d MMM yyyy, HH:mm"));
+    const bool foto = !fi.isDir() && esFoto(ext);
+    m[QStringLiteral("esFoto")] = foto;
+    if (foto && ext != QLatin1String("svg")) {
+        // Solo lee la cabecera: no carga la foto entera
+        const QSize t = QImageReader(fi.absoluteFilePath()).size();
+        if (t.isValid())
+            m[QStringLiteral("dimensiones")] = QStringLiteral("%1 × %2").arg(t.width()).arg(t.height());
+    }
+    return m;
 }
 
 void FinderBackend::setSortBy(const QString &by)

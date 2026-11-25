@@ -702,7 +702,7 @@ Item {
                 }
             }
 
-            // Opción "Abrir en Finder"
+            // Opción "Abrir en el Explorador"
             Rectangle {
                 width: parent.width
                 height: 32

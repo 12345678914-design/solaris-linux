@@ -568,6 +568,12 @@ contiene apps/titan-shell/src/DesktopBackend.cpp 'titan-appimage' "AppImage: dob
 contiene apps/titan-shell/src/LauncherBackend.cpp 'esAppImage' "AppImage: Desinstalar desde el menú de inicio"
 contiene apps/titan-shell/src/main.cpp 'recargar-apps' "el menú de inicio se actualiza al instalar"
 contiene iso/titan/profiledef.sh 'titan-appimage' "titan-appimage ejecutable en la ISO"
+contiene iso/titan/airootfs/usr/share/applications/titan-finder.desktop 'Name=Explorador de archivos' "Explorador de archivos: nombre nuevo en el menú"
+contiene apps/titan-finder/qml/Finder.qml 'BarraComandos' "Explorador: barra de comandos (Nuevo, Cortar, Copiar, Pegar...)"
+contiene apps/titan-finder/qml/Finder.qml 'PanelDetalles' "Explorador: panel de detalles con vista previa"
+contiene apps/titan-finder/qml/FileList.qml 'miniatura' "Explorador: fotos en miniatura en la vista de iconos"
+contiene apps/titan-finder/src/FinderBackend.cpp 'PicturesLocation' "Explorador: carpetas del usuario en español (xdg-user-dirs)"
+contiene iso/titan/airootfs/etc/skel/.config/labwc/rc.xml 'Explorador de archivos' "labwc: el Explorador sin doble barra de título"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

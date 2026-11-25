@@ -1,5 +1,5 @@
 # Inti OS: aplicaciones por defecto por tipo de archivo.
-# Las apps propias (Fotos, Música, Vídeo, Finder) van primero; Celluloid queda
+# Las apps propias (Fotos, Música, Vídeo, Explorador) van primero; Celluloid queda
 # como alternativa para vídeo en "Abrir con".
 [Default Applications]
 application/vnd.appimage=inti-appimage.desktop

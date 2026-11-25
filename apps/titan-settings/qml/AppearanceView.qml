@@ -7,7 +7,7 @@ import QtQuick.Controls
 PaginaAjustes {
     id: vista
     titulo: "Apariencia"
-    descripcion: "El color de acento se usa en botones, selecciones e interruptores del Finder, Música, Fotos, Ajustes, el Dock y las apps GTK."
+    descripcion: "El color de acento se usa en botones, selecciones e interruptores del Explorador de archivos, Música, Fotos, Ajustes, el Dock y las apps GTK."
 
     TitanTheme { id: tema }
 

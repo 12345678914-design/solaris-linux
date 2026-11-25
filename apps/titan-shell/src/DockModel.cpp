@@ -181,7 +181,7 @@ void DockModel::initDefaultPinnedApps()
         m_pinnedApps.append(app);
     };
 
-    addPinned(QStringLiteral("titan-finder"), QStringLiteral("Finder"), QStringLiteral("qrc:/icons/finder.png"), QStringLiteral("titan-finder"));
+    addPinned(QStringLiteral("titan-finder"), QStringLiteral("Explorador de archivos"), QStringLiteral("qrc:/icons/finder.png"), QStringLiteral("titan-finder"));
     addPinned(QStringLiteral("firefox"), QStringLiteral("Firefox"), QStringLiteral("qrc:/icons/firefox.png"), QStringLiteral("firefox"));
     addPinned(QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("ONLYOFFICE"), QStringLiteral("qrc:/icons/onlyoffice.png"), QStringLiteral("onlyoffice-desktopeditors"));
     addPinned(QStringLiteral("titan-fotos"), QStringLiteral("Fotos"), QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("titan-fotos"));

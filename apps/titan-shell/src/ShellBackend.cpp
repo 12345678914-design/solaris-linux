@@ -939,7 +939,7 @@ void ShellBackend::openTerminal()
 void ShellBackend::openFinder()
 {
     if (m_dockModel) {
-        m_dockModel->launchApp(QStringLiteral("titan-finder"), QStringLiteral("titan-finder"), QStringLiteral("Finder"), QStringLiteral("qrc:/icons/finder.png"));
+        m_dockModel->launchApp(QStringLiteral("titan-finder"), QStringLiteral("titan-finder"), QStringLiteral("Explorador de archivos"), QStringLiteral("qrc:/icons/finder.png"));
     } else {
         QProcess::startDetached(resolveShellBinary(QStringLiteral("titan-finder")));
     }

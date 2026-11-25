@@ -975,7 +975,18 @@ Rectangle {
         }
     }
     property string subDe: ""
-    onCtxVisibleChanged: if (!ctxVisible) { subOpciones = []; subDe = "" }
+    onCtxVisibleChanged: if (!ctxVisible) { subOpciones = []; subDe = ""; menuFijo = null }
+
+    // Menús de la barra de comandos (Nuevo, Ordenar, Ver, ...): debajo del botón
+    property var menuFijo: null
+    function mostrarMenu(opciones, desde) {
+        var q = desde.mapToItem(capaMenu, 0, desde.height + 4)
+        ctxX = q.x
+        ctxY = q.y
+        menuFijo = opciones
+        ctxVisible = true
+    }
+    function urlDe(p) { return "file://" + p.split("/").map(encodeURIComponent).join("/") }
 
     Item {
         id: capaMenu
@@ -995,7 +1006,7 @@ Rectangle {
         CajaMenu {
             id: menuPpal
             width: 250
-            opciones: fileListRoot.ctxVisible ? fileListRoot.opcionesMenu() : []
+            opciones: fileListRoot.ctxVisible ? (fileListRoot.menuFijo !== null ? fileListRoot.menuFijo : fileListRoot.opcionesMenu()) : []
             x: fileListRoot.posMenu(fileListRoot.ctxX, width, capaMenu.width)
             y: fileListRoot.posMenu(fileListRoot.ctxY, height, capaMenu.height)
         }
@@ -1238,8 +1249,11 @@ Rectangle {
             GridView {
                 id: gridView
                 anchors.fill: parent
-                cellWidth: 104
-                cellHeight: 116
+                // Iconos grandes (Explorador de archivos): las celdas se reparten
+                // el ancho para que no quede un hueco a la derecha
+                readonly property int columnas: Math.max(1, Math.floor(width / 118))
+                cellWidth: Math.floor(width / columnas)
+                cellHeight: 132
                 clip: true
                 interactive: false
                 boundsBehavior: Flickable.StopAtBounds
@@ -1290,14 +1304,33 @@ Rectangle {
                             anchors.centerIn: parent
                             spacing: 6
                             width: parent.width - 8
-                            Image {
-                                source: theme.tinte(modelData.icon)
-                                sourceSize: Qt.size(64, 64)
-                                width: 58; height: 58
+                            Item {
+                                width: 76; height: 76
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
                                 opacity: finderBackend.portapapelesCortado && finderBackend.clipboardPath === modelData.path ? 0.5 : 1
+                                Image {
+                                    id: icGrande
+                                    anchors.fill: parent
+                                    visible: !miniatura.visible
+                                    source: theme.tinte(modelData.icon)
+                                    sourceSize: Qt.size(96, 96)
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                }
+                                // Fotos: miniatura real (se decodifica pequeña, no gasta RAM)
+                                Image {
+                                    id: miniatura
+                                    anchors.centerIn: parent
+                                    width: parent.width
+                                    height: Math.round(parent.height * 0.78)
+                                    visible: !!modelData.foto && status === Image.Ready
+                                    source: modelData.foto ? fileListRoot.urlDe(modelData.path) : ""
+                                    sourceSize.width: 152
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: false
+                                    smooth: true
+                                }
                             }
                             Text {
                                 text: modelData.name

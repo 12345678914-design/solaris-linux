@@ -28,6 +28,8 @@ class FinderBackend : public QObject
     Q_PROPERTY(bool showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
+    // Panel de detalles a la derecha (vista previa, datos y acciones); se recuerda
+    Q_PROPERTY(bool panelDetalles READ panelDetalles WRITE setPanelDetalles NOTIFY panelDetallesChanged)
     Q_PROPERTY(QString sortBy READ sortBy WRITE setSortBy NOTIFY sortChanged)
     Q_PROPERTY(bool sortAscending READ sortAscending WRITE setSortAscending NOTIFY sortChanged)
     Q_PROPERTY(QString totalItemsText READ totalItemsText NOTIFY entriesChanged)
@@ -65,6 +67,8 @@ public:
     void setSearchQuery(const QString &query);
 
     QString viewMode() const { return m_viewMode; }
+    bool panelDetalles() const { return m_panelDetalles; }
+    void setPanelDetalles(bool v);
     void setViewMode(const QString &mode);
 
     QString sortBy() const { return m_sortBy; }
@@ -129,6 +133,7 @@ public:
     Q_INVOKABLE bool moveItems(const QStringList &paths, const QString &targetDir = QString());
     Q_INVOKABLE bool paste(const QString &destinationDir = QString());
     Q_INVOKABLE QVariantMap getFileProperties(const QString &path);
+    Q_INVOKABLE QVariantMap detalles(const QString &path) const;   // panel de detalles
     Q_INVOKABLE void sort(const QString &criteria);
     Q_INVOKABLE void refreshDevices();
     Q_INVOKABLE bool mountDevice(const QString &deviceNode);
@@ -144,6 +149,7 @@ signals:
     void showHiddenFilesChanged();
     void searchQueryChanged();
     void viewModeChanged();
+    void panelDetallesChanged();
     void sortChanged();
     void freeSpaceTextChanged();
     void clipboardChanged();
@@ -170,6 +176,7 @@ private:
     QString m_viewMode; // "grid" or "list"
     QString m_sortBy;   // "name", "date", "size", "kind"
     bool m_sortAscending;
+    bool m_panelDetalles = true;
     QString m_freeSpaceText;
 
     QVariantList m_rawEntries;

@@ -1189,7 +1189,7 @@ TitanWindow {
         MenuItem { text: "Ir al álbum"; onTriggered: musicaBackend.abrir("album:" + menuCancion.cancion.claveAlbum) }
         MenuItem { text: "Ir al artista"; onTriggered: musicaBackend.abrir("artista:" + menuCancion.cancion.artistaAlbum) }
         MenuItem { text: "Información y etiquetas…"; onTriggered: dlgInfo.abrirPara(menuCancion.cancion.ruta) }
-        MenuItem { text: "Mostrar en Finder"; onTriggered: musicaBackend.mostrarEnFinder(menuCancion.cancion.ruta) }
+        MenuItem { text: "Mostrar en el Explorador"; onTriggered: musicaBackend.mostrarEnFinder(menuCancion.cancion.ruta) }
         MenuSeparator {}
         MenuItem {
             text: "Quitar de la lista"
@@ -1275,7 +1275,7 @@ TitanWindow {
         contentItem: Column {
             spacing: 12
             Text { width: parent.width; text: "¿Mover «" + (dlgPapelera.cancion.titulo || "") + "» a la papelera?"; wrapMode: Text.Wrap; color: theme.contentTextPrimary; font.pixelSize: 15; font.weight: Font.Bold }
-            Text { width: parent.width; text: "El archivo se quita de la biblioteca. Puedes recuperarlo desde la Papelera del Finder."; wrapMode: Text.Wrap; color: theme.contentTextSecondary; font.pixelSize: 12 }
+            Text { width: parent.width; text: "El archivo se quita de la biblioteca. Puedes recuperarlo desde la Papelera del Explorador de archivos."; wrapMode: Text.Wrap; color: theme.contentTextSecondary; font.pixelSize: 12 }
             Row {
                 anchors.right: parent.right
                 spacing: 8
@@ -1341,7 +1341,7 @@ TitanWindow {
             Row {
                 anchors.right: parent.right
                 spacing: 8
-                Button { text: "Mostrar en Finder"; onClicked: musicaBackend.mostrarEnFinder(dlgInfo.d.ruta) }
+                Button { text: "Mostrar en el Explorador"; onClicked: musicaBackend.mostrarEnFinder(dlgInfo.d.ruta) }
                 Button { text: "Cancelar"; onClicked: dlgInfo.close() }
                 Button {
                     text: "Guardar"
