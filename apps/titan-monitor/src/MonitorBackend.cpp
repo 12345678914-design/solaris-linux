@@ -191,9 +191,16 @@ QString MonitorBackend::mbs(double bps) const
     return QLocale(QLocale::Spanish).toString(bps / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB/s");
 }
 
+// Red y disco: siempre en kB/s o MB/s ("0,4 kB/s", "350 kB/s", "2,5 MB/s"),
+// nunca "374 bytes/s", que es largo y no cabe en las tarjetas.
 QString MonitorBackend::velocidad(double bps) const
 {
-    return bytes(bps) + QStringLiteral("/s");
+    const QLocale es(QLocale::Spanish);
+    const double kb = qMax(0.0, bps) / 1024.0;
+    if (kb < 1024.0)
+        return es.toString(kb, 'f', kb < 10.0 ? 1 : 0) + QStringLiteral(" kB/s");
+    const double mb = kb / 1024.0;
+    return es.toString(mb, 'f', mb < 100.0 ? 1 : 0) + QStringLiteral(" MB/s");
 }
 
 // ---------------------------------------------------------------- muestras
