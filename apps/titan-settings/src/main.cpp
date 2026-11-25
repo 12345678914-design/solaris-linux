@@ -13,6 +13,7 @@
 #include "Dispositivos.h"
 #include "Conexiones.h"
 #include "Personalizar.h"
+#include "Predeterminadas.h"
 #include "Usuarios.h"
 
 int main(int argc, char *argv[])
@@ -77,6 +78,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("dispositivos"), &dispositivos);
     engine.rootContext()->setContextProperty(QStringLiteral("conexiones"), &conexiones);
     engine.rootContext()->setContextProperty(QStringLiteral("personalizar"), &personalizar);
+    Predeterminadas predeterminadas;
+    engine.rootContext()->setContextProperty(QStringLiteral("predeterminadas"), &predeterminadas);
     engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
     // Solo para pruebas con un servicio de usuarios falso (TITAN_USUARIOS_SOCK):
     // entra ya desbloqueado como administrador ("usuario:clave").

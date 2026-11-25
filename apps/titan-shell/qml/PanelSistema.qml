@@ -4,6 +4,8 @@
 //   portapapeles Win+V: lo último que se ha copiado (solo en memoria)
 //   emojis       Win+. : buscar emojis en español y escribirlos
 //   atajos       Win+F1: los atajos de teclado de Inti
+//   proyectar    Win+P: solo esta pantalla, duplicar, extender, solo la segunda
+//   herramientas Win+X: menú rápido de herramientas del sistema
 // Esc o un clic fuera lo cierran. Al elegir algo se cierra primero (el
 // teclado vuelve a la ventana de antes) y luego se pega/escribe en ella.
 import QtQuick
@@ -29,6 +31,13 @@ Item {
         confirmarSalida = false
         if (panel === "emojis") { buscarEmoji.text = ""; grupoEmoji = -1; emojiSel = 0; buscarEmoji.forceActiveFocus() }
         else if (panel === "portapapeles") { clipSel = 0; listaClip.forceActiveFocus() }
+        else if (panel === "proyectar") {
+            var e = shellBackend.estadoProyeccion().split(" ")
+            pantallasConectadas = parseInt(e[0]) || 1
+            proySel = Math.max(0, modosProyeccion.map(function (m) { return m.id }).indexOf(e[1]))
+            teclas.forceActiveFocus()
+        }
+        else if (panel === "herramientas") { herrSel = 0; teclas.forceActiveFocus() }
         else if (panel !== "") teclas.forceActiveFocus()
     }
 
@@ -44,6 +53,28 @@ Item {
         id: teclas
         focus: true
         Keys.onEscapePressed: raiz.cerrar()
+        Keys.onPressed: (event) => {
+            if (raiz.panel === "proyectar") {
+                if (event.key === Qt.Key_Down || event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
+                    raiz.proySel = (raiz.proySel + 1) % raiz.modosProyeccion.length; event.accepted = true
+                } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left || event.key === Qt.Key_Backtab) {
+                    raiz.proySel = (raiz.proySel + raiz.modosProyeccion.length - 1) % raiz.modosProyeccion.length; event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                    raiz.elegirProyeccion(raiz.proySel); event.accepted = true
+                }
+            } else if (raiz.panel === "herramientas") {
+                var n = raiz.herramientas.length
+                var paso = function (d) { var i = raiz.herrSel; do { i = (i + d + n) % n } while (raiz.herramientas[i].t === ""); raiz.herrSel = i }
+                if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) { paso(1); event.accepted = true }
+                else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) { paso(-1); event.accepted = true }
+                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { raiz.usarHerramienta(raiz.herramientas[raiz.herrSel]); event.accepted = true }
+                else {
+                    // Como en Windows: la letra subrayada abre la opción
+                    for (var k = 0; k < n; ++k)
+                        if (raiz.herramientas[k].k && event.text.toLowerCase() === raiz.herramientas[k].k) { raiz.usarHerramienta(raiz.herramientas[k]); event.accepted = true; break }
+                }
+            }
+        }
     }
 
     component Boton: Rectangle {
@@ -539,7 +570,8 @@ Item {
             ["Win + M", "Minimizar"],
             ["Win + F", "Maximizar / restaurar"],
             ["Win + Mayús + F", "Pantalla completa"],
-            ["Win + ← / →", "Ventana a media pantalla"]
+            ["Win + ← / →", "Ventana a media pantalla"],
+            ["Win + Tab", "Ver todas las ventanas"]
         ] },
         { g: "Escribir", l: [
             ["Ctrl + C / X / V", "Copiar, cortar y pegar"],
@@ -561,6 +593,8 @@ Item {
             ["Win + T", "Terminal"],
             ["Win + W", "Cambiar el fondo de pantalla"],
             ["Win + Mayús + D", "Modo claro / oscuro"],
+            ["Win + X", "Menú de herramientas del sistema"],
+            ["Win + P", "Segunda pantalla o proyector"],
             ["Win + Alt + S", "Leer en voz alta (lector de pantalla)"],
             ["Win + F1", "Esta lista"]
         ] }
@@ -655,6 +689,200 @@ Item {
             spacing: 8
             Boton { texto: "Abrir el manual"; onPulsado: { raiz.cerrar(); shellBackend.abrirApp("titan-manual") } }
             Boton { texto: "Cerrar"; principal: true; onPulsado: raiz.cerrar() }
+        }
+    }
+
+    // =================================================== Win+P: proyectar
+    property int pantallasConectadas: 1
+    property int proySel: 0
+    readonly property var modosProyeccion: [
+        { id: "solo-esta", t: "Solo esta pantalla", d: "La segunda se apaga" },
+        { id: "duplicar", t: "Duplicar", d: "Lo mismo en las dos" },
+        { id: "extender", t: "Extender", d: "Más espacio: la segunda a la derecha" },
+        { id: "solo-segunda", t: "Solo la segunda pantalla", d: "Esta se apaga" }
+    ]
+    function elegirProyeccion(i) {
+        proySel = i
+        cerrar()
+        shellBackend.proyectar(modosProyeccion[i].id)
+    }
+
+    Rectangle {
+        visible: raiz.panel === "proyectar"
+        anchors.right: parent.right
+        anchors.rightMargin: 16
+        anchors.top: parent.top
+        anchors.topMargin: 44
+        width: 330
+        height: colProy.implicitHeight + 36
+        radius: 16
+        color: raiz.tarjeta
+        border.color: raiz.borde
+        MouseArea { anchors.fill: parent }
+
+        Column {
+            id: colProy
+            x: 16; y: 18
+            width: parent.width - 32
+            spacing: 8
+            Text { text: "Proyectar"; color: raiz.texto; font.pixelSize: 17; font.bold: true }
+            Text {
+                width: parent.width
+                visible: raiz.pantallasConectadas < 2
+                wrapMode: Text.Wrap
+                text: "Solo hay una pantalla. Conecta un monitor, una tele o un proyector."
+                color: raiz.tenue; font.pixelSize: 12
+                bottomPadding: 4
+            }
+            Repeater {
+                model: raiz.modosProyeccion
+                delegate: Rectangle {
+                    id: opProy
+                    required property var modelData
+                    required property int index
+                    readonly property bool elegido: raiz.proySel === index
+                    width: colProy.width
+                    height: 64
+                    radius: 11
+                    opacity: raiz.pantallasConectadas < 2 && index > 0 ? 0.45 : 1
+                    color: elegido ? Qt.rgba(tema.accent.r, tema.accent.g, tema.accent.b, tema.isDark ? 0.28 : 0.14)
+                                   : (zonaProy.containsMouse ? raiz.campo : "transparent")
+                    border.color: elegido ? tema.accent : "transparent"
+                    border.width: 1.5
+                    // Dibujo: dos pantallas según el modo
+                    Item {
+                        id: dibujo
+                        x: 12; anchors.verticalCenter: parent.verticalCenter
+                        width: 64; height: 40
+                        readonly property bool primera: opProy.modelData.id !== "solo-segunda"
+                        readonly property bool segunda: opProy.modelData.id !== "solo-esta"
+                        readonly property bool juntas: opProy.modelData.id === "extender"
+                        Rectangle {
+                            x: dibujo.juntas ? 2 : 4; y: 6
+                            width: dibujo.juntas ? 30 : 34; height: 24; radius: 3
+                            color: dibujo.primera ? tema.accent : "transparent"
+                            border.color: dibujo.primera ? tema.accent : raiz.tenue; border.width: 1.5
+                            Text { anchors.centerIn: parent; text: "1"; color: dibujo.primera ? "white" : raiz.tenue; font.pixelSize: 11; font.bold: true }
+                        }
+                        Rectangle {
+                            x: dibujo.juntas ? 32 : 26; y: dibujo.juntas ? 6 : 12
+                            width: dibujo.juntas ? 30 : 34; height: 24; radius: 3
+                            color: dibujo.segunda ? Qt.lighter(tema.accent, 1.25) : "transparent"
+                            border.color: dibujo.segunda ? tema.accent : raiz.tenue; border.width: 1.5
+                            Text { anchors.centerIn: parent; text: opProy.modelData.id === "duplicar" ? "1" : "2"; color: dibujo.segunda ? "white" : raiz.tenue; font.pixelSize: 11; font.bold: true }
+                        }
+                    }
+                    Column {
+                        anchors.left: dibujo.right; anchors.leftMargin: 14
+                        anchors.right: parent.right; anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Text { text: opProy.modelData.t; color: raiz.texto; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        Text { width: parent.width; text: opProy.modelData.d; color: raiz.tenue; font.pixelSize: 11; elide: Text.ElideRight }
+                    }
+                    MouseArea {
+                        id: zonaProy
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: raiz.elegirProyeccion(opProy.index)
+                    }
+                }
+            }
+            Text {
+                width: parent.width
+                topPadding: 2
+                wrapMode: Text.Wrap
+                text: "Más opciones (resolución, posición) en Ajustes › Pantallas."
+                color: raiz.tenue; font.pixelSize: 11
+            }
+        }
+    }
+
+    // =================================================== Win+X: herramientas
+    property int herrSel: 0
+    // t = texto, k = letra rápida, a = qué hace; t "" = separador
+    readonly property var herramientas: [
+        { t: "Aplicaciones instaladas", k: "a", a: "instaladas" },
+        { t: "Monitor de recursos", k: "m", a: "app:titan-monitor" },
+        { t: "Informe del equipo", k: "n", a: "app:titan-informe" },
+        { t: "Discos", k: "d", a: "app:gnome-disks" },
+        { t: "Terminal", k: "t", a: "app:titan-terminal" },
+        { t: "" },
+        { t: "Explorador de archivos", k: "e", a: "app:titan-finder" },
+        { t: "Buscar", k: "b", a: "buscar" },
+        { t: "Ajustes", k: "j", a: "ajustes:" },
+        { t: "Red e Internet", k: "r", a: "ajustes:Wi-Fi" },
+        { t: "Energía", k: "g", a: "ajustes:Batería" },
+        { t: "Aplicaciones predeterminadas", k: "p", a: "ajustes:Aplicaciones predeterminadas" },
+        { t: "" },
+        { t: "Apagar o cerrar sesión", k: "c", a: "seguridad" }
+    ]
+    function usarHerramienta(h) {
+        if (!h || h.t === "") return
+        if (h.a === "seguridad") { shellBackend.panel = "seguridad"; return }
+        cerrar()
+        if (h.a === "instaladas") shellBackend.abrirAppsInstaladas()
+        else if (h.a === "buscar") shellBackend.toggleLauncher()
+        else if (h.a.indexOf("app:") === 0) shellBackend.abrirApp(h.a.substring(4))
+        else if (h.a.indexOf("ajustes:") === 0) shellBackend.openSettings(h.a.substring(8))
+    }
+
+    Rectangle {
+        visible: raiz.panel === "herramientas"
+        // Junto a "Inicio", arriba a la izquierda (en Windows sale junto al botón Inicio)
+        x: 8; y: 34
+        width: 270
+        height: colHerr.implicitHeight + 12
+        radius: 12
+        color: raiz.tarjeta
+        border.color: raiz.borde
+        MouseArea { anchors.fill: parent }
+        Column {
+            id: colHerr
+            x: 6; y: 6
+            width: parent.width - 12
+            Repeater {
+                model: raiz.herramientas
+                delegate: Item {
+                    id: opHerr
+                    required property var modelData
+                    required property int index
+                    width: colHerr.width
+                    height: modelData.t === "" ? 9 : 30
+                    Rectangle {
+                        visible: opHerr.modelData.t === ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 8; width: parent.width - 16; height: 1
+                        color: raiz.borde
+                    }
+                    Rectangle {
+                        visible: opHerr.modelData.t !== ""
+                        anchors.fill: parent
+                        radius: 7
+                        color: raiz.herrSel === opHerr.index ? tema.accent : (zonaHerr.containsMouse ? raiz.campo : "transparent")
+                        Text {
+                            x: 12; anchors.verticalCenter: parent.verticalCenter
+                            textFormat: Text.StyledText
+                            // la letra rápida subrayada, como en Windows
+                            text: {
+                                var t = opHerr.modelData.t || "", k = opHerr.modelData.k || ""
+                                var i = t.toLowerCase().indexOf(k)
+                                return i < 0 ? t : t.substring(0, i) + "<u>" + t.charAt(i) + "</u>" + t.substring(i + 1)
+                            }
+                            color: raiz.herrSel === opHerr.index ? "white" : raiz.texto
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: zonaHerr
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onEntered: raiz.herrSel = opHerr.index
+                            onClicked: raiz.usarHerramienta(opHerr.modelData)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -330,8 +330,10 @@ TitanWindow {
         "Notificaciones": notificacionesComponent,
         "Concentración": concentracionComponent,
         "Usuarios y grupos": usuariosComponent,
-        "Ventanas": ventanasComponent
+        "Ventanas": ventanasComponent,
+        "Aplicaciones predeterminadas": predeterminadasComponent
     })
+    Component { id: predeterminadasComponent; PredeterminadasView {} }
     Component { id: ventanasComponent; VentanasView {} }
     Component { id: pantallasComponent; PantallasView {} }
     Component { id: sonidoComponent; SonidoView {} }

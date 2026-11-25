@@ -199,6 +199,8 @@
     <keybind key="W-v"><action name="Execute" command="titan-shell --tecla portapapeles"/></keybind>
     <keybind key="W-period"><action name="Execute" command="titan-shell --tecla emojis"/></keybind>
     <keybind key="W-F1"><action name="Execute" command="titan-shell --tecla atajos"/></keybind>
+    <keybind key="W-x"><action name="Execute" command="titan-shell --tecla herramientas"/></keybind>
+    <keybind key="W-p"><action name="Execute" command="titan-shell --tecla proyectar"/></keybind>
     <!-- Ctrl+Mayús+Esc: Monitor de recursos (como el Administrador de tareas de Windows) -->
     <keybind key="C-S-Escape">
       <action name="Execute" command="titan-monitor"/>

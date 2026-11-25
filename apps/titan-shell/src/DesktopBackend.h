@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QFileInfo>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
@@ -22,6 +23,8 @@ public:
 public slots:
     // enDock: la app rebota en el Dock (sin indicador junto al puntero)
     Q_INVOKABLE void openItem(const QString &path, bool enDock = false);
+    // Icono de un archivo cualquiera (resultados del buscador del menú de inicio)
+    Q_INVOKABLE QString iconoDe(const QString &path) const { const QFileInfo fi(path); return resolveIcon(fi.fileName(), fi.isDir()); }
     Q_INVOKABLE void openInFinder();
     // "Nueva carpeta" en el escritorio (clic derecho, como Windows): la deja
     // en la casilla del clic y devuelve su ruta ("" si no se pudo).

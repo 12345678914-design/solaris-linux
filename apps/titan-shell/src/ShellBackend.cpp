@@ -1482,7 +1482,8 @@ void ShellBackend::tecla(const QString &accion)
     } else if (accion == QStringLiteral("alt-tab") || accion == QStringLiteral("alt-tab-atras")) {
         emit altTab(accion == QStringLiteral("alt-tab") ? 1 : -1);
     } else if (accion == QStringLiteral("seguridad") || accion == QStringLiteral("portapapeles")
-               || accion == QStringLiteral("emojis") || accion == QStringLiteral("atajos")) {
+               || accion == QStringLiteral("emojis") || accion == QStringLiteral("atajos")
+               || accion == QStringLiteral("proyectar") || accion == QStringLiteral("herramientas")) {
         // Ctrl+Alt+Supr siempre abre (no alterna): es la tecla de "socorro"
         if (accion == QStringLiteral("seguridad"))
             setPanel(accion);
@@ -1512,7 +1513,8 @@ void ShellBackend::tecla(const QString &accion)
 void ShellBackend::setPanel(const QString &p)
 {
     static const QSet<QString> validos{QString(), QStringLiteral("seguridad"), QStringLiteral("portapapeles"),
-                                       QStringLiteral("emojis"), QStringLiteral("atajos")};
+                                       QStringLiteral("emojis"), QStringLiteral("atajos"),
+                                       QStringLiteral("proyectar"), QStringLiteral("herramientas")};
     if (!validos.contains(p) || p == m_panel)
         return;
     m_panel = p;
@@ -1533,9 +1535,34 @@ void ShellBackend::abrirApp(const QString &programa)
 {
     // Solo los de Inti que se abren desde los paneles del sistema
     static const QSet<QString> permitidos{QStringLiteral("titan-monitor"), QStringLiteral("titan-settings"),
-                                          QStringLiteral("titan-bienvenida"), QStringLiteral("titan-manual")};
+                                          QStringLiteral("titan-bienvenida"), QStringLiteral("titan-manual"),
+                                          QStringLiteral("titan-finder"), QStringLiteral("titan-terminal"),
+                                          QStringLiteral("gnome-disks"), QStringLiteral("titan-informe")};
     if (permitidos.contains(programa))
         QProcess::startDetached(programa, {});
+}
+
+void ShellBackend::proyectar(const QString &modo)
+{
+    static const QSet<QString> modos{QStringLiteral("solo-esta"), QStringLiteral("duplicar"),
+                                     QStringLiteral("extender"), QStringLiteral("solo-segunda")};
+    if (modos.contains(modo))
+        QProcess::startDetached(QStringLiteral("titan-proyectar"), {modo});
+}
+
+QString ShellBackend::estadoProyeccion() const
+{
+    QProcess p;
+    p.start(QStringLiteral("titan-proyectar"), {QStringLiteral("estado")});
+    if (!p.waitForFinished(1500))
+        return QStringLiteral("1 solo-esta");
+    const QString r = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    return r.isEmpty() ? QStringLiteral("1 solo-esta") : r;
+}
+
+void ShellBackend::abrirAppsInstaladas()
+{
+    QProcess::startDetached(QStringLiteral("plasma-discover"), {QStringLiteral("--mode"), QStringLiteral("installed")});
 }
 
 void ShellBackend::cambiarUsuarioSinCerrar()

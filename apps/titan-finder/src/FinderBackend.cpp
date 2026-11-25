@@ -1,4 +1,5 @@
 #include "FinderBackend.h"
+#include "TitanPredeterminadas.h"
 #include "TitanDesktopEntry.h"
 
 #include <QDir>
@@ -768,6 +769,10 @@ void FinderBackend::openItem(const QString &path)
         QProcess::startDetached(info.absoluteFilePath(), QStringList());
         return;
     }
+
+    // Lo elegido en Ajustes > Aplicaciones predeterminadas va primero
+    if (titan::abrirConElegida(info.absoluteFilePath()))
+        return;
 
     // Documentos ofimáticos -> ONLYOFFICE DEBE SER EL PREDETERMINADO
     const QString ext = info.suffix().toLower();

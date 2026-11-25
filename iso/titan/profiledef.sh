@@ -75,6 +75,7 @@ file_permissions=(
   ["/usr/local/bin/titan-appimage"]="0:0:755"
   ["/usr/local/bin/titan-exe"]="0:0:755"
   ["/usr/local/bin/titan-paquete"]="0:0:755"
+  ["/usr/local/bin/titan-proyectar"]="0:0:755"
   ["/usr/local/bin/titan-manual"]="0:0:755"
   ["/usr/local/bin/titan-bloquear-avisar"]="0:0:755"
   ["/usr/local/bin/titan-inactividad"]="0:0:755"

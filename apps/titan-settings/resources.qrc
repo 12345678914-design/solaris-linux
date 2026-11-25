@@ -18,6 +18,7 @@
         <file>qml/SeguridadView.qml</file>
         <file>qml/AccesibilidadView.qml</file>
         <file>qml/TecladoView.qml</file>
+        <file>qml/PredeterminadasView.qml</file>
         <file>qml/RatonView.qml</file>
         <file>qml/CompartirView.qml</file>
         <file>qml/ImpresorasView.qml</file>

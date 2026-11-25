@@ -196,6 +196,12 @@ public:
     Q_INVOKABLE void abrirApp(const QString &programa);
     // Bloquea y abre otra pantalla de inicio (la sesión sigue abierta)
     Q_INVOKABLE void cambiarUsuarioSinCerrar();
+    // Win+P: "solo-esta" | "duplicar" | "extender" | "solo-segunda" (titan-proyectar)
+    Q_INVOKABLE void proyectar(const QString &modo);
+    // "N modo": cuántas pantallas hay y cómo están ahora
+    Q_INVOKABLE QString estadoProyeccion() const;
+    // Win+X > Aplicaciones instaladas: la App Store en "Instalado"
+    Q_INVOKABLE void abrirAppsInstaladas();
     // ¿Sigue pulsada Alt? (el cambiador se cierra al soltarla)
     Q_INVOKABLE bool altPulsada() const;
     // Teclas especiales (volumen, brillo, multimedia...): las manda el

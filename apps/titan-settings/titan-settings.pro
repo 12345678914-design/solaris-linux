@@ -19,6 +19,7 @@ SOURCES += \
     src/Dispositivos.cpp \
     src/Conexiones.cpp \
     src/Personalizar.cpp \
+    src/Predeterminadas.cpp \
     ../titan-greeter/src/Usuarios.cpp \
     ../titan-common/TitanPrefs.cpp \
     ../titan-common/ThemeManager.cpp
@@ -29,6 +30,7 @@ HEADERS += \
     src/Dispositivos.h \
     src/Conexiones.h \
     src/Personalizar.h \
+    src/Predeterminadas.h \
     ../titan-greeter/src/Usuarios.h \
     ../titan-common/TitanPrefs.h \
     ../titan-common/ThemeManager.h

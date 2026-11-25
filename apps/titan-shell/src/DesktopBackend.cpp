@@ -1,5 +1,6 @@
 #include "TitanBinary.h"
 #include "DesktopBackend.h"
+#include "TitanPredeterminadas.h"
 #include "ColaApps.h"
 #include "TitanIconoSvg.h"
 #include "TitanDesktopEntry.h"
@@ -675,6 +676,10 @@ void DesktopBackend::openItem(const QString &path, bool enDock)
     }
 
     const QString ext = realFi.suffix().toLower();
+
+    // Lo elegido en Ajustes > Aplicaciones predeterminadas va primero
+    if (titan::abrirConElegida(realFi.absoluteFilePath()))
+        return;
 
     // Documentos ofimáticos -> ONLYOFFICE DEBE SER EL PREDETERMINADO
     if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc")  ||

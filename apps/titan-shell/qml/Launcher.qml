@@ -154,6 +154,18 @@ Item {
         shellBackend.closeLauncher()
     }
 
+    // Intro: la app elegida; si no hay apps, el primer ajuste o archivo
+    function abrirPrimero() {
+        if (appGrid.count > 0 && selectedIndex >= 0) launchApp(launcherBackend.apps[selectedIndex])
+        else if (launcherBackend.ajustes.length > 0) abrirAjuste(launcherBackend.ajustes[0])
+        else if (launcherBackend.archivos.length > 0) abrirArchivo(launcherBackend.archivos[0])
+    }
+    function abrirAjuste(a) { shellBackend.openSettings(a.seccion) }
+    function abrirArchivo(f) {
+        desktopBackend.openItem(f.ruta)
+        shellBackend.closeLauncher()
+    }
+
     function moveSelection(delta) {
         var n = appGrid.count
         if (n <= 0) return
@@ -483,7 +495,7 @@ Item {
                 id: searchField
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 64
-                placeholderText: qsTr("Buscar aplicaciones…")
+                placeholderText: qsTr("Buscar aplicaciones, ajustes y archivos…")
                 font.pixelSize: 13
                 focus: true
                 background: null
@@ -515,8 +527,8 @@ Item {
                     }
                 }
 
-                Keys.onReturnPressed: launcher.launchApp(launcherBackend.apps[launcher.selectedIndex])
-                Keys.onEnterPressed: launcher.launchApp(launcherBackend.apps[launcher.selectedIndex])
+                Keys.onReturnPressed: launcher.abrirPrimero()
+                Keys.onEnterPressed: launcher.abrirPrimero()
             }
 
             // Botón limpiar (cruz dibujada)
@@ -609,7 +621,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             visible: searchField.text.length > 0
-            text: qsTr("Resultados de búsqueda")
+            text: appGrid.count > 0 ? qsTr("Aplicaciones") : ""
             color: titanTheme.contentTextSecondary
             font.pixelSize: 11
             font.weight: Font.DemiBold
@@ -668,7 +680,7 @@ Item {
         id: appGrid
         anchors.top: headerRow.bottom
         anchors.topMargin: 6
-        anchors.bottom: footer.top
+        anchors.bottom: otrosResultados.visible ? otrosResultados.top : footer.top
         anchors.bottomMargin: 4
         anchors.left: parent.left
         anchors.right: parent.right
@@ -722,7 +734,7 @@ Item {
     Column {
         anchors.centerIn: appGrid
         spacing: 6
-        visible: appGrid.count === 0 && searchField.text.length > 0
+        visible: appGrid.count === 0 && searchField.text.length > 0 && !otrosResultados.visible
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -736,6 +748,142 @@ Item {
             text: qsTr("Revisa la ortografía o prueba con otro nombre.")
             color: titanTheme.contentTextSecondary
             font.pixelSize: 12
+        }
+    }
+
+    // ---------- 4b. AL BUSCAR: AJUSTES Y ARCHIVOS ----------
+    // Todo se busca en este equipo y solo al escribir (sin indexador).
+    component FilaResultado: Rectangle {
+        id: filaRes
+        property string icono: ""
+        property string simbolo: ""
+        property string titulo: ""
+        property string detalle: ""
+        signal elegida()
+        width: parent ? parent.width : 0
+        height: 38
+        radius: 8
+        color: zonaRes.containsMouse ? titanTheme.itemHover : "transparent"
+        Rectangle {
+            id: cajaIcono
+            x: 6; anchors.verticalCenter: parent.verticalCenter
+            width: 26; height: 26; radius: 7
+            color: filaRes.icono === "" ? Qt.rgba(titanTheme.accent.r, titanTheme.accent.g, titanTheme.accent.b, 0.16) : "transparent"
+            Image {
+                anchors.fill: parent
+                visible: filaRes.icono !== ""
+                source: filaRes.icono
+                sourceSize: Qt.size(52, 52)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+            Text {
+                anchors.centerIn: parent
+                visible: filaRes.icono === ""
+                text: filaRes.simbolo
+                color: titanTheme.accent
+                font.pixelSize: 14
+            }
+        }
+        Column {
+            anchors.left: cajaIcono.right; anchors.leftMargin: 10
+            anchors.right: parent.right; anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            Text {
+                width: parent.width
+                text: filaRes.titulo
+                color: titanTheme.contentTextPrimary
+                font.pixelSize: 12; font.weight: Font.Medium
+                elide: Text.ElideMiddle
+            }
+            Text {
+                width: parent.width
+                text: filaRes.detalle
+                color: titanTheme.contentTextSecondary
+                font.pixelSize: 10
+                elide: Text.ElideMiddle
+            }
+        }
+        MouseArea {
+            id: zonaRes
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: filaRes.elegida()
+        }
+    }
+
+    Item {
+        id: otrosResultados
+        readonly property int maxFilas: appGrid.count === 0 ? 8 : 4
+        readonly property int nAjustes: Math.min(launcherBackend.ajustes.length, maxFilas)
+        readonly property int nArchivos: Math.min(launcherBackend.archivos.length, maxFilas)
+        readonly property bool hayArchivos: nArchivos > 0 || launcherBackend.buscandoArchivos
+        visible: searchField.text.trim().length >= 2 && (nAjustes > 0 || hayArchivos)
+        // Sin apps que mostrar, los resultados suben arriba del todo
+        anchors.top: appGrid.count === 0 ? headerRow.top : undefined
+        anchors.bottom: appGrid.count === 0 ? undefined : footer.top
+        anchors.bottomMargin: 6
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: 24
+        anchors.rightMargin: 24
+        height: 24 + 38 * Math.max(nAjustes, nArchivos, 1)
+
+        Rectangle {
+            anchors.top: parent.top; anchors.topMargin: -4
+            width: parent.width; height: 1
+            color: titanTheme.glassBorder; opacity: 0.6
+            visible: appGrid.count > 0
+        }
+
+        Row {
+            anchors.fill: parent
+            spacing: 16
+            Column {
+                id: colAjustes
+                visible: otrosResultados.nAjustes > 0
+                width: otrosResultados.hayArchivos ? (parent.width - 16) * 0.42 : parent.width
+                Text {
+                    height: 24
+                    verticalAlignment: Text.AlignVCenter
+                    text: qsTr("Ajustes")
+                    color: titanTheme.contentTextSecondary
+                    font.pixelSize: 11; font.weight: Font.DemiBold
+                }
+                Repeater {
+                    model: launcherBackend.ajustes.slice(0, otrosResultados.nAjustes)
+                    delegate: FilaResultado {
+                        required property var modelData
+                        simbolo: "⚙"
+                        titulo: modelData.titulo
+                        detalle: modelData.detalle
+                        onElegida: launcher.abrirAjuste(modelData)
+                    }
+                }
+            }
+            Column {
+                visible: otrosResultados.hayArchivos
+                width: colAjustes.visible ? parent.width - colAjustes.width - 16 : parent.width
+                Text {
+                    height: 24
+                    verticalAlignment: Text.AlignVCenter
+                    text: launcherBackend.buscandoArchivos && otrosResultados.nArchivos === 0
+                          ? qsTr("Buscando archivos…") : qsTr("Archivos")
+                    color: titanTheme.contentTextSecondary
+                    font.pixelSize: 11; font.weight: Font.DemiBold
+                }
+                Repeater {
+                    model: launcherBackend.archivos.slice(0, otrosResultados.nArchivos)
+                    delegate: FilaResultado {
+                        required property var modelData
+                        icono: desktopBackend.iconoDe(modelData.ruta)
+                        titulo: modelData.nombre
+                        detalle: modelData.carpeta
+                        onElegida: launcher.abrirArchivo(modelData)
+                    }
+                }
+            }
         }
     }
 

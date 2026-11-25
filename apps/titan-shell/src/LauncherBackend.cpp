@@ -20,12 +20,23 @@
 #include <QDebug>
 #include <QStandardPaths>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QTimer>
+#include <QtConcurrent/QtConcurrentRun>
 
 LauncherBackend::LauncherBackend(QObject *parent)
     : QObject(parent)
     , m_watcher(new QFileSystemWatcher(this))
 {
     loadApps();
+
+    // Se espera a que deje de escribir un momento antes de recorrer carpetas
+    m_esperaArchivos = new QTimer(this);
+    m_esperaArchivos->setSingleShot(true);
+    m_esperaArchivos->setInterval(220);
+    connect(m_esperaArchivos, &QTimer::timeout, this, &LauncherBackend::lanzarBusquedaArchivos);
 
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &LauncherBackend::loadApps);
 }
@@ -662,10 +673,177 @@ void LauncherBackend::loadApps()
     filtrar();
 }
 
+// ---------------------------------------------------------------- búsqueda
+namespace {
+
+// Minúsculas y sin tildes: "configuracion" encuentra "Configuración"
+QString normal(const QString &s)
+{
+    const QString d = s.normalized(QString::NormalizationForm_D).toLower();
+    QString r;
+    r.reserve(d.size());
+    for (const QChar c : d)
+        if (c.category() != QChar::Mark_NonSpacing)
+            r.append(c);
+    return r;
+}
+
+// 0 = empieza igual, 1 = empieza una palabra, 2 = está dentro, -1 = no está
+int encaje(const QString &texto, const QString &q)
+{
+    const int i = texto.indexOf(q);
+    if (i < 0) return -1;
+    if (i == 0) return 0;
+    for (int j = texto.indexOf(q); j >= 0; j = texto.indexOf(q, j + 1))
+        if (j == 0 || !texto.at(j - 1).isLetterOrNumber()) return 1;
+    return 2;
+}
+
+struct PaginaAjustes { const char *seccion; const char *detalle; const char *claves; };
+
+// Páginas de Ajustes y palabras con las que la gente las busca
+const PaginaAjustes kAjustes[] = {
+    {"Wi-Fi", "Conectarse a internet", "wifi,wi-fi,internet,red,inalambrica,conexion,contraseña del wifi,router"},
+    {"Bluetooth", "Auriculares, ratones y altavoces", "bluetooth,auriculares,cascos,altavoz,emparejar,mando"},
+    {"VPN", "Red privada", "vpn,wireguard,openvpn,red privada"},
+    {"General", "Acerca de este equipo", "acerca de,informacion del sistema,version,nombre del equipo,procesador,memoria ram,sistema"},
+    {"Apariencia", "Tema claro u oscuro y color", "tema,modo oscuro,oscuro,claro,color,acento,colores,estilo,windows,iconos,personalizar"},
+    {"Fondo de pantalla", "Imagen del escritorio", "fondo,fondo de pantalla,wallpaper,imagen del escritorio,personalizar"},
+    {"Pantallas", "Resolución, escala y monitores", "pantalla,resolucion,monitor,escala,tamaño del texto,frecuencia,hz,segunda pantalla,proyector,girar"},
+    {"Sonido", "Volumen, altavoces y micrófono", "sonido,volumen,audio,altavoces,microfono,auriculares,salida,entrada"},
+    {"Notificaciones", "Avisos de las aplicaciones", "notificaciones,avisos,alertas,no molestar"},
+    {"Concentración", "No molestar", "concentracion,no molestar,silencio,foco"},
+    {"Batería", "Energía y suspensión", "bateria,energia,suspender,ahorro de energia,apagar pantalla,portatil,cargador,hibernar"},
+    {"Bloquear pantalla", "Contraseña al volver", "bloquear,bloqueo,pantalla de bloqueo,salvapantallas,contraseña al volver"},
+    {"Privacidad y seguridad", "Permisos y cortafuegos", "privacidad,seguridad,cortafuegos,firewall,permisos,camara,ubicacion,antivirus"},
+    {"Accesibilidad", "Letra grande, zoom y contraste", "accesibilidad,letra grande,zoom,lupa,contraste,lector de pantalla,daltonismo"},
+    {"Teclado", "Idioma del teclado y escritura", "teclado,idioma del teclado,distribucion,ñ,acentos,corrector,metodo de entrada,chino,japones"},
+    {"Ratón y panel táctil", "Velocidad del puntero y clics", "raton,mouse,panel tactil,touchpad,cursor,puntero,velocidad,clic,desplazamiento,scroll"},
+    {"Compartir", "Compartir archivos en la red", "compartir,carpeta compartida,red local,samba,nombre del equipo"},
+    {"Impresoras y escáneres", "Añadir una impresora", "impresora,imprimir,escaner,escanear,cola de impresion"},
+    {"Restaurar sistema", "Volver a un punto anterior", "restaurar,punto de restauracion,copia de seguridad,volver atras,recuperar,deshacer cambios"},
+    {"Almacenamiento", "Espacio en disco", "almacenamiento,disco,espacio,liberar espacio,limpiar,disco duro,ssd"},
+    {"Escritorio y Dock", "Dock e iconos del escritorio", "dock,barra de tareas,escritorio,iconos del escritorio,taskbar"},
+    {"Barra de menús", "Barra superior y reloj", "barra de menus,barra superior,reloj,hora,fecha"},
+    {"Centro de control", "Accesos rápidos", "centro de control,accesos rapidos,botones rapidos"},
+    {"Usuarios y grupos", "Cuentas y contraseñas", "usuario,usuarios,cuenta,contraseña,cambiar contraseña,foto de perfil,añadir usuario,administrador"},
+    {"Ventanas", "Comportamiento de las ventanas", "ventanas,ajustar ventanas,animaciones,barra de titulo,botones de ventana"},
+    {"Aplicaciones predeterminadas", "Navegador, correo, PDF...", "aplicaciones predeterminadas,predeterminado,por defecto,navegador,correo,pdf,abrir con,reproductor,programa predeterminado"},
+};
+
+} // namespace
+
 void LauncherBackend::search(const QString &query)
 {
     m_busqueda = query;
     filtrar();
+    buscarAjustes(query);
+    const QString q = query.trimmed();
+    ++m_generacion;   // la búsqueda anterior, si sigue, se abandona
+    if (q.size() < 2) {
+        m_esperaArchivos->stop();
+        if (!m_archivos.isEmpty() || m_buscandoArchivos) {
+            m_archivos.clear();
+            m_buscandoArchivos = false;
+            emit resultadosChanged();
+        }
+        return;
+    }
+    m_esperaArchivos->start();
+}
+
+void LauncherBackend::buscarAjustes(const QString &consulta)
+{
+    m_ajustes.clear();
+    const QString q = normal(consulta.trimmed());
+    if (q.size() >= 2) {
+        QList<QPair<int, QVariantMap>> hallados;
+        for (const PaginaAjustes &p : kAjustes) {
+            const QString titulo = QString::fromUtf8(p.seccion);
+            int puntos = encaje(normal(titulo), q);
+            QString porQue = QString::fromUtf8(p.detalle);
+            if (puntos < 0) {
+                // Por sus palabras clave (puntúan detrás del título)
+                for (const QString &c : QString::fromUtf8(p.claves).split(QLatin1Char(','))) {
+                    const int e = encaje(normal(c), q);
+                    if (e >= 0 && (puntos < 0 || e + 3 < puntos)) puntos = e + 3;
+                }
+            }
+            if (puntos >= 0)
+                hallados.append({puntos, QVariantMap{{QStringLiteral("seccion"), titulo},
+                                                     {QStringLiteral("titulo"), titulo},
+                                                     {QStringLiteral("detalle"), porQue}}});
+        }
+        std::stable_sort(hallados.begin(), hallados.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+        for (int i = 0; i < hallados.size() && i < 4; ++i)
+            m_ajustes.append(hallados.at(i).second);
+    }
+    emit resultadosChanged();
+}
+
+// Recorre la carpeta personal (sin ocultas, sin seguir enlaces) por niveles,
+// con un tope de tiempo y de entradas para no cargar el equipo.
+static QVariantList buscarEnCasa(const QString &q, const std::atomic<int> &generacion, int mia)
+{
+    struct Hallado { int puntos; int nivel; qint64 cambio; QString ruta; bool carpeta; };
+    const QString casa = QDir::homePath();
+    static const QSet<QString> saltar = {QStringLiteral("node_modules"), QStringLiteral("__pycache__"),
+                                         QStringLiteral("snap"), QStringLiteral("build"), QStringLiteral("target"),
+                                         QStringLiteral("venv"), QStringLiteral("site-packages")};
+    QList<Hallado> hallados;
+    QList<QPair<QString, int>> cola{{casa, 0}};
+    QElapsedTimer reloj;
+    reloj.start();
+    int vistos = 0;
+    while (!cola.isEmpty() && reloj.elapsed() < 800 && vistos < 80000) {
+        if (generacion.load() != mia)
+            return {};
+        const auto [dir, nivel] = cola.takeFirst();
+        const QFileInfoList hijos = QDir(dir).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System, QDir::NoSort);
+        for (const QFileInfo &fi : hijos) {
+            ++vistos;
+            const bool carpeta = fi.isDir() && !fi.isSymLink();
+            const int e = encaje(normal(fi.fileName()), q);
+            if (e >= 0 && hallados.size() < 400)
+                hallados.append({e, nivel, fi.lastModified().toSecsSinceEpoch(), fi.absoluteFilePath(), fi.isDir()});
+            if (carpeta && nivel < 7 && !saltar.contains(fi.fileName()))
+                cola.append({fi.absoluteFilePath(), nivel + 1});
+        }
+    }
+    std::sort(hallados.begin(), hallados.end(), [](const Hallado &a, const Hallado &b) {
+        if (a.puntos != b.puntos) return a.puntos < b.puntos;
+        if (a.nivel != b.nivel) return a.nivel < b.nivel;
+        return a.cambio > b.cambio;
+    });
+    QVariantList r;
+    for (int i = 0; i < hallados.size() && i < 8; ++i) {
+        const Hallado &h = hallados.at(i);
+        const QFileInfo fi(h.ruta);
+        QString carpeta = fi.absolutePath();
+        carpeta = carpeta == casa ? QStringLiteral("Carpeta personal")
+                                  : carpeta.mid(casa.size() + 1).replace(QLatin1Char('/'), QStringLiteral(" › "));
+        r.append(QVariantMap{{QStringLiteral("ruta"), h.ruta}, {QStringLiteral("nombre"), fi.fileName()},
+                             {QStringLiteral("carpeta"), carpeta}, {QStringLiteral("esCarpeta"), h.carpeta}});
+    }
+    return r;
+}
+
+void LauncherBackend::lanzarBusquedaArchivos()
+{
+    const QString q = normal(m_busqueda.trimmed());
+    if (q.size() < 2) return;
+    const int mia = m_generacion.load();
+    m_buscandoArchivos = true;
+    emit resultadosChanged();
+    auto *vigia = new QFutureWatcher<QVariantList>(this);
+    connect(vigia, &QFutureWatcher<QVariantList>::finished, this, [this, vigia, mia]() {
+        vigia->deleteLater();
+        if (m_generacion.load() != mia) return;   // ya escribió otra cosa
+        m_archivos = vigia->result();
+        m_buscandoArchivos = false;
+        emit resultadosChanged();
+    });
+    vigia->setFuture(QtConcurrent::run([q, mia, this]() { return buscarEnCasa(q, m_generacion, mia); }));
 }
 
 static QString resolveLauncherBinary(const QString &program)
