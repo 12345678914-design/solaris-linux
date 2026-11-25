@@ -12,6 +12,9 @@
 #include <QTimer>
 #include <QFutureWatcher>
 #include <functional>
+#include <atomic>
+
+QString sinAcentos(const QString &t);
 
 class FinderBackend : public QObject
 {
@@ -29,6 +32,12 @@ class FinderBackend : public QObject
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
     // Panel de detalles a la derecha (vista previa, datos y acciones); se recuerda
+    // Deshacer (Ctrl+Z): texto de lo último que se puede deshacer ("" = nada)
+    Q_PROPERTY(QString textoDeshacer READ textoDeshacer NOTIFY deshacerChanged)
+    // Recientes: lista virtual con lo último abierto (recently-used.xbel)
+    Q_PROPERTY(bool enRecientes READ enRecientes NOTIFY currentPathChanged)
+    // La búsqueda también mira dentro de las subcarpetas (en otro hilo)
+    Q_PROPERTY(bool buscando READ buscando NOTIFY busquedaChanged)
     Q_PROPERTY(bool panelDetalles READ panelDetalles WRITE setPanelDetalles NOTIFY panelDetallesChanged)
     Q_PROPERTY(QString sortBy READ sortBy WRITE setSortBy NOTIFY sortChanged)
     Q_PROPERTY(bool sortAscending READ sortAscending WRITE setSortAscending NOTIFY sortChanged)
@@ -39,6 +48,7 @@ class FinderBackend : public QObject
     // Papelera, avisos y operaciones en segundo plano
     Q_PROPERTY(bool enPapelera READ enPapelera NOTIFY currentPathChanged)
     Q_PROPERTY(bool papeleraVacia READ papeleraVacia NOTIFY entriesChanged)
+    Q_PROPERTY(QString rutaCasa READ rutaCasa CONSTANT)
     Q_PROPERTY(bool dentroDeCasaActual READ dentroDeCasaActual NOTIFY currentPathChanged)
     Q_PROPERTY(bool puedeEscribir READ puedeEscribir NOTIFY currentPathChanged)
     Q_PROPERTY(bool portapapelesCortado READ portapapelesCortado NOTIFY clipboardChanged)
@@ -68,6 +78,10 @@ public:
 
     QString viewMode() const { return m_viewMode; }
     bool panelDetalles() const { return m_panelDetalles; }
+    QString textoDeshacer() const;
+    bool enRecientes() const { return m_currentPath == rutaRecientes(); }
+    bool buscando() const { return m_buscando; }
+    static QString rutaRecientes() { return QStringLiteral("recent:///"); }
     void setPanelDetalles(bool v);
     void setViewMode(const QString &mode);
 
@@ -85,6 +99,7 @@ public:
     bool enPapelera() const;
     bool papeleraVacia() const;
     bool dentroDeCasaActual() const { return dentroDeCasa(m_currentPath); }
+    QString rutaCasa() const { return QDir::homePath(); }
     bool puedeEscribir() const;
     bool portapapelesCortado() const;
     int portapapelesCantidad() const;
@@ -134,6 +149,10 @@ public:
     Q_INVOKABLE bool paste(const QString &destinationDir = QString());
     Q_INVOKABLE QVariantMap getFileProperties(const QString &path);
     Q_INVOKABLE QVariantMap detalles(const QString &path) const;   // panel de detalles
+    Q_INVOKABLE void deshacer();
+    Q_INVOKABLE void anclar(const QString &path);       // a Acceso rápido
+    Q_INVOKABLE void desanclar(const QString &path);
+    Q_INVOKABLE bool estaAnclada(const QString &path) const;
     Q_INVOKABLE void sort(const QString &criteria);
     Q_INVOKABLE void refreshDevices();
     Q_INVOKABLE bool mountDevice(const QString &deviceNode);
@@ -155,6 +174,8 @@ signals:
     void clipboardChanged();
     void ocupadoChanged();
     void avisoChanged();
+    void deshacerChanged();
+    void busquedaChanged();
 
 private slots:
     void onDirectoryChanged(const QString &path);
@@ -194,5 +215,22 @@ private:
     bool m_ocupado = false;
     QString m_aviso;
     QFutureWatcher<QString> m_operacion;
+
+    // Deshacer: pila de {tipo, pares[{a, b}], texto}; tipo = mover | copiar |
+    // renombrar | papelera | crear. Lo que se deshace no se vuelve a apuntar.
+    void apuntarDeshacer(const QString &tipo, const QVariantList &pares, const QString &texto);
+    QList<QVariantMap> m_deshacer;
+    bool m_deshaciendo = false;
+
+    // Recientes y búsqueda en subcarpetas
+    void cargarRecientes();
+    void apuntarReciente(const QString &path);
+    void buscarEnSubcarpetas();
+    QVariantMap entradaDe(const QFileInfo &info) const;
+    QFutureWatcher<QVariantList> m_busqueda;
+    QTimer *m_temporizadorBusqueda = nullptr;
+    std::atomic<int> m_generacionBusqueda{0};   // la lee el hilo de búsqueda
+    bool m_buscando = false;
+    QVariantList m_extraBusqueda;   // resultados de las subcarpetas
 };
 

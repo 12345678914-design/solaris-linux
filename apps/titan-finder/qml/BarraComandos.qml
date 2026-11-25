@@ -107,6 +107,10 @@ Rectangle {
     }
     function opcionesMas() {
         var o = []
+        o.push(finderBackend.textoDeshacer !== ""
+               ? { t: finderBackend.textoDeshacer, i: "↶", k: "Ctrl+Z", a: function () { finderBackend.deshacer() } }
+               : { t: "Nada que deshacer", vacia: true })
+        o.push({ sep: true })
         if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: function () { barra.lista.seleccionarTodo() } })
         o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+T", a: function () { finderBackend.openTerminal() } })
         o.push({ t: "Copiar ruta", i: "⎘", a: function () { finderBackend.copiarRuta(barra.nSel > 0 ? barra.lista.objetivo() : [finderBackend.currentPath]) } })

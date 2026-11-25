@@ -101,10 +101,14 @@ bool borrarRec(const QString &p)
 }
 
 // Trabajo: {src, dir, mover, copia}. Corre en otro hilo; devuelve el aviso.
+QString avisoDe(int hechos, int fallos, const QString &primerError, bool algunMovido, bool algunCopiado);
+
+// Devuelve el aviso en la primera línea y, en las siguientes, lo que se hizo.
 QString ejecutar(const QVariantList &trabajos)
 {
     int hechos = 0, fallos = 0;
     bool algunMovido = false, algunCopiado = false;
+    QString pares; // "origen\tdestino\tmover" por línea, para Deshacer
     QString primerError;
     for (const QVariant &v : trabajos) {
         const QVariantMap t = v.toMap();
@@ -134,12 +138,18 @@ QString ejecutar(const QVariantList &trabajos)
         }
         if (ok) {
             ++hechos;
+            pares += QLatin1Char('\n') + src + QLatin1Char('\t') + dst + QLatin1Char('\t') + (mover ? QLatin1Char('1') : QLatin1Char('0'));
         } else {
             ++fallos;
             if (primerError.isEmpty())
                 primerError = fi.fileName();
         }
     }
+    return avisoDe(hechos, fallos, primerError, algunMovido, algunCopiado) + pares;
+}
+
+QString avisoDe(int hechos, int fallos, const QString &primerError, bool algunMovido, bool algunCopiado)
+{
     if (fallos > 0)
         return fallos == 1 && hechos == 0
                    ? QStringLiteral("No se pudo con «%1»").arg(primerError)
@@ -364,16 +374,29 @@ void FinderBackend::soltar(const QVariantList &urls, const QString &destino0, bo
 
 void FinderBackend::lanzar(const QVariantList &trabajos, bool limpiarPortapapeles)
 {
+    const bool apuntar = !m_deshaciendo; // lo que se deshace no se apunta otra vez
     m_ocupado = true;
     emit ocupadoChanged();
     const int n = trabajos.size();
     ponerAviso(n == 1 ? QStringLiteral("Trabajando…") : QStringLiteral("Trabajando con %1 elementos…").arg(n));
     if (!m_operacion.isRunning()) {
         disconnect(&m_operacion, nullptr, this, nullptr);
-        connect(&m_operacion, &QFutureWatcher<QString>::finished, this, [this, limpiarPortapapeles] {
+        connect(&m_operacion, &QFutureWatcher<QString>::finished, this, [this, limpiarPortapapeles, apuntar] {
             m_ocupado = false;
             emit ocupadoChanged();
-            const QString aviso = m_operacion.result();
+            QStringList lineas = m_operacion.result().split(QLatin1Char('\n'));
+            const QString aviso = lineas.takeFirst();
+            QVariantList pares;
+            bool algunaCopia = false;
+            for (const QString &l : std::as_const(lineas)) {
+                const QStringList c = l.split(QLatin1Char('\t'));
+                if (c.size() != 3)
+                    continue;
+                algunaCopia |= c[2] == QLatin1String("0");
+                pares << QVariantMap{{QStringLiteral("a"), c[0]}, {QStringLiteral("b"), c[1]}, {QStringLiteral("mover"), c[2] == QLatin1String("1")}};
+            }
+            if (apuntar)
+                apuntarDeshacer(QStringLiteral("operacion"), pares, algunaCopia ? QStringLiteral("Deshacer: copiar") : QStringLiteral("Deshacer: mover"));
             if (limpiarPortapapeles) {
                 QGuiApplication::clipboard()->clear();
                 m_clipboardPath.clear();

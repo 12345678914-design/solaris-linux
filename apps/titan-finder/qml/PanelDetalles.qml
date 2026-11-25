@@ -14,7 +14,12 @@ Rectangle {
     readonly property int nSel: lista ? lista.nSel : 0
     readonly property string ruta: nSel === 1 ? lista.selectedPaths[0] : ""
     property var d: ({})
-    function actualizar() { d = nSel > 1 ? ({}) : finderBackend.detalles(ruta) }
+    function actualizar() {
+        if (nSel > 1) d = ({})
+        else if (nSel === 0 && finderBackend.enRecientes)
+            d = { nombre: "Recientes", tipo: "Lo último que has abierto", icono: "qrc:/icons/notes.png" }
+        else d = finderBackend.detalles(ruta)
+    }
     onRutaChanged: actualizar()
     onNSelChanged: actualizar()
     Component.onCompleted: actualizar()
@@ -151,17 +156,22 @@ Rectangle {
                     onPulsado: finderBackend.openItem(panel.ruta)
                 }
                 Accion {
+                    visible: panel.nSel === 1 && (finderBackend.enRecientes || finderBackend.searchQuery !== "")
+                    texto: "Abrir la carpeta donde está"
+                    onPulsado: panel.lista.mostrarEnSuCarpeta(panel.ruta)
+                }
+                Accion {
                     visible: panel.nSel === 1 && !!panel.d.esFoto
                     texto: "Poner como fondo de pantalla"
                     onPulsado: titanThemeManager.wallpaper = panel.ruta
                 }
                 Accion {
-                    visible: panel.nSel === 0 && !finderBackend.enPapelera
+                    visible: panel.nSel === 0 && !finderBackend.enPapelera && !finderBackend.enRecientes
                     texto: "Abrir en Terminal"
                     onPulsado: finderBackend.openTerminal()
                 }
                 Accion {
-                    visible: !finderBackend.enPapelera
+                    visible: !finderBackend.enPapelera && (panel.nSel > 0 || !finderBackend.enRecientes)
                     texto: panel.nSel > 1 ? "Copiar las rutas" : "Copiar ruta"
                     onPulsado: finderBackend.copiarRuta(panel.nSel > 0 ? panel.lista.objetivo() : [finderBackend.currentPath])
                 }

@@ -31,6 +31,18 @@
 #include <QSet>
 #include <QImageReader>
 
+// "Música" y "musica" son lo mismo al buscar
+QString sinAcentos(const QString &t)
+{
+    QString r;
+    const QString n = t.toLower().normalized(QString::NormalizationForm_D);
+    r.reserve(n.size());
+    for (const QChar c : n)
+        if (c.category() != QChar::Mark_NonSpacing)
+            r.append(c);
+    return r;
+}
+
 namespace {
 bool esFoto(const QString &ext)
 {
@@ -77,6 +89,11 @@ FinderBackend::FinderBackend(QObject *parent)
 {
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &FinderBackend::onDirectoryChanged);
 
+    m_temporizadorBusqueda = new QTimer(this);
+    m_temporizadorBusqueda->setSingleShot(true);
+    m_temporizadorBusqueda->setInterval(350);
+    connect(m_temporizadorBusqueda, &QTimer::timeout, this, &FinderBackend::buscarEnSubcarpetas);
+
     // Explorador de archivos: iconos grandes y panel de detalles por defecto;
     // lo que el usuario elige se recuerda.
     {
@@ -106,7 +123,7 @@ void FinderBackend::initFavorites()
     m_favorites.clear();
 
     auto addFav = [this](const QString &name, const QString &path, const QString &icon, const QString &section) {
-        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:"))) {
+        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:")) || path == rutaRecientes()) {
             QVariantMap item;
             item[QStringLiteral("name")] = name;
             item[QStringLiteral("path")] = path;
@@ -132,7 +149,8 @@ void FinderBackend::initFavorites()
         }
         return QString();
     };
-    addFav(QStringLiteral("Inicio"), home, QStringLiteral("qrc:/icons/folder.png"), rapido);
+    addFav(QStringLiteral("Carpeta personal"), home, QStringLiteral("qrc:/icons/folder.png"), rapido);
+    addFav(QStringLiteral("Recientes"), rutaRecientes(), QStringLiteral("qrc:/icons/notes.png"), rapido);
 
     QString desktop = carpetaUsuario(QStandardPaths::DesktopLocation, {QStringLiteral("Escritorio")});
     if (desktop.isEmpty()) { desktop = home + QStringLiteral("/Escritorio"); QDir().mkpath(desktop); }
@@ -157,6 +175,20 @@ void FinderBackend::initFavorites()
         addFav(QStringLiteral("Vídeos"), videos, QStringLiteral("qrc:/icons/file-video.png"), rapido);
     if (QDir(home + QStringLiteral("/Proyectos")).exists())
         addFav(QStringLiteral("Proyectos"), home + QStringLiteral("/Proyectos"), QStringLiteral("qrc:/icons/developer.png"), rapido);
+
+    // Las que ancla el usuario (clic derecho > Anclar a Acceso rápido)
+    QStringList yaEstan;
+    for (const QVariant &f : std::as_const(m_favorites))
+        yaEstan << f.toMap().value(QStringLiteral("path")).toString();
+    const QStringList ancladas = QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).value(QStringLiteral("ancladas")).toStringList();
+    for (const QString &a : ancladas) {
+        if (yaEstan.contains(a) || !QFileInfo(a).isDir())
+            continue;
+        addFav(QFileInfo(a).fileName(), a, QStringLiteral("qrc:/icons/folder.png"), rapido);
+        QVariantMap ultimo = m_favorites.takeLast().toMap();
+        ultimo[QStringLiteral("anclada")] = true;
+        m_favorites.append(ultimo);
+    }
 
     // Este equipo
     addFav(QStringLiteral("Disco del sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Este equipo"));
@@ -184,7 +216,8 @@ void FinderBackend::initFavorites()
 
 QString FinderBackend::currentPathName() const
 {
-    if (m_currentPath == QDir::homePath()) return QStringLiteral("Inicio");
+    if (m_currentPath == QDir::homePath()) return QStringLiteral("Carpeta personal");
+    if (m_currentPath == rutaRecientes()) return QStringLiteral("Recientes");
     if (m_currentPath == QStringLiteral("/")) return QStringLiteral("Sistema");
 
     QDir dir(m_currentPath);
@@ -195,13 +228,15 @@ QString FinderBackend::currentPathName() const
 
 bool FinderBackend::canGoUp() const
 {
-    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty();
+    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty() && m_currentPath != rutaRecientes();
 }
 
 QVariantList FinderBackend::pathSegments() const
 {
     QVariantList segments;
     if (m_currentPath.isEmpty()) return segments;
+    if (m_currentPath == rutaRecientes())
+        return {QVariantMap{{QStringLiteral("name"), QStringLiteral("Recientes")}, {QStringLiteral("path"), rutaRecientes()}}};
 
     QVariantMap rootSeg;
     rootSeg[QStringLiteral("name")] = QStringLiteral("Sistema");
@@ -216,7 +251,7 @@ QVariantList FinderBackend::pathSegments() const
         QVariantMap seg;
         QString displayName = parts.at(i);
         if (accumulated == QDir::homePath()) {
-            displayName = QStringLiteral("Inicio");
+            displayName = QStringLiteral("Carpeta personal");
         }
         seg[QStringLiteral("name")] = displayName;
         seg[QStringLiteral("path")] = accumulated;
@@ -228,10 +263,12 @@ QVariantList FinderBackend::pathSegments() const
 
 void FinderBackend::goTo(const QString &path)
 {
-    QDir target(path);
-    QString canonical = target.canonicalPath();
-    if (canonical.isEmpty()) canonical = path;
-    if (!QDir(canonical).exists()) return;
+    QString canonical = path;
+    if (path != rutaRecientes()) {
+        canonical = QDir(path).canonicalPath();
+        if (canonical.isEmpty()) canonical = path;
+        if (!QDir(canonical).exists()) return;
+    }
 
     // Actualizar historial
     if (m_historyIndex >= 0 && m_historyIndex < m_history.size() - 1) {
@@ -300,6 +337,15 @@ void FinderBackend::loadDirectory(const QString &path)
     }
 
     m_rawEntries.clear();
+    m_extraBusqueda.clear();
+
+    if (path == rutaRecientes()) {
+        cargarRecientes();
+        updateFreeSpace();
+        filterAndSortEntries();
+        emit currentPathChanged();
+        return;
+    }
 
     QDir dir(path);
     QDir::Filters filters = QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot;
@@ -309,36 +355,8 @@ void FinderBackend::loadDirectory(const QString &path)
 
     const QFileInfoList list = dir.entryInfoList(filters, QDir::DirsFirst | QDir::Name);
 
-    for (const QFileInfo &info : list) {
-        QVariantMap entry;
-        entry[QStringLiteral("name")] = info.fileName();
-        entry[QStringLiteral("path")] = info.absoluteFilePath();
-        entry[QStringLiteral("isDir")] = info.isDir();
-        entry[QStringLiteral("isSymLink")] = info.isSymLink();
-        entry[QStringLiteral("isHidden")] = info.isHidden();
-        entry[QStringLiteral("isExecutable")] = info.isExecutable();
-
-        if (info.isDir()) {
-            QDir sub(info.absoluteFilePath());
-            const uint count = sub.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
-            entry[QStringLiteral("size")] = count == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(count);
-            entry[QStringLiteral("sizeBytes")] = static_cast<qint64>(count);
-        } else {
-            entry[QStringLiteral("size")] = formatBytes(info.size());
-            entry[QStringLiteral("sizeBytes")] = info.size();
-        }
-
-        const QDateTime modified = info.lastModified();
-        entry[QStringLiteral("modified")] = modified.toString(QStringLiteral("d MMM yyyy, hh:mm"));
-        entry[QStringLiteral("modifiedTimestamp")] = modified.toMSecsSinceEpoch();
-
-        entry[QStringLiteral("type")] = resolveType(info);
-        entry[QStringLiteral("icon")] = resolveIcon(info);
-        // Las fotos se ven en miniatura en la vista de iconos
-        entry[QStringLiteral("foto")] = !info.isDir() && esFoto(info.suffix().toLower());
-
-        m_rawEntries.append(entry);
-    }
+    for (const QFileInfo &info : list)
+        m_rawEntries.append(entradaDe(info));
 
     updateFreeSpace();
     filterAndSortEntries();
@@ -350,16 +368,22 @@ void FinderBackend::filterAndSortEntries()
 {
     m_filteredEntries.clear();
 
-    const QString query = m_searchQuery.trimmed().toLower();
+    const QString query = sinAcentos(m_searchQuery.trimmed());
 
     for (const QVariant &var : m_rawEntries) {
         const QVariantMap item = var.toMap();
-        if (!query.isEmpty()) {
-            const QString name = item.value(QStringLiteral("name")).toString().toLower();
-            if (!name.contains(query)) continue;
-        }
+        if (!query.isEmpty() && !sinAcentos(item.value(QStringLiteral("name")).toString()).contains(query))
+            continue;
         m_filteredEntries.append(item);
     }
+    if (enRecientes()) { // lo último abierto, primero
+        std::sort(m_filteredEntries.begin(), m_filteredEntries.end(), [](const QVariant &a, const QVariant &b) {
+            return a.toMap().value(QStringLiteral("reciente")).toLongLong() > b.toMap().value(QStringLiteral("reciente")).toLongLong();
+        });
+        emit entriesChanged();
+        return;
+    }
+    const int locales = m_filteredEntries.size();
 
     // Ordenamiento natural estilo macOS: carpetas primero, luego archivos
     std::sort(m_filteredEntries.begin(), m_filteredEntries.end(), [this](const QVariant &a, const QVariant &b) {
@@ -397,6 +421,11 @@ void FinderBackend::filterAndSortEntries()
         const QString nB = mb.value(QStringLiteral("name")).toString();
         return m_sortAscending ? (nA.localeAwareCompare(nB) < 0) : (nA.localeAwareCompare(nB) > 0);
     });
+
+    // Lo encontrado dentro de las subcarpetas va después de lo de aquí
+    Q_UNUSED(locales)
+    if (!query.isEmpty())
+        m_filteredEntries.append(m_extraBusqueda);
 
     emit entriesChanged();
 }
@@ -521,6 +550,10 @@ QString FinderBackend::resolveType(const QFileInfo &info) const
     if (ext == QStringLiteral("txt")) return QStringLiteral("Documento de texto");
     if (ext == QStringLiteral("md")) return QStringLiteral("Documento Markdown");
     if (ext == QStringLiteral("pdf")) return QStringLiteral("Documento PDF");
+    if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc") || ext == QStringLiteral("odt")) return QStringLiteral("Documento");
+    if (ext == QStringLiteral("xlsx") || ext == QStringLiteral("xls") || ext == QStringLiteral("ods")) return QStringLiteral("Hoja de cálculo");
+    if (ext == QStringLiteral("pptx") || ext == QStringLiteral("ppt") || ext == QStringLiteral("odp")) return QStringLiteral("Presentación");
+    if (ext == QStringLiteral("zip") || ext == QStringLiteral("rar") || ext == QStringLiteral("7z") || ext == QStringLiteral("gz")) return QStringLiteral("Archivo comprimido");
     if (ext == QStringLiteral("cpp") || ext == QStringLiteral("c") || ext == QStringLiteral("h")) return QStringLiteral("Código C/C++");
     if (ext == QStringLiteral("py")) return QStringLiteral("Script Python");
     if (ext == QStringLiteral("rs")) return QStringLiteral("Código Rust");
@@ -577,7 +610,11 @@ void FinderBackend::setSearchQuery(const QString &query)
     if (m_searchQuery != query) {
         m_searchQuery = query;
         emit searchQueryChanged();
+        ++m_generacionBusqueda;          // lo que se estaba buscando ya no vale
+        m_extraBusqueda.clear();
+        if (m_buscando) { m_buscando = false; emit busquedaChanged(); }
         filterAndSortEntries();
+        m_temporizadorBusqueda->start(); // y en un momento, en las subcarpetas
     }
 }
 
@@ -674,6 +711,10 @@ void FinderBackend::openItem(const QString &path)
         return;
     }
 
+    // A Recientes (no los programas ni los lanzadores)
+    if (info.suffix() != QLatin1String("desktop") && info.suffix().compare(QLatin1String("appimage"), Qt::CaseInsensitive) != 0)
+        apuntarReciente(info.absoluteFilePath());
+
     // Si es un lanzador .desktop
     if (info.suffix() == QStringLiteral("desktop")) {
         // QSettings no sirve para .desktop: con una coma el valor sale vacío.
@@ -758,7 +799,10 @@ bool FinderBackend::createFolder(const QString &name)
         candidate = QStringLiteral("%1 %2").arg(base).arg(index++);
     }
     bool ok = dir.mkdir(candidate);
-    if (ok) refresh();
+    if (ok) {
+        apuntarDeshacer(QStringLiteral("crear"), {QVariantMap{{QStringLiteral("b"), dir.filePath(candidate)}}}, QStringLiteral("Deshacer: nueva carpeta"));
+        refresh();
+    }
     return ok;
 }
 
@@ -773,8 +817,17 @@ bool FinderBackend::renameItem(const QString &oldPath, const QString &newName)
     QFileInfo info(oldPath);
     if (!info.exists()) return false;
     QString target = info.absolutePath() + QStringLiteral("/") + newName.trimmed();
+    if (target == info.absoluteFilePath()) return true;
+    if (QFileInfo::exists(target)) {
+        ponerAviso(QStringLiteral("Ya hay algo llamado «%1» aquí").arg(newName.trimmed()));
+        return false;
+    }
     bool ok = QFile::rename(oldPath, target);
-    if (ok) refresh();
+    if (ok) {
+        apuntarDeshacer(QStringLiteral("renombrar"), {QVariantMap{{QStringLiteral("a"), info.absoluteFilePath()}, {QStringLiteral("b"), target}}},
+                        QStringLiteral("Deshacer: renombrar"));
+        refresh();
+    }
     return ok;
 }
 
@@ -978,6 +1031,7 @@ bool FinderBackend::deleteItems(const QStringList &paths)
     // Si no se puede, NO se borra para siempre: se avisa.
     int n = 0, protegidas = 0;
     QString fallo;
+    QVariantList deshacer;
     for (const QString &p0 : paths) {
         const QString p = p0.startsWith(QStringLiteral("file:")) ? QUrl(p0).toLocalFile() : p0;
         if (!QFileInfo::exists(p) && !QFileInfo(p).isSymLink())
@@ -986,11 +1040,15 @@ bool FinderBackend::deleteItems(const QStringList &paths)
             ++protegidas;
             continue;
         }
-        if (QFile::moveToTrash(p))
+        QString enLaPapelera;
+        if (QFile::moveToTrash(p, &enLaPapelera)) {
             ++n;
+            deshacer << QVariantMap{{QStringLiteral("a"), p}, {QStringLiteral("b"), enLaPapelera}};
+        }
         else if (fallo.isEmpty())
             fallo = QFileInfo(p).fileName();
     }
+    apuntarDeshacer(QStringLiteral("papelera"), deshacer, QStringLiteral("Deshacer: enviar a la Papelera"));
     refresh();
     if (!fallo.isEmpty())
         ponerAviso(QStringLiteral("«%1» no se pudo mover a la Papelera (¿sin permiso?)").arg(fallo));
@@ -1346,6 +1404,7 @@ QString FinderBackend::nuevoArchivo(const QString &tipo)
         ponerAviso(QStringLiteral("No se pudo crear el archivo"));
         return QString();
     }
+    apuntarDeshacer(QStringLiteral("crear"), {QVariantMap{{QStringLiteral("b"), ruta}}}, QStringLiteral("Deshacer: nuevo documento"));
     refresh();
     return ruta;
 }
@@ -1413,4 +1472,36 @@ void FinderBackend::copiarRuta(const QStringList &paths)
         return;
     QGuiApplication::clipboard()->setText(paths.join(QLatin1Char('\n')));
     ponerAviso(paths.size() == 1 ? QStringLiteral("Ruta copiada") : QStringLiteral("Rutas copiadas"));
+}
+
+QVariantMap FinderBackend::entradaDe(const QFileInfo &info) const
+{
+    QVariantMap entry;
+    entry[QStringLiteral("name")] = info.fileName();
+    entry[QStringLiteral("path")] = info.absoluteFilePath();
+    entry[QStringLiteral("isDir")] = info.isDir();
+    entry[QStringLiteral("isSymLink")] = info.isSymLink();
+    entry[QStringLiteral("isHidden")] = info.isHidden();
+    entry[QStringLiteral("isExecutable")] = info.isExecutable();
+
+    if (info.isDir()) {
+        QDir sub(info.absoluteFilePath());
+        const uint count = sub.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
+        entry[QStringLiteral("size")] = count == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(count);
+        entry[QStringLiteral("sizeBytes")] = static_cast<qint64>(count);
+    } else {
+        entry[QStringLiteral("size")] = formatBytes(info.size());
+        entry[QStringLiteral("sizeBytes")] = info.size();
+    }
+
+    const QDateTime modified = info.lastModified();
+    entry[QStringLiteral("modified")] = modified.toString(QStringLiteral("d MMM yyyy, hh:mm"));
+    entry[QStringLiteral("modifiedTimestamp")] = modified.toMSecsSinceEpoch();
+
+    entry[QStringLiteral("type")] = resolveType(info);
+    entry[QStringLiteral("icon")] = resolveIcon(info);
+    // Las fotos se ven en miniatura en la vista de iconos
+    entry[QStringLiteral("foto")] = !info.isDir() && esFoto(info.suffix().toLower());
+
+    return entry;
 }

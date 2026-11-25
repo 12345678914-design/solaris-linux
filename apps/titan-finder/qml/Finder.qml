@@ -231,6 +231,7 @@ TitanWindow {
                 text: finderBackend.searchQuery
                 onTextChanged: finderBackend.searchQuery = text
                 Keys.onEscapePressed: { text = ""; fileList.forceActiveFocus() }
+                Keys.onDownPressed: { fileList.forceActiveFocus(); fileList.irA(0, false) }
             }
             Text {
                 id: borrarBusqueda
@@ -255,6 +256,7 @@ TitanWindow {
     // 2. PANEL DE NAVEGACIÓN (acceso rápido, este equipo, dispositivos)
     sidebarContentData: Sidebar {
         anchors.fill: parent
+        lista: fileList
     }
 
     // 3. CONTENIDO: barra de comandos, archivos y panel de detalles
@@ -297,7 +299,8 @@ TitanWindow {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: finderBackend.totalItemsText
+            text: (finderBackend.buscando ? "Buscando en las subcarpetas…      " : "")
+                  + finderBackend.totalItemsText
                   + (fileList.nSel > 0 ? "      " + fileList.nSel + (fileList.nSel === 1 ? " elemento seleccionado" : " elementos seleccionados") : "")
             color: theme.contentTextSecondary
             font.pixelSize: 11
@@ -319,6 +322,7 @@ TitanWindow {
                 onPulsado: finderBackend.viewMode = "list"
             }
             Text {
+                visible: !finderBackend.enRecientes
                 anchors.verticalCenter: parent.verticalCenter
                 text: finderBackend.freeSpaceText
                 color: theme.contentTextSecondary

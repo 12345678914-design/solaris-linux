@@ -86,6 +86,42 @@ Rectangle {
         selectedPaths = s
         fijarActual(p)
     }
+    // ------------------------------------------------------------ teclado
+    function irA(i, extender) {
+        var e = finderBackend.entries
+        if (e.length === 0) return
+        i = Math.max(0, Math.min(e.length - 1, i))
+        if (extender) {
+            if (ancla < 0) ancla = selectedPath ? indiceDe(selectedPath) : i
+            rango(e[i].path)
+        } else {
+            seleccionarSolo(e[i].path)
+        }
+        if (finderBackend.viewMode === "grid") gridView.positionViewAtIndex(i, GridView.Contain)
+        else listView.positionViewAtIndex(i, ListView.Contain)
+    }
+    function moverSeleccion(paso, extender) {
+        var actual = selectedPath ? indiceDe(selectedPath) : -1
+        irA(actual < 0 ? (paso > 0 ? 0 : finderBackend.entries.length - 1) : actual + paso, extender)
+    }
+    function plano(t) { return t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") }
+    function saltarALetra(letra) {
+        var e = finderBackend.entries
+        var l = plano(letra)
+        var desde = selectedPath ? indiceDe(selectedPath) : -1
+        for (var k = 1; k <= e.length; ++k) {
+            var i = (desde + k) % e.length
+            if (plano(e[i].name).indexOf(l) === 0) { irA(i, false); return }
+        }
+    }
+    // Recientes y resultados de búsqueda: ir a la carpeta y dejarlo marcado
+    function mostrarEnSuCarpeta(ruta) {
+        var carpeta = ruta.substring(0, ruta.lastIndexOf("/")) || "/"
+        finderBackend.searchQuery = ""
+        finderBackend.goTo(carpeta)
+        Qt.callLater(function () { var i = fileListRoot.indiceDe(ruta); if (i >= 0) fileListRoot.irA(i, false) })
+    }
+
     function seleccionarTodo() {
         var e = finderBackend.entries, s = []
         for (var i = 0; i < e.length; ++i) s.push(e[i].path)
@@ -171,7 +207,21 @@ Rectangle {
 
     Keys.onPressed: (event) => {
         var ctrl = event.modifiers & Qt.ControlModifier
-        if (ctrl && event.key === Qt.Key_A) { seleccionarTodo(); event.accepted = true }
+        var mayus = event.modifiers & Qt.ShiftModifier
+        var columnas = finderBackend.viewMode === "grid" ? gridView.columnas : 1
+        var porPagina = finderBackend.viewMode === "grid" ? Math.max(1, Math.floor(gridView.height / gridView.cellHeight)) * columnas
+                                                          : Math.max(1, Math.floor(listView.height / 30))
+        if (event.modifiers & Qt.AltModifier) { /* Alt+flechas: historial (Finder.qml) */ }
+        else if (event.key === Qt.Key_Down) { moverSeleccion(columnas, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_Up) { moverSeleccion(-columnas, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_Right && columnas > 1) { moverSeleccion(1, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_Left && columnas > 1) { moverSeleccion(-1, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_PageDown) { moverSeleccion(porPagina, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_PageUp) { moverSeleccion(-porPagina, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_Home) { irA(0, mayus); event.accepted = true; return }
+        else if (event.key === Qt.Key_End) { irA(finderBackend.entries.length - 1, mayus); event.accepted = true; return }
+        if (ctrl && event.key === Qt.Key_Z) { finderBackend.deshacer(); event.accepted = true }
+        else if (ctrl && event.key === Qt.Key_A) { seleccionarTodo(); event.accepted = true }
         else if (ctrl && event.key === Qt.Key_C) { copiar(); event.accepted = true }
         else if (ctrl && event.key === Qt.Key_X) { cortar(); event.accepted = true }
         else if (ctrl && event.key === Qt.Key_V) { pegar(); event.accepted = true }
@@ -180,6 +230,10 @@ Rectangle {
         else if (event.key === Qt.Key_Escape) { limpiarSeleccion(); ctxVisible = false; event.accepted = true }
         else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && selectedPaths.length === 1) {
             finderBackend.openItem(selectedPaths[0]); event.accepted = true
+        }
+        // Escribir una letra salta al siguiente que empieza por ella (como Windows)
+        else if (!ctrl && !(event.modifiers & Qt.AltModifier) && event.text.length === 1 && event.text.trim() !== "") {
+            saltarALetra(event.text); event.accepted = true
         }
     }
 
@@ -811,6 +865,16 @@ Rectangle {
                     } })
                 }
                 if (selectedIsDir) o.push({ t: "Abrir en Terminal", i: ">_", a: function () { finderBackend.openTerminal(fileListRoot.selectedPaths[0]) } })
+                var sel = selectedPaths[0]
+                var carpetaDe = sel.substring(0, sel.lastIndexOf("/")) || "/"
+                if (finderBackend.enRecientes || carpetaDe !== finderBackend.currentPath)
+                    o.push({ t: "Abrir la carpeta donde está", i: "⌂", a: function () { fileListRoot.mostrarEnSuCarpeta(sel) } })
+                if (selectedIsDir) {
+                    if (finderBackend.estaAnclada(sel))
+                        o.push({ t: "Quitar de Acceso rápido", i: "✕", a: function () { finderBackend.desanclar(sel) } })
+                    else
+                        o.push({ t: "Anclar a Acceso rápido", i: "★", a: function () { finderBackend.anclar(sel) } })
+                }
                 o.push({ sep: true })
             }
             var movibles = true
@@ -844,6 +908,13 @@ Rectangle {
             if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
             return o
         }
+        if (finderBackend.textoDeshacer !== "") {
+            o.push({ t: finderBackend.textoDeshacer, i: "↶", k: "Ctrl+Z", a: function () { finderBackend.deshacer() } })
+            o.push({ sep: true })
+        }
+        if (!finderBackend.enRecientes && finderBackend.dentroDeCasaActual && finderBackend.currentPath !== finderBackend.rutaCasa
+            && !finderBackend.estaAnclada(finderBackend.currentPath))
+            o.push({ t: "Anclar esta carpeta a Acceso rápido", i: "★", a: function () { finderBackend.anclar(finderBackend.currentPath) } })
         if (finderBackend.puedeEscribir) {
             o.push({ t: "Nueva carpeta", i: "📁", k: "Ctrl+Mayús+N", a: fileListRoot.openNewFolderDialog })
             o.push({ t: "Nuevo documento", i: "📄", sub: function () {
@@ -1342,6 +1413,15 @@ Rectangle {
                                 elide: Text.ElideMiddle
                                 maximumLineCount: 2
                                 wrapMode: Text.WrapAnywhere
+                            }
+                            Text {
+                                visible: !!modelData.dondeEsta
+                                text: "en " + (modelData.dondeEsta || "")
+                                color: gEl.seleccionado ? Qt.rgba(1, 1, 1, 0.8) : theme.contentTextSecondary
+                                font.pixelSize: 10
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideMiddle
                             }
                         }
                     }

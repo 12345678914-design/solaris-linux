@@ -13,6 +13,7 @@ SOURCES += \
     src/main.cpp \
     src/FinderBackend.cpp \
     src/Operaciones.cpp \
+    src/Explorador.cpp \
     ../titan-common/ThemeManager.cpp
 
 HEADERS += \
