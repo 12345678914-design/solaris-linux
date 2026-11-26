@@ -685,6 +685,17 @@ contiene iso/titan/airootfs/root/customize_airootfs.sh 'plymouth/themes/titan/th
 [ -f iso/titan/airootfs/usr/share/titan/plymouth/throbber-0060.png ] && ok "Animación: 60 fotogramas del círculo de puntos" || fallo "Faltan los fotogramas de la animación"
 contiene apps/titan-installer/qml/InstallerWindow.qml 'component Presentacion' "Instalador: diapositivas de Inti OS mientras instala"
 contiene apps/titan-shell/qml/BootSplash.qml 'width: 150' "Logo de Inti más grande al entrar"
+# titan-sin-3d: tarjeta con nodo de render pero que acaba en llvmpipe = sin aceleración
+_t3d=$(mktemp -d); mkdir -p "$_t3d/dri" "$_t3d/bin"; : > "$_t3d/dri/renderD128"
+printf '#!/bin/sh\necho "OpenGL core profile renderer: llvmpipe (LLVM 19, 256 bits)"\n' > "$_t3d/bin/eglinfo"; chmod +x "$_t3d/bin/eglinfo"
+PATH="$_t3d/bin:$PATH" TITAN_DRM_DIR="$_t3d/dri" sh iso/titan/airootfs/usr/lib/titan/titan-sin-3d \
+  && ok "titan-sin-3d: tarjeta sin driver 3D (llvmpipe) va en modo sin aceleración" || fallo "titan-sin-3d no detecta llvmpipe"
+printf '#!/bin/sh\necho "OpenGL core profile renderer: Mesa Intel(R) UHD Graphics"\n' > "$_t3d/bin/eglinfo"
+PATH="$_t3d/bin:$PATH" TITAN_DRM_DIR="$_t3d/dri" sh iso/titan/airootfs/usr/lib/titan/titan-sin-3d \
+  && fallo "titan-sin-3d toma una tarjeta con 3D por una sin aceleración" || ok "titan-sin-3d: tarjeta con 3D sigue con aceleración"
+rm -rf "$_t3d"
+contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'titan-sin-3d' "Sesión: usa titan-sin-3d para elegir labwc/Wayfire"
+contiene iso/titan/airootfs/usr/lib/titan/titan-greeter-sesion 'titan-sin-3d' "Inicio de sesión: modo software si la tarjeta no tiene 3D"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

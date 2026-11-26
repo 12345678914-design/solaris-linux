@@ -125,8 +125,14 @@ if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q; the
 fi
 
 # 3. Detección de ausencia de acelerador 3D por hardware (ej. simpledrm, bochs, efifb, sin renderD*)
+#    y tarjetas antiguas con driver en el kernel pero sin driver 3D en Mesa
+#    (acabarian en llvmpipe: el procesador simulando la tarjeta, muy lento).
 SIN_ACCEL_3D=0
-if [ ! -e /dev/dri/renderD* ]; then
+if [ -x /usr/lib/titan/titan-sin-3d ]; then
+  if TITAN_DRM_DIR="${TITAN_DRM_DIR}" /usr/lib/titan/titan-sin-3d; then
+    SIN_ACCEL_3D=1
+  fi
+elif ! ls "${TITAN_DRM_DIR}"/renderD* >/dev/null 2>&1; then
   SIN_ACCEL_3D=1
 fi
 
@@ -343,7 +349,7 @@ if command -v wayfire >/dev/null 2>&1 && [ -f "${HOME}/.config/wayfire.ini" ]; t
   fi
   # VM con GPU virtual 3D (virgl: virtio-vga-gl; vmwgfx con 3D): tiene nodo
   # de render, asi que tambien puede. Si Wayfire no arranca, se cae a labwc.
-  if [ "${ES_COMPAT}" -eq 0 ] && [ -e /dev/dri/renderD128 ]; then
+  if [ "${ES_COMPAT}" -eq 0 ] && [ "${SIN_ACCEL_3D}" -eq 0 ] && [ -e /dev/dri/renderD128 ]; then
     COMPOSITOR="wayfire"
   fi
   if grep -qw 'titan.wayfire' "${TITAN_CMDLINE}" 2>/dev/null || [ "${TITAN_DESKTOP:-}" = "wayfire" ]; then

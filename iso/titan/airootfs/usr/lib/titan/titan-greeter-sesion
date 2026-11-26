@@ -27,6 +27,10 @@ sin_3d=1
 for nodo in /dev/dri/renderD*; do
   [ -e "${nodo}" ] && sin_3d=0
 done
+# Tarjeta con driver en el kernel pero sin driver 3D (acabaria en llvmpipe)
+if [ "${sin_3d}" -eq 0 ] && [ -x /usr/lib/titan/titan-sin-3d ] && /usr/lib/titan/titan-sin-3d; then
+  sin_3d=1
+fi
 if [ "${sin_3d}" -eq 1 ] || grep -qE '(titan\.compat|nomodeset|safe_graphics)' /proc/cmdline 2>/dev/null; then
   export WLR_RENDERER=pixman
   # En VM, cursor por hardware: si no, se ven dos flechas (la del visor y la

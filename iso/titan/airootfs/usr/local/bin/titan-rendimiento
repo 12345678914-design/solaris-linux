@@ -42,6 +42,9 @@ detectar() {
     if [ "${hilos:-4}" -le 2 ]; then echo "ligero ($hilos hilos)"; return; fi
     if [ "${mem:-8000000}" -lt 4500000 ]; then echo "ligero ($((mem / 1024)) MB de memoria)"; return; fi
     if ! ls "$dri"/renderD* >/dev/null 2>&1; then echo "ligero (sin aceleración gráfica)"; return; fi
+    if [ -x /usr/lib/titan/titan-sin-3d ] && TITAN_DRM_DIR="$dri" /usr/lib/titan/titan-sin-3d; then
+        echo "ligero (la tarjeta gráfica no tiene driver 3D)"; return
+    fi
     echo "normal"
 }
 
