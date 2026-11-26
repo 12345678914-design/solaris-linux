@@ -646,8 +646,8 @@ contiene iso/titan/packages.x86_64 '^gvfs-wsdd$' "Red: ver los PC con Windows (g
 contiene apps/titan-finder/qml/Pestanas.qml 'application/x-inti-pestana' "Explorador: pestañas que se arrastran entre ventanas"
 contiene apps/titan-finder/src/FinderBackend.cpp 'FinderBackend::recibirPestana' "Explorador: juntar pestañas de otra ventana"
 contiene apps/titan-finder/src/FinderBackend.cpp 'FinderBackend::separarPestana' "Explorador: separar una pestaña en ventana nueva"
-contiene apps/titan-finder/qml/Finder.qml 'sequence: "Ctrl+T"; onActivated: finderBackend.nuevaPestana' "Explorador: Ctrl+T abre una pestaña"
-contiene apps/titan-finder/qml/Finder.qml 'Ctrl+Alt+T' "Explorador: la Terminal pasa a Ctrl+Alt+T"
+contiene apps/titan-finder/qml/Finder.qml 'sequence: "Ctrl\+T"; onActivated: finderBackend.nuevaPestana' "Explorador: Ctrl+T abre una pestaña"
+contiene apps/titan-finder/qml/Finder.qml 'Ctrl\+Alt\+T' "Explorador: la Terminal pasa a Ctrl+Alt+T"
 contiene apps/titan-finder/resources.qrc 'qml/Pestanas.qml' "Explorador: Pestanas.qml en los recursos"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
