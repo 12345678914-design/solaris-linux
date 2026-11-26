@@ -508,14 +508,32 @@ Rectangle {
             }
         }
 
-        // Fecha y Reloj digital
+        // Fecha y reloj: al pulsarla, el calendario del mes (como Windows)
+        Item {
+            id: relojBtn
+            width: clockText.width + 12
+            height: 22
+            anchors.verticalCenter: parent.verticalCenter
+            Rectangle {
+                anchors.fill: parent
+                radius: 5
+                color: shellBackend.calendarioVisible || relojMouse.containsMouse ? topBar.barHover : "transparent"
+                Behavior on color { ColorAnimation { duration: 120 } }
+            }
+            MouseArea {
+                id: relojMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: shellBackend.toggleCalendario()
+            }
         Text {
             id: clockText
+            anchors.centerIn: parent
             text: Qt.formatDateTime(topBar.ahora, topBar.formatoReloj)
             color: topBar.barText
             font.pixelSize: 11
             font.weight: Font.Medium
-            anchors.verticalCenter: parent.verticalCenter
             
             Timer {
                 interval: 1000
@@ -523,6 +541,7 @@ Rectangle {
                 repeat: true
                 onTriggered: topBar.ahora = new Date()
             }
+        }
         }
 
         // Botón de Notificaciones (Campana) a lado de la fecha/reloj
@@ -611,38 +630,83 @@ Rectangle {
                 onClicked: shellBackend.toggleNotificationCenter()
             }
         }
-    }
 
-    // ── Hot Corner superior derecho para abrir el Sistema de Escritorios ────────
-    Timer {
-        id: hotCornerTimer
-        interval: 90
-        repeat: false
-        onTriggered: {
-            if (hotCornerWorkspaces.containsMouse && !shellBackend.workspacesVisible) {
-                shellBackend.workspacesVisible = true
+        // Mostrar el escritorio (Win+D), como la franja del borde derecho de
+        // la barra de Windows: una raya fina; otro clic devuelve las ventanas.
+        Item {
+            id: escritorioBtn
+            width: 12
+            height: 22
+            anchors.verticalCenter: parent.verticalCenter
+            Rectangle {   // separador a la izquierda
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1; height: 16
+                color: topBar.barText
+                opacity: 0.35
             }
+            Rectangle {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 6; height: 20; radius: 3
+                color: topBar.barText
+                opacity: escritorioMouse.pressed ? 0.45 : escritorioMouse.containsMouse ? 0.28 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+            MouseArea {
+                id: escritorioMouse
+                anchors.fill: parent
+                anchors.rightMargin: -12   // hasta el borde de la pantalla
+                hoverEnabled: true
+                onClicked: windowTracker.mostrarEscritorio()
+            }
+            ToolTip.visible: escritorioMouse.containsMouse
+            ToolTip.delay: 700
+            ToolTip.text: "Mostrar el escritorio (Win+D)"
         }
     }
 
-    MouseArea {
-        id: hotCornerWorkspaces
-        anchors.top: parent.top
-        anchors.right: parent.right
-        width: 28
-        height: parent.height
-        z: 100
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onEntered: {
-            hotCornerTimer.start()
-        }
-        onExited: {
-            hotCornerTimer.stop()
-        }
-        onClicked: {
-            hotCornerTimer.stop()
-            shellBackend.toggleWorkspaces()
+    // 3. CENTRO: los escritorios creados; el actual, coloreado. Clic para ir.
+    // Si la Isla Dinámica ocupa el centro (música o aviso), se ponen a su izquierda.
+    readonly property bool islaVisible: shellBackend.islandActive || mpris.disponible || shellBackend.indicadorActivo
+    readonly property real anchoIsla: (mpris.disponible && !shellBackend.islandActive ? 236 : 140) + 16
+    Row {
+        id: escritorios
+        spacing: 4
+        anchors.verticalCenter: parent.verticalCenter
+        x: topBar.islaVisible ? (topBar.width - topBar.anchoIsla) / 2 - width - 10
+                              : (topBar.width - width) / 2
+        Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        Repeater {
+            model: shellBackend.workspaces
+            delegate: Rectangle {
+                required property int index
+                required property string modelData
+                readonly property bool actual: index === shellBackend.currentWorkspace
+                width: 22; height: 18; radius: 5
+                color: actual ? titanTheme.accent
+                              : (zonaEsc.containsMouse ? topBar.barHover : "transparent")
+                border.width: actual ? 0 : 1
+                border.color: Qt.rgba(topBar.barText.r, topBar.barText.g, topBar.barText.b, 0.35)
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Text {
+                    anchors.centerIn: parent
+                    text: parent.index + 1
+                    color: parent.actual ? "white" : topBar.barText
+                    font.pixelSize: 11
+                    font.weight: parent.actual ? Font.Bold : Font.Medium
+                }
+                MouseArea {
+                    id: zonaEsc
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shellBackend.switchToWorkspace(parent.index)
+                }
+                ToolTip.visible: zonaEsc.containsMouse
+                ToolTip.delay: 700
+                ToolTip.text: modelData
+            }
         }
     }
 }

@@ -1281,6 +1281,24 @@ void ShellBackend::closeNotificationCenter()
     setNotificationCenterVisible(false);
 }
 
+void ShellBackend::toggleCalendario()
+{
+    m_calendarioVisible = !m_calendarioVisible;
+    if (m_calendarioVisible) {
+        // Uno a la vez, como en Windows (fecha y avisos van juntos ahí)
+        setNotificationCenterVisible(false);
+        setControlCenterVisible(false);
+    }
+    emit calendarioVisibleChanged();
+}
+
+void ShellBackend::closeCalendario()
+{
+    if (!m_calendarioVisible) return;
+    m_calendarioVisible = false;
+    emit calendarioVisibleChanged();
+}
+
 void ShellBackend::clearNotifications()
 {
     // Motivo 2: la ha descartado el usuario (spec de notificaciones).

@@ -75,6 +75,8 @@ class ShellBackend : public QObject
     Q_PROPERTY(int unreadNotificationCount READ unreadNotificationCount NOTIFY notificationsChanged)
     Q_PROPERTY(bool notificationCenterVisible READ notificationCenterVisible WRITE setNotificationCenterVisible NOTIFY notificationCenterVisibleChanged)
     Q_PROPERTY(bool islandActive READ islandActive NOTIFY islandChanged)
+    // Calendario del mes al pulsar la fecha de la barra (como Windows)
+    Q_PROPERTY(bool calendarioVisible READ calendarioVisible NOTIFY calendarioVisibleChanged)
     Q_PROPERTY(QVariantMap currentIslandNotification READ currentIslandNotification NOTIFY islandChanged)
     Q_PROPERTY(int islandQueueCount READ islandQueueCount NOTIFY islandChanged)
     // Avisos para la pantalla de bloqueo (segun Notificaciones/bloqueo)
@@ -210,6 +212,9 @@ public:
 
     Q_INVOKABLE void toggleNotificationCenter();
     Q_INVOKABLE void closeNotificationCenter();
+    bool calendarioVisible() const { return m_calendarioVisible; }
+    Q_INVOKABLE void toggleCalendario();
+    Q_INVOKABLE void closeCalendario();
     Q_INVOKABLE void clearNotifications();
     Q_INVOKABLE void removeNotification(int id);
     Q_INVOKABLE void dismissIsland();
@@ -310,6 +315,7 @@ signals:
     void cambiadorVisibleChanged();
     void panelChanged();
     void notificationCenterVisibleChanged();
+    void calendarioVisibleChanged();
     void islandChanged();
     void workspacesVisibleChanged();
     // La vista de escritorios hace su animacion de salida y luego se oculta.
@@ -385,6 +391,7 @@ private:
 
     QVariantList m_notifications;
     bool m_notificationCenterVisible = false;
+    bool m_calendarioVisible = false;
     bool m_workspacesVisible = false;
     QStringList m_workspaces;
     int m_currentWorkspace = 0;

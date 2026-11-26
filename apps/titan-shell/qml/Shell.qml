@@ -388,7 +388,81 @@ QtObject {
         PanelSistema { }
     }
 
-    // 11. Sistema de Escritorios / Mission Control (Hot Corner superior derecho)
+    // Calendario del mes: se abre al pulsar la fecha de la barra
+    property var calendarioWin: Window {
+        objectName: "calendarioWindow"
+        visible: false
+        width: Screen.width
+        height: Screen.height
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: shellBackend.closeCalendario()
+        }
+        Calendario {
+            id: calendario
+            anchors.top: parent.top
+            anchors.topMargin: 34
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            abierto: shellBackend.calendarioVisible
+        }
+        Item {
+            focus: true
+            Keys.onEscapePressed: shellBackend.closeCalendario()
+        }
+    }
+
+    // Esquina inferior derecha: dejar el ratón 2,5 s abre los escritorios.
+    // Un cuarto de círculo crece mientras tanto, para que se vea que va a pasar.
+    property var esquinaWin: Window {
+        objectName: "esquinaWindow"
+        visible: false
+        width: 16
+        height: 16
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+
+        MouseArea {
+            id: zonaEsquina
+            anchors.fill: parent
+            hoverEnabled: true
+            property real progreso: 0
+            onContainsMouseChanged: {
+                if (containsMouse) { animEsquina.restart() }
+                else { animEsquina.stop(); progreso = 0 }
+            }
+            NumberAnimation {
+                id: animEsquina
+                target: zonaEsquina; property: "progreso"
+                from: 0; to: 1; duration: 2500
+                onFinished: if (zonaEsquina.containsMouse) {
+                    zonaEsquina.progreso = 0
+                    shellBackend.workspacesVisible = true
+                }
+            }
+            onProgresoChanged: dibujo.requestPaint()
+            Canvas {
+                id: dibujo
+                anchors.fill: parent
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    if (zonaEsquina.progreso <= 0) return
+                    ctx.fillStyle = Qt.rgba(0.04, 0.52, 1.0, 0.25 + 0.5 * zonaEsquina.progreso)
+                    ctx.beginPath()
+                    ctx.moveTo(width, height)
+                    ctx.arc(width, height, width * zonaEsquina.progreso, Math.PI, Math.PI * 1.5)
+                    ctx.closePath()
+                    ctx.fill()
+                }
+            }
+        }
+    }
+
+    // 11. Sistema de Escritorios / Mission Control (esquina inferior derecha)
     property var workspacesWin: Window {
         objectName: "workspacesWindow"
         visible: false

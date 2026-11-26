@@ -12,6 +12,7 @@
         <file>qml/WallpaperPicker.qml</file>
         <file>qml/ControlCenter.qml</file>
         <file>qml/NotificationCenter.qml</file>
+        <file>qml/Calendario.qml</file>
         <file>qml/DynamicIsland.qml</file>
         <file>qml/Caratula.qml</file>
         <file>qml/BotonMedio.qml</file>

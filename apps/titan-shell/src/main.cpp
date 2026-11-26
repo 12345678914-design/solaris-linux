@@ -589,6 +589,35 @@ int main(int argc, char *argv[])
             QObject::connect(&shellBackend, &ShellBackend::notificationCenterVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.notificationCenterVisible());
             });
+        } else if (name == QStringLiteral("calendarioWindow")) {
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-calendario"),
+                           LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
+            QObject::connect(&shellBackend, &ShellBackend::calendarioVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.calendarioVisible());
+            });
+            // Abrir los avisos cierra el calendario
+            QObject::connect(&shellBackend, &ShellBackend::notificationCenterVisibleChanged, win, [&shellBackend]() {
+                if (shellBackend.notificationCenterVisible()) shellBackend.closeCalendario();
+            });
+        } else if (name == QStringLiteral("esquinaWindow")) {
+            // Esquina inferior derecha: quedarse 2,5 s abre los escritorios.
+            // Ámbito sin "titan-": sin desenfoque; zona -1: en el borde mismo.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("inti-esquina"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            auto verEsquina = [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                                && !shellBackend.workspacesVisible());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, verEsquina);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, verEsquina);
+            QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, verEsquina);
+            verEsquina();
         } else if (name == QStringLiteral("dynamicIslandWindow")) {
             // Anclada solo arriba: el compositor la centra y la ventana mide lo
             // que la isla (Shell.qml), sin ocupar el resto de la franja.
