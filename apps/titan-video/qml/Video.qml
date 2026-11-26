@@ -9,7 +9,7 @@ TitanWindow {
     title: videoBackend.fileName + (videoBackend.playlistPosition !== "" ? "  ·  " + videoBackend.playlistPosition : "")
     width: 860
     height: 540
-    minimumWidth: 480
+    minimumWidth: 400
     minimumHeight: 320
     sidebarWidth: 0
 

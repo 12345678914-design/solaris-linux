@@ -21,6 +21,8 @@ class WindowTracker : public QObject
     Q_PROPERTY(QString activeAppId READ activeAppId NOTIFY activeAppIdChanged)
     Q_PROPERTY(bool hasFullscreenWindow READ hasFullscreenWindow NOTIFY fullscreenChanged)
     Q_PROPERTY(bool hasMaximizedWindow READ hasMaximizedWindow NOTIFY maximizedChanged)
+    // Ventana acoplada abajo (media pantalla o mosaico): el Dock se esconde igual
+    Q_PROPERTY(bool hasTiledWindow READ hasTiledWindow NOTIFY tiledChanged)
     Q_PROPERTY(int currentWorkspace READ currentWorkspace WRITE setCurrentWorkspace NOTIFY currentWorkspaceChanged)
     Q_PROPERTY(QVariantList currentWorkspaceWindows READ currentWorkspaceWindows NOTIFY currentWorkspaceWindowsChanged)
     
@@ -33,6 +35,7 @@ public:
     QString activeAppId() const;
     bool hasFullscreenWindow() const { return m_hasFullscreen; }
     bool hasMaximizedWindow() const { return m_hasMaximized; }
+    bool hasTiledWindow() const;
     int currentWorkspace() const { return m_currentWorkspace; }
     void setCurrentWorkspace(int ws);
     QVariantList currentWorkspaceWindows() const;
@@ -40,6 +43,8 @@ public:
     Q_INVOKABLE QVariantList windowsForWorkspace(int workspaceIndex) const;
     Q_INVOKABLE int windowWorkspace(qulonglong windowId) const;
     Q_INVOKABLE void moveWindowToWorkspace(qulonglong windowId, int workspaceIndex);
+    // Win+Mayús+N: la ventana de delante al escritorio N (te quedas donde estás)
+    void moverActivaAEscritorio(int workspaceIndex);
     Q_INVOKABLE void focusWindow(const QString &appId);
     Q_INVOKABLE void activateWindow(const QString &appId);
     Q_INVOKABLE void closeWindow(const QString &appId);
@@ -67,6 +72,7 @@ signals:
     void activeAppIdChanged();
     void fullscreenChanged();
     void maximizedChanged();
+    void tiledChanged();
     void currentWorkspaceChanged();
     void currentWorkspaceWindowsChanged();
     void requestWorkspaceSwitch(int targetWorkspace);

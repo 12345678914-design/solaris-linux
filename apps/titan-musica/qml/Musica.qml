@@ -7,7 +7,7 @@ TitanWindow {
 
     width: 1180
     height: 740
-    minimumWidth: 860
+    minimumWidth: 560
     minimumHeight: 520
     sidebarWidth: 214
     title: musicaBackend.actual.titulo
@@ -56,7 +56,10 @@ TitanWindow {
 
     // ================================================================ BARRA SUPERIOR
     headerContentData: Item {
+        id: cabMusica
         anchors.fill: parent
+        // Media pantalla o mosaico: sin barra de volumen y buscador corto
+        readonly property bool estrecha: width < 640
 
         Row {
             id: transporte
@@ -107,6 +110,7 @@ TitanWindow {
         // Lo que suena: carátula, título, artista y posición
         Rectangle {
             id: lcd
+            visible: width > 90
             anchors.left: transporte.right
             anchors.leftMargin: 12
             anchors.right: derecha.left
@@ -225,6 +229,7 @@ TitanWindow {
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: musicaBackend.toggleSilencio() }
             }
             Barra {
+                visible: !cabMusica.estrecha
                 width: 74
                 anchors.verticalCenter: parent.verticalCenter
                 color: theme.isDark ? "#ffffff" : "#3a3a3c"
@@ -247,7 +252,7 @@ TitanWindow {
             Item { width: 4; height: 1 }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 170; height: 28; radius: 7
+                width: cabMusica.estrecha ? 110 : 170; height: 28; radius: 7
                 color: theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
                 border.color: buscador.activeFocus ? theme.accent : "transparent"
                 Text {

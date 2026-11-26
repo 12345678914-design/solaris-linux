@@ -6,6 +6,8 @@ TitanWindow {
 
     title: "Ajustes del Sistema - " + settingsBackend.currentSection
     sidebarWidth: 230
+    // La barra lateral no se pliega: con menos ancho no cabría el contenido
+    minimumWidth: 600
     showStatusBar: false
 
     TitanTheme { id: theme }

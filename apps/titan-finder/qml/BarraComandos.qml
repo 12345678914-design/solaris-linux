@@ -11,6 +11,8 @@ Rectangle {
     height: 44
     color: theme.contentBackground
     readonly property bool compacta: width < 860
+    // Más estrecha aún (media pantalla, mosaico): Ordenar y Ver también solo icono
+    readonly property bool muyCompacta: width < 560
     readonly property int nSel: lista ? lista.nSel : 0
 
     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.contentCardBorder }
@@ -144,12 +146,12 @@ Rectangle {
         Item { width: 4; height: 1 }
         Boton {
             id: bOrdenar
-            icono: "ordenar"; texto: "Ordenar"; desplegable: true
+            icono: "ordenar"; texto: "Ordenar"; desplegable: true; conTexto: !barra.muyCompacta
             onPulsado: barra.lista.mostrarMenu(barra.opcionesOrdenar(), bOrdenar)
         }
         Boton {
             id: bVer
-            icono: finderBackend.viewMode === "grid" ? "iconos" : "lista"; texto: "Ver"; desplegable: true
+            icono: finderBackend.viewMode === "grid" ? "iconos" : "lista"; texto: "Ver"; desplegable: true; conTexto: !barra.muyCompacta
             onPulsado: barra.lista.mostrarMenu(barra.opcionesVer(), bVer)
         }
         Boton {

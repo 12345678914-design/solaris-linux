@@ -16,7 +16,11 @@ Window {
     property bool sidebarCollapsed: false
     property int expandedSidebarWidth: 205
     property int collapsedSidebarWidth: 54
-    property real sidebarWidth: sidebarCollapsed ? collapsedSidebarWidth : expandedSidebarWidth
+    // Con la ventana más estrecha que esto la barra lateral se pliega sola
+    // (0 = nunca; solo para apps cuya barra sabe estar plegada)
+    property int anchoPlegarBarra: 0
+    readonly property bool barraPlegadaSola: anchoPlegarBarra > 0 && width < anchoPlegarBarra
+    property real sidebarWidth: (sidebarCollapsed || barraPlegadaSola) ? collapsedSidebarWidth : expandedSidebarWidth
     property bool showSidebar: true
     property real effectiveSidebarWidth: showSidebar ? sidebarWidth : 0
     Behavior on effectiveSidebarWidth { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -54,8 +58,11 @@ Window {
 
     width: 960
     height: 620
-    minimumWidth: 680
-    minimumHeight: 440
+    // Pequeño a propósito: la ventana tiene que caber en media pantalla
+    // (Win+flecha, arrastrar al borde) y en el mosaico, también en pantallas
+    // de 1280 px. Cada app se adapta cuando es estrecha.
+    minimumWidth: 420
+    minimumHeight: 320
     visible: true
     flags: Qt.FramelessWindowHint | Qt.Window
     color: "transparent"

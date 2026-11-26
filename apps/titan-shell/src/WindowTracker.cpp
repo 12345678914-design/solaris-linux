@@ -32,6 +32,7 @@ WindowTracker::WindowTracker(QObject *parent)
     : QObject(parent)
     , m_monitor(new MonitorTareas(this))
 {
+    connect(WayfireIpc::instancia(), &WayfireIpc::acopladaCambiada, this, &WindowTracker::tiledChanged);
     QString err;
     // Con la conexion de Qt se puede pasar la superficie del Dock en
     // set_rectangle; sin Wayland (p. ej. pruebas) se abre una propia.
@@ -179,6 +180,23 @@ void WindowTracker::moveWindowToWorkspace(qulonglong windowId, int workspaceInde
         }
         // Rehace la lista para que el campo "workspace" (miniaturas) se actualice.
         onTareasCambiadas();
+    }
+}
+
+bool WindowTracker::hasTiledWindow() const
+{
+    return WayfireIpc::instancia()->disponible() && WayfireIpc::instancia()->hayAcoplada();
+}
+
+void WindowTracker::moverActivaAEscritorio(int workspaceIndex)
+{
+    if (!m_monitor) return;
+    for (const auto &v : m_monitor->ventanas()) {
+        if (v.activa) {
+            if (m_windowWorkspaces.value(v.id, m_currentWorkspace) != workspaceIndex)
+                moveWindowToWorkspace(v.id, workspaceIndex);
+            return;
+        }
     }
 }
 

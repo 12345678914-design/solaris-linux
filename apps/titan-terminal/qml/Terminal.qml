@@ -8,7 +8,7 @@ Window {
 
     width: 800
     height: 500
-    minimumWidth: 500
+    minimumWidth: 360
     minimumHeight: 300
     visible: true
     title: "TITAN Terminal"

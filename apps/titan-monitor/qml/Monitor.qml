@@ -8,7 +8,7 @@ TitanWindow {
     title: "Monitor de recursos"
     width: 980
     height: 640
-    minimumWidth: 720
+    minimumWidth: 520
     minimumHeight: 480
     expandedSidebarWidth: 222
     collapsedSidebarWidth: 54
@@ -96,18 +96,22 @@ TitanWindow {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: monitor.pagina === "procesos" ? "Procesos" : monitor.pagina === "rendimiento" ? "Rendimiento" : "Aplicaciones de inicio"
+            // Con poco ancho cede el sitio al buscador
+            width: Math.max(0, accionesMonitor.x - 12)
+            elide: Text.ElideRight
             color: theme.headerText
             font.pixelSize: 15
             font.bold: true
         }
         Row {
+            id: accionesMonitor
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
             visible: monitor.pagina === "procesos"
 
             Rectangle {
-                width: 220; height: 30; radius: 7
+                width: ventana.width < 760 ? 150 : 220; height: 30; radius: 7
                 anchors.verticalCenter: parent.verticalCenter
                 color: theme.isDark ? "#1c1c1f" : "#ffffff"
                 border.color: buscar.activeFocus ? theme.accent : theme.glassBorder

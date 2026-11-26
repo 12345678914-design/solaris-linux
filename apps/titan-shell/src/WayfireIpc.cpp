@@ -1,4 +1,7 @@
 #include "WayfireIpc.h"
+#include <QTimer>
+#include <QSizeF>
+#include <QHash>
 
 #include <QDebug>
 #include <QJsonArray>
@@ -57,7 +60,10 @@ WayfireIpc::WayfireIpc(QObject *padre)
     if (conectar(m_eventos)) {
         QJsonObject datos;
         datos.insert(QStringLiteral("events"),
-                     QJsonArray{QStringLiteral("wset-workspace-changed")});
+                     QJsonArray{QStringLiteral("wset-workspace-changed"), QStringLiteral("view-tiled"),
+                                QStringLiteral("view-mapped"), QStringLiteral("view-unmapped"),
+                                QStringLiteral("view-minimized"), QStringLiteral("view-geometry-changed"),
+                                QStringLiteral("view-workspace-changed"), QStringLiteral("view-set-output")});
         QJsonObject msg;
         msg.insert(QStringLiteral("method"), QStringLiteral("window-rules/events/watch"));
         msg.insert(QStringLiteral("data"), datos);
@@ -65,6 +71,12 @@ WayfireIpc::WayfireIpc(QObject *padre)
         m_eventos->flush();
         connect(m_eventos, &QLocalSocket::readyRead, this, &WayfireIpc::leerEventos);
     }
+    // Muchos eventos seguidos (mover, animaciones): se revisa una vez al final
+    m_revisar = new QTimer(this);
+    m_revisar->setSingleShot(true);
+    m_revisar->setInterval(120);
+    connect(m_revisar, &QTimer::timeout, this, &WayfireIpc::revisarAcopladas);
+    m_revisar->start();
 }
 
 bool WayfireIpc::conectar(QLocalSocket *socket)
@@ -193,13 +205,52 @@ void WayfireIpc::leerEventos()
     QJsonDocument doc;
     while (sacarMensaje(m_bufferEventos, &doc)) {
         const QJsonObject msg = doc.object();
-        if (msg.value(QStringLiteral("event")).toString() != QLatin1String("wset-workspace-changed")) {
+        const QString evento = msg.value(QStringLiteral("event")).toString();
+        if (evento.isEmpty()) continue;
+        if (m_revisar) m_revisar->start();
+        if (evento != QLatin1String("wset-workspace-changed")) {
             continue;
         }
         const QJsonObject nuevo = msg.value(QStringLiteral("new-workspace")).toObject();
         if (!nuevo.isEmpty()) {
             emit escritorioCambiado(nuevo.value(QStringLiteral("x")).toInt());
         }
+    }
+}
+
+void WayfireIpc::revisarAcopladas()
+{
+    // Tamaño de cada pantalla (las ventanas dan su posición respecto a ella)
+    QHash<int, QSizeF> salidas;
+    for (const QJsonValue &v : llamarDoc(QStringLiteral("window-rules/list-outputs")).array()) {
+        const QJsonObject o = v.toObject();
+        const QJsonObject g = o.value(QStringLiteral("geometry")).toObject();
+        salidas.insert(o.value(QStringLiteral("id")).toInt(),
+                       QSizeF(g.value(QStringLiteral("width")).toDouble(), g.value(QStringLiteral("height")).toDouble()));
+    }
+    bool hay = false;
+    for (const QJsonValue &v : llamarDoc(QStringLiteral("window-rules/list-views")).array()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("role")).toString() != QLatin1String("toplevel")
+            || !o.value(QStringLiteral("mapped")).toBool() || o.value(QStringLiteral("minimized")).toBool()
+            || o.value(QStringLiteral("layer")).toString() != QLatin1String("workspace"))
+            continue;
+        // Bordes acoplados: 1 arriba, 2 abajo, 4 izquierda, 8 derecha
+        if (!(o.value(QStringLiteral("tiled-edges")).toInt() & 2))
+            continue;
+        // Solo las que se ven (las de otros escritorios caen fuera de la pantalla)
+        const QSizeF pantalla = salidas.value(o.value(QStringLiteral("output-id")).toInt());
+        const QJsonObject g = o.value(QStringLiteral("geometry")).toObject();
+        const double x = g.value(QStringLiteral("x")).toDouble(), y = g.value(QStringLiteral("y")).toDouble();
+        const double w = g.value(QStringLiteral("width")).toDouble(), h = g.value(QStringLiteral("height")).toDouble();
+        if (pantalla.isEmpty() || x + w <= 0 || y + h <= 0 || x >= pantalla.width() || y >= pantalla.height())
+            continue;
+        hay = true;
+        break;
+    }
+    if (hay != m_hayAcoplada) {
+        m_hayAcoplada = hay;
+        emit acopladaCambiada();
     }
 }
 

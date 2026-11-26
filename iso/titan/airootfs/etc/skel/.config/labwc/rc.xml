@@ -148,6 +148,15 @@
     <keybind key="W-6"><action name="GoToDesktop" to="6" /></keybind>
     <keybind key="W-7"><action name="GoToDesktop" to="7" /></keybind>
     <keybind key="W-8"><action name="GoToDesktop" to="8" /></keybind>
+    <!-- Win+Mayús+número: la ventana al escritorio N, sin seguirla -->
+    <keybind key="W-S-1"><action name="SendToDesktop" to="1" follow="no" /></keybind>
+    <keybind key="W-S-2"><action name="SendToDesktop" to="2" follow="no" /></keybind>
+    <keybind key="W-S-3"><action name="SendToDesktop" to="3" follow="no" /></keybind>
+    <keybind key="W-S-4"><action name="SendToDesktop" to="4" follow="no" /></keybind>
+    <keybind key="W-S-5"><action name="SendToDesktop" to="5" follow="no" /></keybind>
+    <keybind key="W-S-6"><action name="SendToDesktop" to="6" follow="no" /></keybind>
+    <keybind key="W-S-7"><action name="SendToDesktop" to="7" follow="no" /></keybind>
+    <keybind key="W-S-8"><action name="SendToDesktop" to="8" follow="no" /></keybind>
     <keybind key="W-Up"><action name="Execute" command="titan-shell --toggle-workspaces" /></keybind>
     
     <!-- Tecla Mod / Super suelta (al pulsar y soltar): abre el menú de inicio / Launchpad -->
@@ -236,16 +245,14 @@
       <action name="Execute" command="titan-bloquear"/>
     </keybind>
 
-    <!-- Capturas de pantalla (titan-captura): Impr Pant y como macOS (Super+Shift+3/4) -->
+    <!-- Capturas de pantalla (titan-captura): Impr Pant y Super+Shift+S -->
     <keybind key="Print"><action name="Execute" command="titan-captura pantalla"/></keybind>
     <keybind key="S-Print"><action name="Execute" command="titan-captura area"/></keybind>
-    <keybind key="W-S-3"><action name="Execute" command="titan-captura pantalla"/></keybind>
-    <keybind key="W-S-4"><action name="Execute" command="titan-captura area"/></keybind>
     <keybind key="W-S-s"><action name="Execute" command="titan-captura area"/></keybind>
     <keybind key="W-S-S"><action name="Execute" command="titan-captura area"/></keybind>
     <!-- Grabar la pantalla (titan-grabar): el mismo atajo para parar y guardar -->
-    <keybind key="W-S-5"><action name="Execute" command="titan-grabar"/></keybind>
-    <keybind key="W-S-6"><action name="Execute" command="titan-grabar area"/></keybind>
+    <keybind key="W-A-r"><action name="Execute" command="titan-grabar"/></keybind>
+    <keybind key="W-A-S-r"><action name="Execute" command="titan-grabar area"/></keybind>
 
     <!-- Lector de pantalla (Orca), como en GNOME -->
     <keybind key="W-A-s"><action name="Execute" command="titan-lector"/></keybind>

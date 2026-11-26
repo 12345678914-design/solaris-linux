@@ -1,9 +1,9 @@
 #!/bin/sh
-# Inti OS - grabar la pantalla (wf-recorder), como Super+Shift+5 en macOS o
+# Inti OS - grabar la pantalla (wf-recorder), como Win+Alt+R en Windows o
 # Ctrl+Alt+Mayús+R en Ubuntu.
 #
 #   titan-grabar             empieza a grabar toda la pantalla; si ya se está
-#                            grabando, para y guarda           Super+Shift+5
+#                            grabando, para y guarda           Super+Alt+R
 #   titan-grabar area        igual, pero de una zona que se marca con el ratón
 #   titan-grabar sonido      toda la pantalla con el sonido del sistema
 #   titan-grabar parar       para la grabación en curso
@@ -71,5 +71,5 @@ if ! kill -0 "$(cat "$estado.pid")" 2>/dev/null; then
     aviso "No se ha podido empezar a grabar"
     exit 1
 fi
-aviso -i media-record "Grabando la pantalla" "Pulsa Super+Mayús+5 otra vez para parar y guardar"
+aviso -i media-record "Grabando la pantalla" "Pulsa Win+Alt+R otra vez para parar y guardar"
 exit 0

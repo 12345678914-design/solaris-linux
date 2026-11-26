@@ -7,6 +7,8 @@ TitanWindow {
     title: (finderBackend.enPapelera ? "Papelera" : finderBackend.currentPathName) + " — Explorador de archivos"
     expandedSidebarWidth: 200
     collapsedSidebarWidth: 54
+    // En media pantalla o en el mosaico la barra lateral se queda en iconos
+    anchoPlegarBarra: 720
 
     // Atajos de teclado estilo macOS
     Shortcut {

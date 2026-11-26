@@ -573,7 +573,8 @@ Item {
             ["Win + ← / →", "Ventana a media pantalla"],
             ["Win + Tab", "Ver todas las ventanas"],
             ["Win + Mayús + T", "Acoplar / soltar la ventana (mosaico)"],
-            ["Win + Alt + flechas", "Ir a la ventana de al lado (mosaico)"]
+            ["Win + Alt + flechas", "Ir a la ventana de al lado (mosaico)"],
+            ["Win + Mayús + 1…8", "Mover la ventana al escritorio 1…8"]
         ] },
         { g: "Escribir", l: [
             ["Ctrl + C / X / V", "Copiar, cortar y pegar"],
@@ -584,7 +585,7 @@ Item {
         { g: "Capturas", l: [
             ["Impr Pant", "Captura de toda la pantalla"],
             ["Win + Mayús + S", "Captura de una zona"],
-            ["Win + Mayús + 5", "Grabar la pantalla (otra vez para parar)"]
+            ["Win + Alt + R", "Grabar la pantalla (otra vez para parar)"]
         ] },
         { g: "Escritorios", l: [
             ["Win + ↑", "Ver todos los escritorios"],

@@ -22,7 +22,9 @@ Item {
 
     // "isMaximized" = el Dock se esconde y sale al acercar el raton al borde:
     // con ventanas maximizadas o si se pide ocultarlo siempre.
+    // También con una ventana acoplada abajo (media pantalla, cuarto o mosaico)
     readonly property bool isMaximized: ocultarAuto || windowTracker.hasMaximizedWindow || windowTracker.hasFullscreenWindow
+                                        || windowTracker.hasTiledWindow
     property bool dockRevealed: false
     readonly property bool shouldShowDock: !shellBackend.launcherVisible && (!isMaximized || dockRevealed)
 

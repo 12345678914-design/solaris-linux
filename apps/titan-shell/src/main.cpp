@@ -344,6 +344,15 @@ int main(int argc, char *argv[])
                         shellBackend.lockScreen();
                     } else if (cmd == "tecla escritorio") {
                         windowTracker.mostrarEscritorio();
+                    } else if (cmd.startsWith("tecla mover-")) {
+                        // Win+Mayús+N: si el escritorio N aún no existe, se crea
+                        bool ok = false;
+                        const int n = QString::fromUtf8(cmd.mid(12)).trimmed().toInt(&ok);
+                        if (ok && n >= 1 && n <= 8) {
+                            while (shellBackend.workspaces().size() < n)
+                                shellBackend.addWorkspace();
+                            windowTracker.moverActivaAEscritorio(n - 1);
+                        }
                     } else if (cmd.startsWith("tecla ")) {
                         shellBackend.tecla(QString::fromUtf8(cmd.mid(6)).trimmed());
                     } else if (cmd.startsWith("notify ")) {

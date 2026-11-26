@@ -31,7 +31,7 @@ TitanWindow {
     title: "Calendario"
     width: 780
     height: 520
-    minimumWidth: 680
+    minimumWidth: 520
     minimumHeight: 460
     sidebarWidth: 0
 

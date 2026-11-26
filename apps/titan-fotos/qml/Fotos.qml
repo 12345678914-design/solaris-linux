@@ -7,7 +7,7 @@ TitanWindow {
 
     width: 1180
     height: 760
-    minimumWidth: 820
+    minimumWidth: 520
     minimumHeight: 520
     title: enVisor ? (fotosBackend.currentPhoto.name + " — Fotos") : "Fotos"
     sidebarWidth: 214
@@ -124,15 +124,19 @@ TitanWindow {
 
         // --- Rejilla: título, selección, orden, tamaño y búsqueda
         Item {
+            id: cabRejilla
             anchors.fill: parent
             visible: !ventana.enVisor
+            // Media pantalla o mosaico: buscador más corto y sin el botón de presentación
+            readonly property bool estrecha: width < 560
 
             Column {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                visible: ventana.nSel === 0
-                Text { text: fotosBackend.tituloVista; color: theme.headerText; font.pixelSize: 15; font.weight: Font.Bold }
-                Text { text: fotosBackend.statusText; color: theme.headerTextMuted; font.pixelSize: 11 }
+                width: Math.max(0, accionesRejilla.x - 10)
+                visible: ventana.nSel === 0 && width > 40
+                Text { width: parent.width; elide: Text.ElideRight; text: fotosBackend.tituloVista; color: theme.headerText; font.pixelSize: 15; font.weight: Font.Bold }
+                Text { width: parent.width; elide: Text.ElideRight; text: fotosBackend.statusText; color: theme.headerTextMuted; font.pixelSize: 11 }
             }
 
             Row {
@@ -161,11 +165,12 @@ TitanWindow {
             }
 
             Row {
+                id: accionesRejilla
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
 
-                BotonM { texto: "▶"; tam: 12; pista: "Presentación (F5)"; tinta: theme.headerText; anchors.verticalCenter: parent.verticalCenter; onPulsado: ventana.empezarPresentacion() }
+                BotonM { visible: !cabRejilla.estrecha; texto: "▶"; tam: 12; pista: "Presentación (F5)"; tinta: theme.headerText; anchors.verticalCenter: parent.verticalCenter; onPulsado: ventana.empezarPresentacion() }
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: ordenTexto.implicitWidth + 22
@@ -192,8 +197,8 @@ TitanWindow {
                 TextField {
                     id: buscador
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 200
-                    placeholderText: "Buscar (nombre, mes, cámara)"
+                    width: cabRejilla.estrecha ? 130 : 200
+                    placeholderText: cabRejilla.estrecha ? "Buscar" : "Buscar (nombre, mes, cámara)"
                     text: fotosBackend.searchQuery
                     onTextEdited: fotosBackend.searchQuery = text
                     selectByMouse: true

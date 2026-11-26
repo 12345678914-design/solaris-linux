@@ -39,9 +39,13 @@ public:
     int escritorioActual();
     // true si el plugin esta en core/plugins (p. ej. "blur").
     bool pluginActivo(const QString &nombre);
+    // ¿Hay una ventana acoplada (media pantalla, cuarto o mosaico) pegada al
+    // borde de abajo en el escritorio que se ve? Entonces el Dock se esconde.
+    bool hayAcoplada() const { return m_hayAcoplada; }
 
 signals:
     void escritorioCambiado(int indice);
+    void acopladaCambiada();
 
 private:
     explicit WayfireIpc(QObject *padre = nullptr);
@@ -50,6 +54,7 @@ private:
     static QByteArray marco(const QJsonObject &mensaje);
     void leerEventos();
     int idSalida();
+    void revisarAcopladas();
 
     QString m_ruta;
     bool m_disponible = false;
@@ -57,6 +62,8 @@ private:
     QLocalSocket *m_eventos = nullptr;
     QByteArray m_bufferEventos;
     int m_idSalida = -1;
+    bool m_hayAcoplada = false;
+    class QTimer *m_revisar = nullptr;
 };
 
 #endif
