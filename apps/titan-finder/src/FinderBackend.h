@@ -38,6 +38,11 @@ class FinderBackend : public QObject
     Q_PROPERTY(bool enRecientes READ enRecientes NOTIFY currentPathChanged)
     // Red: otros equipos y carpetas compartidas (Red.h)
     Q_PROPERTY(bool enRed READ enRed NOTIFY currentPathChanged)
+    // Pestañas, como en el Explorador de Windows 11: [{titulo, ruta}]
+    Q_PROPERTY(QVariantList pestanas READ pestanas NOTIFY pestanasChanged)
+    Q_PROPERTY(int pestanaActual READ pestanaActual NOTIFY pestanasChanged)
+    // Para arrastrar pestañas entre ventanas (cada ventana es un proceso)
+    Q_PROPERTY(qint64 proceso READ proceso CONSTANT)
     Q_PROPERTY(bool buscandoRed READ buscandoRed NOTIFY currentPathChanged)
     // La búsqueda también mira dentro de las subcarpetas (en otro hilo)
     Q_PROPERTY(bool buscando READ buscando NOTIFY busquedaChanged)
@@ -85,6 +90,9 @@ public:
     bool enRecientes() const { return m_currentPath == rutaRecientes(); }
     bool enRed() const;
     bool buscandoRed() const { return m_buscandoRed; }
+    QVariantList pestanas() const;
+    int pestanaActual() const { return m_actual; }
+    qint64 proceso() const;
     bool buscando() const { return m_buscando; }
     static QString rutaRecientes() { return QStringLiteral("recent:///"); }
     void setPanelDetalles(bool v);
@@ -140,6 +148,19 @@ public:
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void openItem(const QString &path);
+    // Pestañas. ruta "" = Carpeta personal. activar=false: se abre detrás
+    Q_INVOKABLE void nuevaPestana(const QString &ruta = QString(), bool activar = true);
+    // false si era la única (entonces se cierra la ventana)
+    Q_INVOKABLE bool cerrarPestana(int i);
+    Q_INVOKABLE void irAPestana(int i);
+    Q_INVOKABLE void moverPestana(int de, int a);
+    // JSON con la carpeta y el historial, para soltarla en otra ventana
+    Q_INVOKABLE QString datosPestana(int i);
+    // La que llega soltada desde otra ventana del Explorador; en "antes" (-1 = al final)
+    Q_INVOKABLE bool recibirPestana(const QString &json, int antes = -1);
+    // Sacarla a una ventana nueva (soltada fuera de cualquier ventana)
+    Q_INVOKABLE void separarPestana(int i);
+    Q_INVOKABLE void abrirEnVentanaNueva(const QString &ruta);
     // Usuario y contraseña de una carpeta compartida (ver credencialesRed)
     Q_INVOKABLE void responderCredenciales(bool aceptar, const QString &usuario, const QString &dominio,
                                            const QString &clave, bool anonimo);
@@ -184,6 +205,7 @@ signals:
     void avisoChanged();
     void deshacerChanged();
     void busquedaChanged();
+    void pestanasChanged();
     void credencialesRed(const QString &mensaje, const QString &usuario, const QString &dominio, bool anonimoPosible);
 
 private slots:
@@ -235,6 +257,12 @@ private:
     void cargarRecientes();
     class Red *m_red = nullptr;
     bool m_buscandoRed = false;
+    struct Pestana { QStringList historial; int indice = -1; };
+    QList<Pestana> m_pestanas{Pestana{}};
+    int m_actual = 0;
+    void guardarPestana();
+    void cargarPestana(int i);
+    QString nombreDe(const QString &ruta) const;
     void apuntarReciente(const QString &path);
     void buscarEnSubcarpetas();
     QVariantMap entradaDe(const QFileInfo &info) const;

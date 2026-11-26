@@ -112,7 +112,7 @@ Rectangle {
                : { t: "Nada que deshacer", vacia: true })
         o.push({ sep: true })
         if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: function () { barra.lista.seleccionarTodo() } })
-        o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+T", a: function () { finderBackend.openTerminal() } })
+        o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+Alt+T", a: function () { finderBackend.openTerminal() } })
         o.push({ t: "Copiar ruta", i: "⎘", a: function () { finderBackend.copiarRuta(barra.nSel > 0 ? barra.lista.objetivo() : [finderBackend.currentPath]) } })
         o.push({ sep: true })
         o.push({ t: "Propiedades", i: "ℹ", k: "Ctrl+I", a: function () { barra.lista.openProperties(barra.nSel > 0 ? barra.lista.selectedPath : finderBackend.currentPath) } })

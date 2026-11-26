@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Finder.qml</file>
+        <file>qml/Pestanas.qml</file>
         <file>qml/Sidebar.qml</file>
         <file>qml/FileList.qml</file>
         <file>qml/BarraComandos.qml</file>

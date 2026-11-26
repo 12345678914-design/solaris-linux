@@ -143,6 +143,8 @@ FinderBackend::FinderBackend(QObject *parent)
         else if (!error.isEmpty()) ponerAviso(error);
     });
     connect(m_red, &Red::credencialesPedidas, this, &FinderBackend::credencialesRed);
+    // El título de la pestaña sigue a la carpeta
+    connect(this, &FinderBackend::currentPathChanged, this, &FinderBackend::pestanasChanged);
 
     // Lo que copian otras apps también cuenta para "Pegar".
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FinderBackend::clipboardChanged);
@@ -309,6 +311,172 @@ QVariantList FinderBackend::pathSegments() const
     }
 
     return segments;
+}
+
+// ---------------------------------------------------------------- pestañas
+qint64 FinderBackend::proceso() const
+{
+    return QCoreApplication::applicationPid();
+}
+
+QString FinderBackend::nombreDe(const QString &ruta) const
+{
+    if (ruta.isEmpty() || ruta == QDir::homePath()) return QStringLiteral("Carpeta personal");
+    if (ruta == rutaRecientes()) return QStringLiteral("Recientes");
+    if (ruta == QStringLiteral("/")) return QStringLiteral("Sistema");
+    if (ruta == QDir::homePath() + QStringLiteral("/.local/share/Trash/files")) return QStringLiteral("Papelera");
+    if (Red::esRed(ruta)) {
+        const QStringList p = Red::partes(ruta);
+        return p.isEmpty() ? QStringLiteral("Red") : p.last();
+    }
+    const QString n = QDir(ruta).dirName();
+    return n.isEmpty() ? ruta : n;
+}
+
+QVariantList FinderBackend::pestanas() const
+{
+    QVariantList r;
+    for (int i = 0; i < m_pestanas.size(); ++i) {
+        const QString ruta = i == m_actual ? m_currentPath
+                                           : m_pestanas.at(i).historial.value(m_pestanas.at(i).indice);
+        r << QVariantMap{{QStringLiteral("titulo"), nombreDe(ruta)}, {QStringLiteral("ruta"), ruta}};
+    }
+    return r;
+}
+
+void FinderBackend::guardarPestana()
+{
+    if (m_actual >= 0 && m_actual < m_pestanas.size())
+        m_pestanas[m_actual] = Pestana{m_history, m_historyIndex};
+}
+
+void FinderBackend::cargarPestana(int i)
+{
+    m_actual = i;
+    const Pestana p = m_pestanas.at(i);
+    m_history = p.historial;
+    m_historyIndex = p.indice;
+    if (!m_searchQuery.isEmpty()) {
+        m_searchQuery.clear();
+        emit searchQueryChanged();
+    }
+    emit historyChanged();
+    const QString ruta = m_history.value(m_historyIndex);
+    if (ruta.isEmpty()) {
+        m_history.clear();
+        m_historyIndex = -1;
+        goTo(QDir::homePath());
+    } else {
+        loadDirectory(ruta);
+    }
+    emit pestanasChanged();
+}
+
+void FinderBackend::nuevaPestana(const QString &ruta, bool activar)
+{
+    guardarPestana();
+    const QString destino = ruta.isEmpty() ? QDir::homePath() : ruta;
+    const int nueva = m_actual + 1;
+    if (activar) {
+        m_pestanas.insert(nueva, Pestana{});
+        m_actual = nueva;
+        m_history.clear();
+        m_historyIndex = -1;
+        if (!m_searchQuery.isEmpty()) {
+            m_searchQuery.clear();
+            emit searchQueryChanged();
+        }
+        goTo(destino);
+        if (m_history.isEmpty())   // no existe: la carpeta personal
+            goTo(QDir::homePath());
+    } else {
+        // Detrás, sin moverse (clic central en una carpeta)
+        m_pestanas.insert(nueva, Pestana{{destino}, 0});
+    }
+    emit pestanasChanged();
+}
+
+bool FinderBackend::cerrarPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size()) return true;
+    if (m_pestanas.size() == 1) return false;
+    guardarPestana();
+    m_pestanas.removeAt(i);
+    if (i == m_actual)
+        cargarPestana(qMin(i, int(m_pestanas.size()) - 1));
+    else {
+        if (i < m_actual) --m_actual;
+        emit pestanasChanged();
+    }
+    return true;
+}
+
+void FinderBackend::irAPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size() || i == m_actual) return;
+    guardarPestana();
+    cargarPestana(i);
+}
+
+void FinderBackend::moverPestana(int de, int a)
+{
+    const int n = m_pestanas.size();
+    if (de < 0 || de >= n || a < 0 || a >= n || de == a) return;
+    guardarPestana();
+    m_pestanas.move(de, a);
+    if (m_actual == de) m_actual = a;
+    else if (de < m_actual && m_actual <= a) --m_actual;
+    else if (a <= m_actual && m_actual < de) ++m_actual;
+    emit pestanasChanged();
+}
+
+QString FinderBackend::datosPestana(int i)
+{
+    guardarPestana();
+    if (i < 0 || i >= m_pestanas.size()) return QString();
+    const Pestana &p = m_pestanas.at(i);
+    QJsonObject o;
+    o[QStringLiteral("proceso")] = QString::number(proceso());
+    o[QStringLiteral("indice")] = p.indice;
+    o[QStringLiteral("historial")] = QJsonArray::fromStringList(p.historial);
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+bool FinderBackend::recibirPestana(const QString &json, int antes)
+{
+    const QJsonObject o = QJsonDocument::fromJson(json.toUtf8()).object();
+    // Solo carpetas que existen aquí (o de la red); nada de rutas raras
+    QStringList historial;
+    int indice = o.value(QStringLiteral("indice")).toInt(-1);
+    const QJsonArray h = o.value(QStringLiteral("historial")).toArray();
+    for (int k = 0; k < h.size() && k < 200; ++k) {
+        const QString r = h.at(k).toString();
+        if (QFileInfo(r).isDir() || r == rutaRecientes() || Red::esRed(r)) historial << r;
+        else if (k <= indice) --indice;
+    }
+    if (historial.isEmpty()) return false;
+    indice = qBound(0, indice, int(historial.size()) - 1);
+    guardarPestana();
+    const int pos = (antes < 0 || antes > m_pestanas.size()) ? m_pestanas.size() : antes;
+    m_pestanas.insert(pos, Pestana{historial, indice});
+    if (pos <= m_actual) ++m_actual;
+    cargarPestana(pos);
+    return true;
+}
+
+void FinderBackend::separarPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size() || m_pestanas.size() == 1) return;
+    guardarPestana();
+    const Pestana &p = m_pestanas.at(i);
+    const QString ruta = p.historial.value(p.indice, QDir::homePath());
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {ruta});
+    cerrarPestana(i);
+}
+
+void FinderBackend::abrirEnVentanaNueva(const QString &ruta)
+{
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {ruta.isEmpty() ? QDir::homePath() : ruta});
 }
 
 bool FinderBackend::enRed() const

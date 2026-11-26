@@ -972,6 +972,11 @@ Rectangle {
             }
             if (n === 1) {
                 o.push({ t: "Abrir", i: "↗", k: "↵", a: function () { finderBackend.openItem(fileListRoot.selectedPaths[0]) } })
+                if (selectedIsDir) {
+                    var carpeta = selectedPaths[0]
+                    o.push({ t: "Abrir en una pestaña nueva", i: "⧉", a: function () { finderBackend.nuevaPestana(carpeta) } })
+                    o.push({ t: "Abrir en una ventana nueva", i: "⊞", a: function () { finderBackend.abrirEnVentanaNueva(carpeta) } })
+                }
                 if (!selectedIsDir) {
                     var ruta = selectedPaths[0]
                     o.push({ t: "Abrir con", i: "⇱", sub: function () {
@@ -1064,7 +1069,7 @@ Rectangle {
         } })
         if (finderBackend.entries.length > 0) o.push({ t: "Seleccionar todo", i: "▦", k: "Ctrl+A", a: fileListRoot.seleccionarTodo })
         o.push({ sep: true })
-        o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+T", a: function () { finderBackend.openTerminal() } })
+        o.push({ t: "Abrir en Terminal", i: ">_", k: "Ctrl+Alt+T", a: function () { finderBackend.openTerminal() } })
         o.push({ t: "Propiedades de la carpeta", i: "ℹ", a: function () { fileListRoot.openProperties(finderBackend.currentPath) } })
         return o
     }
@@ -1361,10 +1366,17 @@ Rectangle {
             id: zona
             anchors.fill: parent
             hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             pressAndHoldInterval: 380
             cursorShape: fileListRoot.agrupando ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-            onPressed: (mouse) => fileListRoot.alPresionar(mouse, el.entrada, zona)
+            onPressed: (mouse) => {
+                // Clic central en una carpeta: en una pestaña nueva, detrás (como en Windows)
+                if (mouse.button === Qt.MiddleButton) {
+                    if (el.entrada.isDir === true && !finderBackend.enPapelera) finderBackend.nuevaPestana(el.itemPath, false)
+                    return
+                }
+                fileListRoot.alPresionar(mouse, el.entrada, zona)
+            }
             onPositionChanged: (mouse) => fileListRoot.alMover(mouse, zona)
             onPressAndHold: fileListRoot.alMantener()
             onReleased: (mouse) => fileListRoot.alSoltarRaton(mouse, el.entrada)

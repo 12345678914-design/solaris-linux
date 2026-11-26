@@ -33,9 +33,15 @@ TitanWindow {
         sequence: "F5"
         onActivated: finderBackend.refresh()
     }
-    Shortcut {
-        sequence: "Ctrl+T"
-        onActivated: finderBackend.openTerminal()
+    // Pestañas como en Windows 11; la Terminal pasa a Ctrl+Alt+T
+    Shortcut { sequence: "Ctrl+Alt+T"; onActivated: finderBackend.openTerminal() }
+    Shortcut { sequence: "Ctrl+T"; onActivated: finderBackend.nuevaPestana() }
+    Shortcut { sequence: "Ctrl+N"; onActivated: finderBackend.abrirEnVentanaNueva(finderBackend.currentPath) }
+    Shortcut { sequences: ["Ctrl+W", "Ctrl+F4"]; onActivated: finderWindow.cerrarPestana(finderBackend.pestanaActual) }
+    Shortcut { sequences: ["Ctrl+Tab", "Ctrl+PgDown"]; onActivated: finderBackend.irAPestana((finderBackend.pestanaActual + 1) % finderBackend.pestanas.length) }
+    Shortcut { sequences: ["Ctrl+Shift+Tab", "Ctrl+PgUp"]; onActivated: finderBackend.irAPestana((finderBackend.pestanaActual + finderBackend.pestanas.length - 1) % finderBackend.pestanas.length) }
+    function cerrarPestana(i) {
+        if (!finderBackend.cerrarPestana(i)) finderWindow.close()   // era la última
     }
     Shortcut {
         sequence: "Ctrl+Shift+N"
@@ -263,9 +269,20 @@ TitanWindow {
     Item {
         anchors.fill: parent
 
+        // Pestañas: arrastrarlas para ordenarlas, a otra ventana del Explorador
+        // para juntarlas, o fuera de la ventana para separarlas (como Windows)
+        Pestanas {
+            id: pestanas
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            alCerrar: function (i) { finderWindow.cerrarPestana(i) }
+            alQuedarseSin: function () { finderWindow.close() }
+        }
+
         BarraComandos {
             id: comandos
-            anchors.top: parent.top
+            anchors.top: pestanas.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             lista: fileList
@@ -330,4 +347,48 @@ TitanWindow {
             }
         }
     }
+
+    // Pestañas soltadas en esta ventana (de otra ventana o de la misma)
+    DropArea {
+        id: soltarPestana
+        // Toda la ventana (barra lateral, título y barra de estado incluidas)
+        parent: finderWindow.contentItem
+        anchors.fill: parent
+        z: 1000
+        keys: ["application/x-inti-pestana"]
+        function enTira(x, y) {
+            const p = pestanas.mapFromItem(soltarPestana, x, y)
+            return p.y >= 0 && p.y < pestanas.height && p.x >= 0 && p.x < pestanas.width ? pestanas.indiceEn(p.x) : -1
+        }
+        onPositionChanged: pestanas.destino = enTira(drag.x, drag.y)
+        onExited: pestanas.destino = -1
+        onDropped: (drop) => {
+            const sitio = enTira(drop.x, drop.y)
+            pestanas.destino = -1
+            if (pestanas.origen >= 0) {
+                // De esta misma ventana: cambiar el orden
+                pestanas.soltadaAqui = true
+                if (sitio >= 0) finderBackend.moverPestana(pestanas.origen, sitio > pestanas.origen ? sitio - 1 : sitio)
+                drop.accept(Qt.CopyAction)
+                return
+            }
+            if (finderBackend.recibirPestana(drop.getDataAsString("application/x-inti-pestana"), sitio))
+                drop.accept(Qt.MoveAction)
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: soltarPestana.containsDrag && pestanas.origen < 0
+            color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.08)
+            border.color: theme.accent
+            border.width: 2
+            radius: 6
+            Text {
+                anchors.centerIn: parent
+                text: "Suelta para juntar la pestaña con esta ventana"
+                color: theme.accent
+                font.pixelSize: 14; font.bold: true
+            }
+        }
+    }
+
 }
