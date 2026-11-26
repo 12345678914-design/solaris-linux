@@ -727,7 +727,7 @@ const PaginaAjustes kAjustes[] = {
     {"Barra de menús", "Barra superior y reloj", "barra de menus,barra superior,reloj,hora,fecha"},
     {"Centro de control", "Accesos rápidos", "centro de control,accesos rapidos,botones rapidos"},
     {"Usuarios y grupos", "Cuentas y contraseñas", "usuario,usuarios,cuenta,contraseña,cambiar contraseña,foto de perfil,añadir usuario,administrador"},
-    {"Ventanas", "Comportamiento de las ventanas", "ventanas,ajustar ventanas,animaciones,barra de titulo,botones de ventana"},
+    {"Ventanas", "Comportamiento de las ventanas", "ventanas,ajustar ventanas,animaciones,barra de titulo,botones de ventana,mosaico,acoplar,hyprland,tiling,dividir pantalla"},
     {"Aplicaciones predeterminadas", "Navegador, correo, PDF...", "aplicaciones predeterminadas,predeterminado,por defecto,navegador,correo,pdf,abrir con,reproductor,programa predeterminado"},
 };
 

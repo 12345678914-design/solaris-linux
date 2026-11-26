@@ -9,8 +9,9 @@ import QtQuick.Controls
 PaginaAjustes {
     id: vista
     titulo: "Ventanas"
-    descripcion: "Elige cómo se ven los botones para minimizar, maximizar y cerrar las ventanas. El cambio llega al momento a las apps de Inti, al terminal y a las apps con barra del sistema; Firefox y las apps GTK lo toman al volver a abrirlas."
+    descripcion: "Elige si las ventanas se acoplan solas en mosaico y cómo se ven los botones para minimizar, maximizar y cerrar las ventanas. El cambio llega al momento a las apps de Inti, al terminal y a las apps con barra del sistema; Firefox y las apps GTK lo toman al volver a abrirlas."
     mensaje: ""
+    Component.onCompleted: sistema.refrescar("Ventanas")
 
     TitanTheme { id: tema }
 
@@ -36,6 +37,21 @@ PaginaAjustes {
         { id: "color",    nombre: "Color a la derecha", archivo: "BotonesColor.qml",
           texto: "Círculos de color con su símbolo, en el orden de Windows." }
     ]
+
+    // Mosaico, como Hyprland: plugin simple-tile de Wayfire
+    Grupo {
+        etiqueta: "Acoplar ventanas en mosaico"
+        nota: "Super + Mayús + T acopla o suelta la ventana de delante. Super + Alt + flechas pasa a la ventana de al lado. Super + arrastrar cambia una ventana de sitio. Solo con los efectos de escritorio (Wayfire); la ventana de contraseña y los avisos se quedan siempre flotando."
+        Fila {
+            separador: false
+            titulo: "Acoplar las ventanas al abrirlas"
+            detalle: "Como en Hyprland: cada app que abras ocupa su parte de la pantalla, sin taparse, y las demás se hacen sitio. Vale para las ventanas que abras a partir de ahora."
+            Interruptor {
+                activo: sistema.mosaico
+                onAlternado: (v) => sistema.setMosaico(v)
+            }
+        }
+    }
 
     Grupo {
         etiqueta: "Cambiar estilo de ventana"
@@ -159,4 +175,5 @@ PaginaAjustes {
             }
         }
     }
+
 }

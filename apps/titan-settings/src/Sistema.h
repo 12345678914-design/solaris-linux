@@ -42,6 +42,8 @@ class Sistema : public QObject
     // Ratón y panel táctil ([input] de wayfire.ini)
     Q_PROPERTY(QVariantMap raton READ raton NOTIFY cambiado)
     Q_PROPERTY(bool hayPanelTactil READ hayPanelTactil NOTIFY cambiado)
+    // Mosaico (como Hyprland): las ventanas nuevas se acoplan solas
+    Q_PROPERTY(bool mosaico READ mosaico NOTIFY cambiado)
     // Compartir: escritorio remoto (VNC) — "activo" | "inactivo" | "no-instalado"
     Q_PROPERTY(QString escritorioRemoto READ escritorioRemoto NOTIFY cambiado)
     Q_PROPERTY(QStringList direccionesIp READ direccionesIp NOTIFY cambiado)
@@ -80,6 +82,7 @@ public:
     QString distribucionTeclado() const { return m_teclado; }
     QVariantMap raton() const { return m_raton; }
     bool hayPanelTactil() const { return m_panelTactil; }
+    bool mosaico() const { return m_mosaico; }
     QVariantList impresoras() const { return m_impresoras; }
     QString tipoInstantaneas() const { return m_tipoInst; }
     QVariantList instantaneas() const { return m_instantaneas; }
@@ -110,6 +113,7 @@ public:
     // "es", "latam", "us"... y variante ("intl", "" ...): al momento
     Q_INVOKABLE void setDistribucion(const QString &capa, const QString &variante);
     Q_INVOKABLE void setRaton(const QString &clave, const QVariant &valor);
+    Q_INVOKABLE void setMosaico(bool activo);
     Q_INVOKABLE void setEscritorioRemoto(bool activo);
     Q_INVOKABLE void abrirPuertoRemoto();
     // Instala un componente de la lista de titan-componente (botón "Instalar")
@@ -146,6 +150,7 @@ private:
     void leerAccesibilidad();
     void leerTeclado();
     void leerRaton();
+    void leerMosaico();
     void leerImpresoras();
     void leerInstantaneas();
     void leerVpns();
@@ -174,6 +179,7 @@ private:
     bool m_entrada = false;
     QString m_teclado;
     QVariantMap m_raton;
+    bool m_mosaico = false;
     bool m_panelTactil = false;
     QString m_ligeroMotivo;
     QVariantList m_impresoras;

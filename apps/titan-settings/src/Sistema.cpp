@@ -197,6 +197,8 @@ void Sistema::refrescar(const QString &seccion)
         leerTeclado();
     } else if (seccion == QStringLiteral("Ratón y panel táctil")) {
         leerRaton();
+    } else if (seccion == QStringLiteral("Ventanas")) {
+        leerMosaico();
     } else if (seccion == QStringLiteral("Compartir")) {
         leerCompartir();
     } else if (seccion == QStringLiteral("Impresoras y escáneres")) {
@@ -725,6 +727,83 @@ void Sistema::leerRaton()
         m_panelTactil = t.contains(QStringLiteral("touchpad")) || t.contains(QStringLiteral("trackpad"))
                         || t.contains(QStringLiteral("synaptics")) || t.contains(QStringLiteral("glidepoint"));
     }
+    emit cambiado();
+}
+
+// ---------------------------------------------------------------- mosaico
+
+// Ventanas que se quedan flotando aunque el mosaico esté encendido
+static const char kMosaicoEncendido[] =
+    "!(app_id is \"titan-polkit\" | app_id is \"titan-acerca\" | app_id is \"titan-teclado\""
+    " | app_id is \"titan-bienvenida\" | app_id contains \"zenity\" | app_id contains \"kdialog\")";
+
+void Sistema::leerMosaico()
+{
+    bool plugin = false;
+    QString valor = QStringLiteral("none");
+    QFile wf(rutaWayfireIni());
+    if (wf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QString seccion;
+        QTextStream in(&wf);
+        while (!in.atEnd()) {
+            const QString l = in.readLine().trimmed();
+            if (l.startsWith(QLatin1Char('['))) { seccion = l; continue; }
+            if (seccion == QStringLiteral("[core]") && (l == QStringLiteral("simple-tile \\") || l == QStringLiteral("simple-tile")
+                                                     || (l.startsWith(QStringLiteral("plugins")) && l.contains(QStringLiteral(" simple-tile")))))
+                plugin = true;
+            if (seccion == QStringLiteral("[simple-tile]") && l.startsWith(QStringLiteral("tile_by_default")))
+                valor = l.section(QLatin1Char('='), 1).trimmed();
+        }
+    }
+    m_mosaico = plugin && valor != QStringLiteral("none") && !valor.isEmpty();
+}
+
+// Enciende o apaga el mosaico. Solo cambia el wayfire.ini de esta cuenta
+// (no hace falta contraseña); Wayfire lo aplica a las ventanas que se abran.
+void Sistema::setMosaico(bool activo)
+{
+    // Cuentas creadas antes de que existiera: añadir el plugin y sus teclas
+    QFile f(rutaWayfireIni());
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QStringList lineas = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+        f.close();
+        bool enCore = false, tiene = false;
+        int linPlugins = -1;
+        for (int i = 0; i < lineas.size(); ++i) {
+            const QString l = lineas.at(i).trimmed();
+            if (l.startsWith(QLatin1Char('['))) { enCore = l == QStringLiteral("[core]"); continue; }
+            if (!enCore) continue;
+            if (l.startsWith(QStringLiteral("plugins")) && l.contains(QLatin1Char('='))) linPlugins = i;
+            if (l.split(QLatin1Char(' '), Qt::SkipEmptyParts).contains(QStringLiteral("simple-tile"))) tiene = true;
+        }
+        if (!tiene && linPlugins >= 0) {
+            QString &l = lineas[linPlugins];
+            if (l.trimmed().endsWith(QLatin1Char('\\')))
+                lineas.insert(linPlugins + 1, QStringLiteral("  simple-tile \\"));
+            else
+                l += QStringLiteral(" simple-tile");
+            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+                f.write(lineas.join(QLatin1Char('\n')).toUtf8());
+            f.close();
+            const QList<QPair<QString, QString>> teclas = {
+                {QStringLiteral("key_toggle"), QStringLiteral("<super> <shift> KEY_T")},
+                {QStringLiteral("key_focus_left"), QStringLiteral("<super> <alt> KEY_LEFT")},
+                {QStringLiteral("key_focus_right"), QStringLiteral("<super> <alt> KEY_RIGHT")},
+                {QStringLiteral("key_focus_above"), QStringLiteral("<super> <alt> KEY_UP")},
+                {QStringLiteral("key_focus_below"), QStringLiteral("<super> <alt> KEY_DOWN")},
+                {QStringLiteral("key_toggle_maximized"), QStringLiteral("none")},
+                {QStringLiteral("inner_gap_size"), QStringLiteral("6")},
+                {QStringLiteral("outer_horiz_gap_size"), QStringLiteral("8")},
+                {QStringLiteral("outer_vert_gap_size"), QStringLiteral("8")},
+                {QStringLiteral("animation_duration"), QStringLiteral("220")},
+            };
+            for (const auto &t : teclas)
+                ponerClaveWayfire(QStringLiteral("simple-tile"), t.first, t.second);
+        }
+    }
+    ponerClaveWayfire(QStringLiteral("simple-tile"), QStringLiteral("tile_by_default"),
+                      activo ? QString::fromUtf8(kMosaicoEncendido) : QStringLiteral("none"));
+    leerMosaico();
     emit cambiado();
 }
 

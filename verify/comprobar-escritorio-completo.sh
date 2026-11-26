@@ -649,6 +649,12 @@ contiene apps/titan-finder/src/FinderBackend.cpp 'FinderBackend::separarPestana'
 contiene apps/titan-finder/qml/Finder.qml 'sequence: "Ctrl\+T"; onActivated: finderBackend.nuevaPestana' "Explorador: Ctrl+T abre una pestaña"
 contiene apps/titan-finder/qml/Finder.qml 'Ctrl\+Alt\+T' "Explorador: la Terminal pasa a Ctrl+Alt+T"
 contiene apps/titan-finder/resources.qrc 'qml/Pestanas.qml' "Explorador: Pestanas.qml en los recursos"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini '^  simple-tile \\$' "Mosaico: plugin simple-tile cargado"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini '^tile_by_default = none$' "Mosaico: apagado por defecto (fácil como Windows)"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini '^key_toggle = <super> <shift> KEY_T$' "Mosaico: Win+Mayús+T no choca con Win+T (Terminal)"
+contiene iso/titan/airootfs/etc/skel/.config/wayfire.ini '^key_toggle_maximized = none$' "Mosaico: Win+M sigue siendo Minimizar"
+contiene apps/titan-settings/src/Sistema.cpp 'titan-polkit' "Mosaico: la ventana de contraseña siempre flota"
+contiene apps/titan-settings/qml/VentanasView.qml 'sistema.setMosaico' "Mosaico: interruptor en Ajustes > Ventanas"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

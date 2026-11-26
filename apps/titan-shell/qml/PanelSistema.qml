@@ -571,7 +571,9 @@ Item {
             ["Win + F", "Maximizar / restaurar"],
             ["Win + Mayús + F", "Pantalla completa"],
             ["Win + ← / →", "Ventana a media pantalla"],
-            ["Win + Tab", "Ver todas las ventanas"]
+            ["Win + Tab", "Ver todas las ventanas"],
+            ["Win + Mayús + T", "Acoplar / soltar la ventana (mosaico)"],
+            ["Win + Alt + flechas", "Ir a la ventana de al lado (mosaico)"]
         ] },
         { g: "Escribir", l: [
             ["Ctrl + C / X / V", "Copiar, cortar y pegar"],
