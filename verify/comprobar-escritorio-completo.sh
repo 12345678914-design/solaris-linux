@@ -678,6 +678,13 @@ contiene apps/titan-finder/qml/Finder.qml 'anchoPlegarBarra: 720' "Explorador: b
 contiene apps/titan-settings/src/Dispositivos.cpp 'resolucionesHabituales' "Pantallas: resoluciones habituales además de las anunciadas"
 contiene apps/titan-settings/src/Dispositivos.cpp '"--custom-mode"' "Pantallas: las no anunciadas se aplican como modo personalizado"
 contiene apps/titan-settings/qml/PantallasView.qml 'Mostrar más resoluciones' "Pantallas: opción para resoluciones mayores"
+contiene iso/titan/airootfs/etc/mkinitcpio.conf.d/archiso.conf 'kms plymouth' "Arranque: animación de carga también en el USB (gancho plymouth)"
+contiene iso/titan/grub/grub.cfg 'titanlinux.* quiet splash' "Arranque: sin líneas de systemd en el USB (quiet splash)"
+contiene iso/titan/airootfs/root/customize_airootfs.sh 'Title=Apagando' "Apagado y reinicio con la animación de carga"
+contiene iso/titan/airootfs/root/customize_airootfs.sh 'plymouth/themes/titan/throbber' "El initramfs del USB se rehace si no trae la animación"
+[ -f iso/titan/airootfs/usr/share/titan/plymouth/throbber-0060.png ] && ok "Animación: 60 fotogramas del círculo de puntos" || fallo "Faltan los fotogramas de la animación"
+contiene apps/titan-installer/qml/InstallerWindow.qml 'component Presentacion' "Instalador: diapositivas de Inti OS mientras instala"
+contiene apps/titan-shell/qml/BootSplash.qml 'width: 150' "Logo de Inti más grande al entrar"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

@@ -364,6 +364,85 @@ install -d -m 0750 -o titan -g titan /run/media/titan
 # El MOTD de Arch (paquete 'filesystem') no viene en el perfil: se sustituye.
 rm -f /etc/motd
 
+# Animacion de arranque, apagado y reinicio (en el USB y en el sistema
+# instalado): tema "titan", el sol de Inti y un circulo de puntos que gira como
+# en Windows, en vez de las lineas verdes de systemd. Parte del tema spinner de
+# plymouth; los fotogramas salen de scripts/generar-animacion-arranque.py.
+# Va ANTES del initramfs: el gancho plymouth mete el tema dentro. El
+# instalador anade el gancho y 'splash' al sistema instalado.
+if [[ -d /usr/share/plymouth/themes/spinner ]]; then
+  t=/usr/share/plymouth/themes/titan
+  rm -rf "$t"
+  cp -a /usr/share/plymouth/themes/spinner "$t"
+  rm -f "$t/spinner.plymouth"
+  if [[ -d /usr/share/titan/plymouth ]]; then
+    rm -f "$t"/throbber-*.png
+    cp -f /usr/share/titan/plymouth/*.png "$t/"
+  elif [[ -f /usr/share/titan/solaris-logo.png ]]; then
+    cp -f /usr/share/titan/solaris-logo.png "$t/watermark.png"
+  fi
+  cat > "$t/titan.plymouth" <<'PLY'
+[Plymouth Theme]
+Name=Inti OS
+Description=Arranque de Inti OS: el sol de Inti y un circulo de puntos que gira
+ModuleName=two-step
+
+[two-step]
+Font=Inter 12
+TitleFont=Inter 16
+ImageDir=/usr/share/plymouth/themes/titan
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.62
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.80
+HorizontalAlignment=.5
+VerticalAlignment=.70
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.40
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x10121a
+BackgroundEndColor=0x10121a
+ProgressBarBackgroundColor=0x3a3f4b
+ProgressBarForegroundColor=0xf5b041
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+Title=Apagando
+
+[reboot]
+UseEndAnimation=false
+Title=Reiniciando
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Instalando actualizaciones...
+SubTitle=No apagues el equipo
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el sistema...
+SubTitle=No apagues el equipo
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el firmware...
+SubTitle=No apagues el equipo
+PLY
+  install -d -m 0755 /etc/plymouth
+  printf '[Daemon]\nTheme=titan\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
+fi
+
 # ------------------------------------------------- 3. initramfs del kernel propio
 
 # El kernelrelease con sufijo -titanlinux, tal y como lo produce el PKGBUILD
@@ -376,8 +455,10 @@ if [[ -n "$kver" ]]; then
   # instalar el paquete del kernel. Si lo hizo bien (lleva el hook 'archiso'),
   # no hay que rehacerlo: son varios minutos de zstd para nada.
   img="/boot/initramfs-linux-titanlinux.img"
-  if [[ -s "$img" ]] && lsinitcpio "$img" 2>/dev/null | grep -q 'hooks/archiso'; then
-    log "initramfs del kernel propio ya trae el hook archiso; se reutiliza"
+  if [[ -s "$img" ]] && lsinitcpio "$img" 2>/dev/null | grep -q 'hooks/archiso' \
+     && { [[ ! -d /usr/share/plymouth/themes/titan ]] \
+          || lsinitcpio "$img" 2>/dev/null | grep -q 'plymouth/themes/titan/throbber'; }; then
+    log "initramfs del kernel propio ya trae el hook archiso (y la animacion); se reutiliza"
   else
     log "initramfs de archiso para el kernel propio ${kver}"
     mkinitcpio -k "$kver" -p linux-titanlinux
@@ -572,76 +653,6 @@ if [[ -f /usr/share/snapper/config-templates/default ]]; then
       /usr/share/snapper/config-templates/default > /etc/snapper/config-templates/titan
 fi
 
-# Animacion de arranque del sistema instalado: tema "titan" (el sol de Inti
-# sobre fondo oscuro), hecho a partir del tema spinner de plymouth. El
-# instalador anade el gancho plymouth al initramfs y 'splash' al kernel.
-if [[ -d /usr/share/plymouth/themes/spinner ]]; then
-  t=/usr/share/plymouth/themes/titan
-  rm -rf "$t"
-  cp -a /usr/share/plymouth/themes/spinner "$t"
-  rm -f "$t/spinner.plymouth"
-  if [[ -f /usr/share/titan/solaris-logo.png ]]; then
-    cp -f /usr/share/titan/solaris-logo.png "$t/watermark.png"
-  fi
-  cat > "$t/titan.plymouth" <<'PLY'
-[Plymouth Theme]
-Name=Inti OS
-Description=Arranque de Inti OS: el sol de Inti y una rueda de carga
-ModuleName=two-step
-
-[two-step]
-Font=Inter 12
-TitleFont=Inter Light 26
-ImageDir=/usr/share/plymouth/themes/titan
-DialogHorizontalAlignment=.5
-DialogVerticalAlignment=.62
-TitleHorizontalAlignment=.5
-TitleVerticalAlignment=.38
-HorizontalAlignment=.5
-VerticalAlignment=.80
-WatermarkHorizontalAlignment=.5
-WatermarkVerticalAlignment=.42
-Transition=none
-TransitionDuration=0.0
-BackgroundStartColor=0x10121a
-BackgroundEndColor=0x10121a
-ProgressBarBackgroundColor=0x3a3f4b
-ProgressBarForegroundColor=0xf5b041
-MessageBelowAnimation=true
-
-[boot-up]
-UseEndAnimation=false
-
-[shutdown]
-UseEndAnimation=false
-
-[reboot]
-UseEndAnimation=false
-
-[updates]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=Instalando actualizaciones...
-SubTitle=No apagues el equipo
-
-[system-upgrade]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=Actualizando el sistema...
-SubTitle=No apagues el equipo
-
-[firmware-upgrade]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=Actualizando el firmware...
-SubTitle=No apagues el equipo
-PLY
-  install -d -m 0755 /etc/plymouth
-  printf '[Daemon]\nTheme=titan\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
-fi
 # greetd espera a que la animacion termine (si no, se pisan en la pantalla).
 install -d -m 0755 /etc/systemd/system/greetd.service.d
 printf '[Unit]\nAfter=plymouth-quit-wait.service plymouth-quit.service\n' \

@@ -14,14 +14,14 @@ Item {
     Item {
         id: centerContainer
         anchors.centerIn: parent
-        width: 480
-        height: 120
+        width: 600
+        height: 170
 
         // 1. LOGO INTI OS
         Image {
             id: splashLogo
-            width: 96
-            height: 96
+            width: 150
+            height: 150
             anchors.verticalCenter: parent.verticalCenter
             source: "qrc:/icons/solaris-logo.png"
             fillMode: Image.PreserveAspectFit
@@ -46,15 +46,15 @@ Item {
             Text {
                 text: "Inti OS"
                 color: "#ffffff"
-                font.pixelSize: 42
+                font.pixelSize: 54
                 font.bold: true
                 font.letterSpacing: 1.0
             }
 
             Text {
-                text: "1.0 Edición Escritorio"
+                text: "1.8 · Fácil, rápido y privado"
                 color: "#8e95a5"
-                font.pixelSize: 15
+                font.pixelSize: 17
                 font.weight: Font.Normal
                 font.letterSpacing: 0.5
             }
@@ -79,7 +79,7 @@ Item {
 
         // 2. Apartar el logo a la izquierda mientras muestra el nombre del sistema
         ParallelAnimation {
-            NumberAnimation { target: splashLogo; property: "offsetX"; to: -130; duration: 700; easing.type: Easing.OutCubic }
+            NumberAnimation { target: splashLogo; property: "offsetX"; to: -140; duration: 700; easing.type: Easing.OutCubic }
             NumberAnimation { target: systemTextCol; property: "opacity"; to: 1.0; duration: 700; easing.type: Easing.OutCubic }
         }
 

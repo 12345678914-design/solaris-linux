@@ -150,7 +150,7 @@ ShellBackend::ShellBackend(QObject *parent)
     // Notificación inicial de bienvenida al arrancar
     QTimer::singleShot(2500, this, [this]() {
         notify(QStringLiteral("Bienvenido a Inti OS"),
-               QStringLiteral("Sistema preparado y listo. Disfruta de la experiencia macOS en Linux."),
+               QStringLiteral("Todo listo. Rápido, fácil de usar y sin telemetría: tu equipo es tuyo."),
                QStringLiteral("qrc:/icons/solaris-logo.png"),
                QStringLiteral("Inti OS"));
     });

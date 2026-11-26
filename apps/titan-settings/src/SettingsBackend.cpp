@@ -300,7 +300,7 @@ void SettingsBackend::saveShellSettings()
 void SettingsBackend::loadSystemInfo()
 {
     m_systemInfo[QStringLiteral("osName")] = QStringLiteral("Inti OS");
-    m_systemInfo[QStringLiteral("osVersion")] = QStringLiteral("1.0 (Edición Escritorio)");
+    m_systemInfo[QStringLiteral("osVersion")] = QStringLiteral("1.8 · Fácil, rápido y privado");
     m_systemInfo[QStringLiteral("kernel")] = QSysInfo::kernelType() + QStringLiteral(" ") + QSysInfo::kernelVersion();
     m_systemInfo[QStringLiteral("arch")] = QSysInfo::currentCpuArchitecture();
     m_systemInfo[QStringLiteral("hostname")] = QSysInfo::machineHostName();

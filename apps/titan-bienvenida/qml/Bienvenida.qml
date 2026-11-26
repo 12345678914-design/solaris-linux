@@ -172,8 +172,8 @@ TitanWindow {
                 Image {
                     anchors.horizontalCenter: parent.horizontalCenter
                     source: "qrc:/icons/inti.png"
-                    width: 120; height: 120
-                    sourceSize: Qt.size(240, 240)
+                    width: 170; height: 170
+                    sourceSize: Qt.size(340, 340)
                     fillMode: Image.PreserveAspectFit
                 }
                 Text {

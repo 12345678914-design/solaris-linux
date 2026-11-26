@@ -840,7 +840,7 @@ public slots:
                            "GRUB_DEFAULT=0\n"
                            "GRUB_TIMEOUT=5\n"
                            "GRUB_DISTRIBUTOR=\"Inti OS\"\n"
-                           "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet splash\"\n"
+                           "GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet splash rd.udev.log_level=3 vt.global_cursor_default=0\"\n"
                            "GRUB_CMDLINE_LINUX=\"%1console=ttyS0,115200n8 console=tty0 lsm=landlock,lockdown,yama,integrity,apparmor,bpf\"\n"
                            "GRUB_DISABLE_SUBMENU=y\n"
                            "GRUB_TERMINAL_OUTPUT=\"gfxterm console\"\n"
@@ -1056,7 +1056,7 @@ public slots:
                 "    insmod btrfs\n"
                 "    insmod xfs\n"
                 "    %5\n"
-                "    linux %6/%2 %3 rw loglevel=3 quiet splash console=ttyS0,115200n8 console=tty0 lsm=landlock,lockdown,yama,integrity,apparmor,bpf\n"
+                "    linux %6/%2 %3 rw loglevel=3 quiet splash rd.udev.log_level=3 vt.global_cursor_default=0 console=ttyS0,115200n8 console=tty0 lsm=landlock,lockdown,yama,integrity,apparmor,bpf\n"
                 "    initrd %6/%4\n"
                 "}\n\n"
             ).arg(e.title, e.kernel, rootParam, e.initrd, buscarArranque, prefijoBoot);

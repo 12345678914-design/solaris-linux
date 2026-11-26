@@ -330,6 +330,97 @@ TitanWindow {
         border.color: window.tarjetaBorde
     }
 
+    // Mientras se instala: lo que trae Inti OS, en diapositivas que pasan solas
+    // (cada 7 s; los puntos de abajo saltan a una).
+    component Presentacion: Tarjeta {
+        id: pres
+        property int actual: 0
+        readonly property var diapositivas: [
+            { g: "☀", t: "Fácil desde el primer día",
+              d: "La barra, el Dock y los atajos que ya conoces de Windows: Win+E abre tus archivos, Win+D muestra el escritorio y Alt+F4 cierra." },
+            { g: "✓", t: "Tu privacidad, primero",
+              d: "Sin telemetría innecesaria: Inti OS no envía a nadie lo que haces. Tus archivos y tus datos son tuyos." },
+            { g: "⚡", t: "Rápido también en equipos modestos",
+              d: "Optimizado para arrancar pronto y gastar poca memoria, incluso en un Celeron o en un portátil de hace años." },
+            { g: "⬇", t: "Miles de aplicaciones gratis",
+              d: "Firefox y LibreOffice ya vienen instalados. En Discover tienes miles más, libres y a un clic." },
+            { g: "↺", t: "Seguro y con marcha atrás",
+              d: "Cortafuegos y AppArmor incluidos. Te pide la contraseña antes de cada cambio importante, y con btrfs guarda puntos de restauración solos." },
+            { g: "Ñ", t: "Todo en español",
+              d: "Explorador de archivos, Música, Fotos, Monitor de recursos y Ajustes, hechos a medida para Inti OS." }
+        ]
+        height: 168
+        Timer {
+            interval: 7000; repeat: true
+            running: pres.visible
+            onTriggered: pres.actual = (pres.actual + 1) % pres.diapositivas.length
+        }
+        Repeater {
+            model: pres.diapositivas
+            delegate: Row {
+                required property var modelData
+                required property int index
+                x: 22; y: 22
+                width: pres.width - 44
+                spacing: 18
+                opacity: index === pres.actual ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.InOutQuad } }
+                Rectangle {
+                    width: 64; height: 64; radius: 32
+                    color: Qt.rgba(window.accent.r, window.accent.g, window.accent.b, 0.16)
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.g
+                        color: window.accent
+                        font.pixelSize: 30
+                        font.bold: true
+                    }
+                }
+                Column {
+                    width: parent.width - 82
+                    spacing: 6
+                    Text {
+                        width: parent.width
+                        text: modelData.t
+                        color: window.txt
+                        font.pixelSize: window.theme.fontHeadline
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: modelData.d
+                        color: window.txt2
+                        font.pixelSize: window.theme.fontBody
+                        wrapMode: Text.WordWrap
+                        lineHeight: 1.15
+                    }
+                }
+            }
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 14
+            spacing: 8
+            Repeater {
+                model: pres.diapositivas.length
+                delegate: Rectangle {
+                    required property int index
+                    width: index === pres.actual ? 20 : 8; height: 8; radius: 4
+                    color: index === pres.actual ? window.accent : window.veil(0.18)
+                    Behavior on width { NumberAnimation { duration: 250 } }
+                    MouseArea {
+                        anchors.fill: parent; anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pres.actual = parent.index
+                    }
+                }
+            }
+        }
+    }
+
     component Encabezado: Column {
         id: enc
         property string titulo: ""
@@ -579,8 +670,8 @@ TitanWindow {
                 spacing: 12
                 Image {
                     source: "qrc:/icons/solaris-logo.png"
-                    width: 38
-                    height: 38
+                    width: 52
+                    height: 52
                     fillMode: Image.PreserveAspectFit
                     smooth: true
                 }
@@ -689,8 +780,8 @@ TitanWindow {
 
                     Image {
                         source: "qrc:/icons/solaris-logo.png"
-                        width: 84
-                        height: 84
+                        width: 150
+                        height: 150
                         anchors.horizontalCenter: parent.horizontalCenter
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -1636,8 +1727,8 @@ TitanWindow {
 
                     Image {
                         source: "qrc:/icons/solaris-logo.png"
-                        width: 76
-                        height: 76
+                        width: 110
+                        height: 110
                         anchors.horizontalCenter: parent.horizontalCenter
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -1657,6 +1748,11 @@ TitanWindow {
                         color: window.txt2
                         font.pixelSize: window.theme.fontBody
                         anchors.horizontalCenter: parent.horizontalCenter
+                    }
+
+                    Presentacion {
+                        width: parent.width
+                        visible: installerBackend.errorMessage === ""
                     }
 
                     Rectangle {
