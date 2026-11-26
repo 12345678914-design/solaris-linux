@@ -2,6 +2,7 @@
 // (PipeWire con pactl). Todo en procesos asincronos.
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
@@ -80,6 +81,9 @@ private:
     void avisar(const QString &t);
     QStringList argumentosDe(const QVariantMap &p) const;
     void guardarPantallas();
+    QString modoGuardado(const QString &nombre) const;
+    // Último modo aplicado por pantalla (los personalizados no salen como "en uso")
+    QHash<QString, QString> m_modoAplicado;
     void leerLuz();
 
     QVariantList m_pantallas;

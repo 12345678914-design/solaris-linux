@@ -1,4 +1,6 @@
 #include "Dispositivos.h"
+#include <QSize>
+#include <QRegularExpression>
 
 #include <QDir>
 #include <QFile>
@@ -35,6 +37,27 @@ int porcentaje(const QJsonObject &volumen)
 QString textoModo(int w, int h, double hz)
 {
     return QStringLiteral("%1 × %2 · %3 Hz").arg(w).arg(h).arg(QString::number(hz, 'f', hz == std::floor(hz) ? 0 : 2));
+}
+
+// Resoluciones habituales. Muchas pantallas de portátil anuncian solo la
+// suya (nativa); otras llegan con datos (EDID) incompletos y el sistema
+// arranca en una menor de la que admiten. Estas se ofrecen además de las
+// anunciadas, como modo personalizado (wlr-randr --custom-mode): por debajo
+// de la máxima la tarjeta gráfica escala la imagen; por encima, solo si se
+// pide, y el aviso de 15 s deshace el cambio si la pantalla no lo acepta.
+const QList<QSize> &resolucionesHabituales()
+{
+    static const QList<QSize> r = {
+        {3840, 2160}, {2560, 1600}, {2560, 1440}, {1920, 1200}, {1920, 1080}, {1680, 1050},
+        {1600, 900}, {1440, 900}, {1366, 768}, {1360, 768}, {1280, 1024}, {1280, 800},
+        {1280, 720}, {1024, 768}, {1024, 600}, {800, 600},
+    };
+    return r;
+}
+
+QString idModo(int w, int h, double hz)
+{
+    return QStringLiteral("%1x%2@%3Hz").arg(w).arg(h).arg(QString::number(hz, 'f', 3));
 }
 
 } // namespace
@@ -119,6 +142,10 @@ void Dispositivos::leerPantallas()
 
             QVariantList modos;
             QSet<QString> vistos;
+            QSet<QString> tamanos;          // "1366x768" de los anunciados
+            QStringList reales;             // ids que anuncia la pantalla
+            int maxW = 0, maxH = 0;
+            double hzBase = 60.0;
             for (const QJsonValue &mv : o.value(QStringLiteral("modes")).toArray()) {
                 const QJsonObject m = mv.toObject();
                 const int w = m.value(QStringLiteral("width")).toInt();
@@ -129,6 +156,10 @@ void Dispositivos::leerPantallas()
                     continue;
                 vistos.insert(id);
                 const bool actual = m.value(QStringLiteral("current")).toBool();
+                reales << id;
+                tamanos.insert(QStringLiteral("%1x%2").arg(w).arg(h));
+                if (qint64(w) * h > qint64(maxW) * maxH) { maxW = w; maxH = h; }
+                if (m.value(QStringLiteral("preferred")).toBool() && hz > 1) hzBase = hz;
                 QVariantMap mm{{QStringLiteral("id"), id}, {QStringLiteral("ancho"), w}, {QStringLiteral("alto"), h},
                                {QStringLiteral("hz"), hz}, {QStringLiteral("texto"), textoModo(w, h, hz)},
                                {QStringLiteral("actual"), actual},
@@ -137,6 +168,46 @@ void Dispositivos::leerPantallas()
                     p[QStringLiteral("modo")] = id;
                 modos << mm;
             }
+            // Modo en uso que no está en la lista (uno personalizado ya aplicado):
+            // se toma de lo guardado
+            const QString nombreSalida = p.value(QStringLiteral("nombre")).toString();
+            if (!p.contains(QStringLiteral("modo")) && o.value(QStringLiteral("enabled")).toBool()) {
+                const QString guardado = m_modoAplicado.value(nombreSalida, modoGuardado(nombreSalida));
+                if (!guardado.isEmpty()) p[QStringLiteral("modo")] = guardado;
+            }
+            // Las habituales que no anuncia: menores que la máxima (seguras) y,
+            // aparte, mayores (solo con «Mostrar más resoluciones»)
+            const double hzPers = std::round(hzBase) >= 59 && std::round(hzBase) <= 61 ? 60.0 : std::round(hzBase);
+            for (const QSize &r : resolucionesHabituales()) {
+                if (tamanos.contains(QStringLiteral("%1x%2").arg(r.width()).arg(r.height())))
+                    continue;
+                const bool menor = maxW == 0 || (r.width() <= maxW && r.height() <= maxH);
+                const QString id = idModo(r.width(), r.height(), hzPers);
+                modos << QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("ancho"), r.width()},
+                                     {QStringLiteral("alto"), r.height()}, {QStringLiteral("hz"), hzPers},
+                                     {QStringLiteral("texto"), textoModo(r.width(), r.height(), hzPers)},
+                                     {QStringLiteral("actual"), p.value(QStringLiteral("modo")).toString() == id},
+                                     {QStringLiteral("preferido"), false},
+                                     {QStringLiteral("personalizado"), true},
+                                     {QStringLiteral("mayor"), !menor}};
+            }
+            // El personalizado en uso, si no es de la lista de habituales
+            const QString enUso = p.value(QStringLiteral("modo")).toString();
+            bool esta = false;
+            for (const QVariant &mv : std::as_const(modos))
+                esta = esta || mv.toMap().value(QStringLiteral("id")).toString() == enUso;
+            static const QRegularExpression reModo(QStringLiteral("^(\\d+)x(\\d+)@([0-9.]+)Hz$"));
+            const auto mt = reModo.match(enUso);
+            if (!esta && mt.hasMatch()) {
+                const int w = mt.captured(1).toInt(), h = mt.captured(2).toInt();
+                const double hz = mt.captured(3).toDouble();
+                modos << QVariantMap{{QStringLiteral("id"), enUso}, {QStringLiteral("ancho"), w}, {QStringLiteral("alto"), h},
+                                     {QStringLiteral("hz"), hz}, {QStringLiteral("texto"), textoModo(w, h, hz)},
+                                     {QStringLiteral("actual"), true}, {QStringLiteral("preferido"), false},
+                                     {QStringLiteral("personalizado"), true},
+                                     {QStringLiteral("mayor"), qint64(w) * h > qint64(maxW) * maxH}};
+            }
+            p[QStringLiteral("modosReales")] = reales;
             // De mayor a menor resolucion y frecuencia.
             std::sort(modos.begin(), modos.end(), [](const QVariant &a, const QVariant &b) {
                 const QVariantMap x = a.toMap(), y = b.toMap();
@@ -162,8 +233,16 @@ QStringList Dispositivos::argumentosDe(const QVariantMap &p) const
         return a << QStringLiteral("--off");
     a << QStringLiteral("--on");
     const QString modo = p.value(QStringLiteral("modo")).toString();
-    if (!modo.isEmpty())
-        a << QStringLiteral("--mode") << modo;
+    if (!modo.isEmpty()) {
+        if (p.value(QStringLiteral("modosReales")).toStringList().contains(modo)) {
+            a << QStringLiteral("--mode") << modo;
+        } else {
+            // No la anuncia la pantalla: modo personalizado (p. ej. 1280x720@60Hz)
+            QString m = modo;
+            m.replace(QStringLiteral(".000Hz"), QStringLiteral("Hz"));
+            a << QStringLiteral("--custom-mode") << m;
+        }
+    }
     a << QStringLiteral("--scale") << QString::number(p.value(QStringLiteral("escala")).toDouble(), 'f', 2);
     a << QStringLiteral("--transform") << p.value(QStringLiteral("giro")).toString();
     a << QStringLiteral("--pos") << QStringLiteral("%1,%2").arg(p.value(QStringLiteral("x")).toInt()).arg(p.value(QStringLiteral("y")).toInt());
@@ -188,6 +267,7 @@ void Dispositivos::aplicarPantalla(const QString &nombre, const QString &modo, d
             return;
         }
         p[QStringLiteral("modo")] = modo;
+        m_modoAplicado.insert(nombre, modo);
         p[QStringLiteral("escala")] = qBound(0.5, escala, 4.0);
         p[QStringLiteral("giro")] = giro;
         p[QStringLiteral("activa")] = activa;
@@ -225,8 +305,34 @@ void Dispositivos::deshacerPantallas()
     m_anterior.clear();
     emit pendienteCambiado();
     for (const QVariant &v : antes)
+        m_modoAplicado.insert(v.toMap().value(QStringLiteral("nombre")).toString(), v.toMap().value(QStringLiteral("modo")).toString());
+    for (const QVariant &v : antes)
         correr(QStringLiteral("wlr-randr"), argumentosDe(v.toMap()), [](int, const QByteArray &, const QString &) {});
     QTimer::singleShot(400, this, &Dispositivos::leerPantallas);
+}
+
+// El modo guardado para una pantalla en pantallas.conf ("1280x720@60.000Hz"),
+// para saber cuál está en uso cuando es personalizado.
+QString Dispositivos::modoGuardado(const QString &nombre) const
+{
+    QFile f(rutaTitan(QStringLiteral("pantallas.conf")));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString();
+    static const QRegularExpression re(QStringLiteral("^(\\d+)x(\\d+)(?:@([0-9.]+)Hz)?$"));
+    while (!f.atEnd()) {
+        const QStringList a = QString::fromUtf8(f.readLine()).simplified().split(QLatin1Char(' '));
+        const int i = a.indexOf(QStringLiteral("--output"));
+        if (i < 0 || a.value(i + 1) != nombre)
+            continue;
+        for (const QString &op : {QStringLiteral("--custom-mode"), QStringLiteral("--mode")}) {
+            const int k = a.indexOf(op);
+            const auto m = re.match(a.value(k + 1));
+            if (k >= 0 && m.hasMatch())
+                return idModo(m.captured(1).toInt(), m.captured(2).toInt(),
+                              m.captured(3).isEmpty() ? 60.0 : m.captured(3).toDouble());
+        }
+    }
+    return QString();
 }
 
 void Dispositivos::guardarPantallas()

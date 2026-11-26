@@ -3,6 +3,7 @@ import QtQuick
 
 PaginaAjustes {
     id: vista
+    property bool masResoluciones: false
     titulo: "Pantallas"
     descripcion: "Los cambios de resolución hay que confirmarlos: si la imagen no se ve bien, se deshacen solos en 15 segundos."
     mensaje: dispositivos.aviso
@@ -84,11 +85,25 @@ PaginaAjustes {
                 Desplegable {
                     anchors.verticalCenter: parent.verticalCenter
                     ancho: 230
-                    opciones: grupoPantalla.modelData.modos.map(function (m) {
-                        return { valor: m.id, texto: m.texto + (m.preferido ? "  (recomendada)" : "") }
+                    // Las mayores que la pantalla no anuncia, solo con «Mostrar más
+                    // resoluciones» (o si ya está puesta una)
+                    opciones: grupoPantalla.modelData.modos.filter(function (m) {
+                        return !m.mayor || vista.masResoluciones || m.id === grupoPantalla.modelData.modo
+                    }).map(function (m) {
+                        return { valor: m.id, texto: m.texto + (m.preferido ? "  (recomendada)" : m.mayor ? "  (probar)" : "") }
                     })
                     valor: grupoPantalla.modelData.modo || ""
                     onElegido: (v) => grupoPantalla.aplicar(v, grupoPantalla.modelData.escala, grupoPantalla.modelData.giro, true)
+                }
+            }
+            Fila {
+                titulo: "Mostrar más resoluciones"
+                detalle: "Añade resoluciones mayores que la pantalla no anuncia. Si la pantalla no la acepta, se deshace sola en 15 segundos."
+                visible: grupoPantalla.modelData.activa
+                Interruptor {
+                    anchors.verticalCenter: parent.verticalCenter
+                    activo: vista.masResoluciones
+                    onAlternado: (v) => vista.masResoluciones = v
                 }
             }
             Fila {

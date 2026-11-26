@@ -675,6 +675,9 @@ contiene apps/titan-theme/qml/TitanWindow.qml 'minimumWidth: 420' "Apps de Inti:
 no_contiene apps/titan-fotos/qml/Fotos.qml 'minimumWidth: 820' "Fotos: cabe en media pantalla"
 no_contiene apps/titan-musica/qml/Musica.qml 'minimumWidth: 860' "Música: cabe en media pantalla"
 contiene apps/titan-finder/qml/Finder.qml 'anchoPlegarBarra: 720' "Explorador: barra lateral en iconos al estar acoplado"
+contiene apps/titan-settings/src/Dispositivos.cpp 'resolucionesHabituales' "Pantallas: resoluciones habituales además de las anunciadas"
+contiene apps/titan-settings/src/Dispositivos.cpp '"--custom-mode"' "Pantallas: las no anunciadas se aplican como modo personalizado"
+contiene apps/titan-settings/qml/PantallasView.qml 'Mostrar más resoluciones' "Pantallas: opción para resoluciones mayores"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"
