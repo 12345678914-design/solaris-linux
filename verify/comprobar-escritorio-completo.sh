@@ -707,6 +707,16 @@ rm -rf "$_tg"
 contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy 'titan-resolucion-arranque' "Resolución de arranque: pide la contraseña (polkit)"
 contiene apps/titan-installer/src/InstallerBackend.cpp 'GRUB_GFXPAYLOAD_LINUX=keep' "Instalado: Linux arranca con la resolución de GRUB (sin driver no cae a texto)"
 contiene apps/titan-settings/src/Dispositivos.cpp 'salidaSinDriver' "Pantallas: detecta tarjetas sin driver (simpledrm/efifb)"
+# NVIDIA anterior a Turing: nouveau (nvidia-open no la admite y nvidia-utils bloquea nouveau)
+_tn=$(mktemp -d); mkdir -p "$_tn/pci/0000:01:00.0"; echo 0x10de > "$_tn/pci/0000:01:00.0/vendor"
+echo 0x030000 > "$_tn/pci/0000:01:00.0/class"; echo 0x1c82 > "$_tn/pci/0000:01:00.0/device"; echo quiet > "$_tn/cmd"
+TITAN_CMDLINE="$_tn/cmd" TITAN_PCI="$_tn/pci" sh iso/titan/airootfs/usr/lib/titan/titan-grafica-nvidia | grep -q 'se usa nouveau' \
+  && ok "GTX 1050 (anterior a Turing): se carga nouveau" || fallo "titan-grafica-nvidia no elige nouveau para una NVIDIA antigua"
+echo "quiet titan.compat=1" > "$_tn/cmd"
+TITAN_CMDLINE="$_tn/cmd" TITAN_PCI="$_tn/pci" sh iso/titan/airootfs/usr/lib/titan/titan-grafica-nvidia | grep -q nouveau \
+  && fallo "titan-grafica-nvidia no respeta el modo compatibilidad" || ok "Modo compatibilidad: no toca los drivers de NVIDIA"
+rm -rf "$_tn"
+contiene iso/titan/airootfs/root/customize_airootfs.sh 'titan-grafica-nvidia.service' "Servicio titan-grafica-nvidia activado"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

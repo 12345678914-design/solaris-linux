@@ -56,6 +56,7 @@ file_permissions=(
   ["/usr/lib/titan/titan-greeter-sesion"]="0:0:755"
   ["/usr/lib/titan/titan-arranque-grafico"]="0:0:755"
   ["/usr/lib/titan/titan-sin-3d"]="0:0:755"
+  ["/usr/lib/titan/titan-grafica-nvidia"]="0:0:755"
   ["/usr/local/bin/titan-finder"]="0:0:755"
   ["/usr/local/bin/titan-fotos"]="0:0:755"
   ["/usr/local/bin/titan-musica"]="0:0:755"

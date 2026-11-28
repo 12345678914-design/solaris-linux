@@ -1,0 +1,51 @@
+#!/bin/sh
+# Inti OS - driver libre (nouveau) para tarjetas NVIDIA que nvidia-open no maneja.
+#
+# La ISO trae nvidia-open (el driver oficial de NVIDIA, versión "open"), y su
+# paquete bloquea nouveau (/usr/lib/modprobe.d/nvidia-utils.conf). Pero
+# nvidia-open SOLO funciona desde Turing (GTX 16xx / RTX 20xx en adelante).
+# Con una NVIDIA anterior (GTX 10xx, 9xx, 7xx...) no arrancaba ningún driver
+# y el sistema se quedaba con la imagen que deja GRUB: 1024x768 en una
+# pantalla de 1920x1080, sin poder cambiarla y sin aceleración.
+#
+# Aquí, al arrancar: si una NVIDIA es anterior a Turing, o si nvidia no la
+# ha tomado (p. ej. el módulo no se compiló para este kernel), se carga
+# nouveau a mano (modprobe con el nombre se salta el "blacklist", que solo
+# frena la carga automática). Con nouveau la pantalla va a su resolución
+# real y hay 3D (Mesa).
+#
+# No hace nada con: nomodeset, titan.compat (modo compatibilidad), un
+# modprobe.blacklist=nouveau en la línea del kernel, titan.nvidia, o si
+# existe /etc/titan/sin-nouveau-auto (p. ej. con el driver privativo antiguo).
+
+cmd=$(cat "${TITAN_CMDLINE:-/proc/cmdline}" 2>/dev/null)
+case " $cmd " in
+    *" nomodeset "*|*titan.compat*|*"blacklist=nouveau"*|*titan.nvidia*) exit 0 ;;
+esac
+[ -e /etc/titan/sin-nouveau-auto ] && exit 0
+PCI="${TITAN_PCI:-/sys/bus/pci/devices}"
+
+driver_de() { [ -e "$1/driver" ] && basename "$(readlink "$1/driver")"; }
+
+for d in "$PCI"/*; do
+    [ "$(cat "$d/vendor" 2>/dev/null)" = 0x10de ] || continue
+    case "$(cat "$d/class" 2>/dev/null)" in 0x03*) ;; *) continue ;; esac
+    id=$(cat "$d/device" 2>/dev/null) || continue
+    if [ $((id)) -ge $((0x1e00)) ]; then
+        # Turing o más nueva: es de nvidia-open; se le da tiempo a tomarla
+        i=0
+        while [ -z "$(driver_de "$d")" ] && [ $i -lt 16 ]; do sleep 0.5; i=$((i + 1)); done
+        [ -n "$(driver_de "$d")" ] && continue
+        motivo="el driver nvidia no ha podido con ella"
+    else
+        [ "$(driver_de "$d")" = nouveau ] && continue
+        motivo="nvidia-open no admite tarjetas anteriores a GTX 16 / RTX 20"
+    fi
+    echo "titan-grafica-nvidia: $(basename "$d") ($id): $motivo; se usa nouveau"
+    [ -n "${TITAN_PCI:-}" ] && continue          # pruebas: no tocar módulos
+    # Fuera los módulos de nvidia si no los usa nadie (si hay otra NVIDIA
+    # nueva usándolos, modprobe -r no los quita y no pasa nada)
+    modprobe -r nvidia_drm nvidia_modeset nvidia_uvm nvidia 2>/dev/null
+    modprobe nouveau
+done
+exit 0
