@@ -62,6 +62,7 @@ iso/titan/airootfs/usr/local/bin/*
 !iso/titan/airootfs/usr/local/bin/titan-cortafuegos
 !iso/titan/airootfs/usr/local/bin/titan-actualizaciones
 !iso/titan/airootfs/usr/local/bin/titan-arranque-seguro
+!iso/titan/airootfs/usr/local/bin/titan-resolucion-arranque
 !iso/titan/airootfs/usr/local/bin/titan-huella
 !iso/titan/airootfs/usr/local/bin/titan-instantaneas
 !iso/titan/airootfs/usr/local/bin/titan-lector

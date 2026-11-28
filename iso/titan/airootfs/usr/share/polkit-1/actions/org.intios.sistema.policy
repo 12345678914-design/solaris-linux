@@ -70,6 +70,17 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-arranque-seguro</annotate>
   </action>
+  <action id="org.intios.resolucion-arranque">
+    <description>Cambiar la resolución de arranque</description>
+    <message>Por tu seguridad, para cambiar la resolución con la que arranca el equipo hace falta la contraseña de administrador.</message>
+    <icon_name>video-display</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/titan-resolucion-arranque</annotate>
+  </action>
   <action id="org.intios.instantaneas">
     <description>Gestionar los puntos de restauración</description>
     <message>Por tu seguridad, para crear o borrar puntos de restauración hace falta la contraseña de administrador.</message>

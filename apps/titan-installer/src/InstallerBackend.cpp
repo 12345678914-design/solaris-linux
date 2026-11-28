@@ -845,6 +845,9 @@ public slots:
                            "GRUB_DISABLE_SUBMENU=y\n"
                            "GRUB_TERMINAL_OUTPUT=\"gfxterm console\"\n"
                            "GRUB_GFXMODE=auto\n"
+                           // Sin driver de la tarjeta, Linux usa la imagen que deja GRUB:
+                           // sin keep arrancaria en modo texto (o a 640x480)
+                           "GRUB_GFXPAYLOAD_LINUX=keep\n"
                            "GRUB_DISABLE_OS_PROBER=false\n").arg(parametroCifrado).toUtf8());
                 gDef.close();
             }

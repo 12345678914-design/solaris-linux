@@ -90,6 +90,7 @@ file_permissions=(
   ["/usr/local/bin/titan-cortafuegos"]="0:0:755"
   ["/usr/local/bin/titan-actualizaciones"]="0:0:755"
   ["/usr/local/bin/titan-arranque-seguro"]="0:0:755"
+  ["/usr/local/bin/titan-resolucion-arranque"]="0:0:755"
   ["/usr/local/bin/titan-huella"]="0:0:755"
   ["/usr/local/bin/titan-instantaneas"]="0:0:755"
   ["/usr/local/bin/titan-polkit"]="0:0:755"

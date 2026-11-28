@@ -28,6 +28,9 @@ class Dispositivos : public QObject
     //   [{id, nombre, detalle, icono, volumen, silencio}]
     Q_PROPERTY(QVariantList appsSonido READ appsSonido NOTIFY appsSonidoCambiado)
     Q_PROPERTY(QString aviso READ aviso NOTIFY avisoCambiado)
+    // Resolución de arranque (GRUB): la única que vale si la tarjeta va sin driver
+    Q_PROPERTY(QString resolucionArranque READ resolucionArranque NOTIFY arranqueCambiado)
+    Q_PROPERTY(bool arranqueCambiable READ arranqueCambiable CONSTANT)
 
 public:
     explicit Dispositivos(QObject *parent = nullptr);
@@ -51,6 +54,9 @@ public:
     Q_INVOKABLE void confirmarPantallas();
     Q_INVOKABLE void deshacerPantallas();
     Q_INVOKABLE void identificar();
+    Q_INVOKABLE void setResolucionArranque(const QString &valor);
+    QString resolucionArranque() const { return m_resArranque; }
+    bool arranqueCambiable() const;
 
     Q_INVOKABLE void leerBrillo();
     Q_INVOKABLE void setBrillo(int porcentaje);
@@ -74,6 +80,7 @@ signals:
     void sonidoCambiado();
     void appsSonidoCambiado();
     void avisoCambiado();
+    void arranqueCambiado();
 
 private:
     using Fin = std::function<void(int codigo, const QByteArray &salida, const QString &error)>;
@@ -84,6 +91,8 @@ private:
     QString modoGuardado(const QString &nombre) const;
     // Último modo aplicado por pantalla (los personalizados no salen como "en uso")
     QHash<QString, QString> m_modoAplicado;
+    QString m_resArranque = QStringLiteral("auto");
+    void leerResolucionArranque();
     void leerLuz();
 
     QVariantList m_pantallas;

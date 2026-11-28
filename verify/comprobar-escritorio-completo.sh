@@ -696,6 +696,17 @@ PATH="$_t3d/bin:$PATH" TITAN_DRM_DIR="$_t3d/dri" sh iso/titan/airootfs/usr/lib/t
 rm -rf "$_t3d"
 contiene iso/titan/airootfs/etc/profile.d/15-titan-grafico.sh 'titan-sin-3d' "Sesión: usa titan-sin-3d para elegir labwc/Wayfire"
 contiene iso/titan/airootfs/usr/lib/titan/titan-greeter-sesion 'titan-sin-3d' "Inicio de sesión: modo software si la tarjeta no tiene 3D"
+# Resolución de arranque (tarjetas sin driver): solo valores de la lista
+_tg=$(mktemp -d); printf 'GRUB_DEFAULT=0\nGRUB_GFXMODE=auto\n' > "$_tg/grub"
+TITAN_GRUB_DEF="$_tg/grub" bash iso/titan/airootfs/usr/local/bin/titan-resolucion-arranque poner 1024x768 \
+  && grep -q '^GRUB_GFXMODE="1024x768,auto"$' "$_tg/grub" && grep -q '^GRUB_GFXPAYLOAD_LINUX=keep$' "$_tg/grub" \
+  && ok "titan-resolucion-arranque pone la resolución de GRUB y la pasa a Linux" || fallo "titan-resolucion-arranque no escribe GRUB_GFXMODE"
+TITAN_GRUB_DEF="$_tg/grub" bash iso/titan/airootfs/usr/local/bin/titan-resolucion-arranque poner '1024x768;id' 2>/dev/null \
+  && fallo "titan-resolucion-arranque acepta valores fuera de la lista" || ok "titan-resolucion-arranque rechaza valores fuera de la lista"
+rm -rf "$_tg"
+contiene iso/titan/airootfs/usr/share/polkit-1/actions/org.intios.sistema.policy 'titan-resolucion-arranque' "Resolución de arranque: pide la contraseña (polkit)"
+contiene apps/titan-installer/src/InstallerBackend.cpp 'GRUB_GFXPAYLOAD_LINUX=keep' "Instalado: Linux arranca con la resolución de GRUB (sin driver no cae a texto)"
+contiene apps/titan-settings/src/Dispositivos.cpp 'salidaSinDriver' "Pantallas: detecta tarjetas sin driver (simpledrm/efifb)"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

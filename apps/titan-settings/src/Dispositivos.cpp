@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -55,6 +56,23 @@ const QList<QSize> &resolucionesHabituales()
     return r;
 }
 
+// La salida va sin driver de su tarjeta (simpledrm, efifb...): Linux usa la
+// imagen que dejó el arranque y no se puede cambiar de resolución dentro del
+// sistema (solo con la resolución de arranque).
+bool salidaSinDriver(const QString &salida)
+{
+    static const QSet<QString> basicos = {
+        QStringLiteral("simple-framebuffer"), QStringLiteral("simpledrm"), QStringLiteral("efifb"),
+        QStringLiteral("vesafb"), QStringLiteral("efidrm"), QStringLiteral("vesadrm"), QStringLiteral("ofdrm")};
+    const QDir drm(qEnvironmentVariable("TITAN_SYS_DRM", QStringLiteral("/sys/class/drm")));   // variable: pruebas
+    for (const QString &e : drm.entryList({QStringLiteral("card*-") + salida}, QDir::Dirs | QDir::System)) {
+        const QString tarjeta = e.section(QLatin1Char('-'), 0, 0);
+        const QString driver = QFileInfo(drm.filePath(tarjeta + QStringLiteral("/device/driver"))).symLinkTarget();
+        return basicos.contains(QFileInfo(driver).fileName());
+    }
+    return false;
+}
+
 QString idModo(int w, int h, double hz)
 {
     return QStringLiteral("%1x%2@%3Hz").arg(w).arg(h).arg(QString::number(hz, 'f', 3));
@@ -84,6 +102,7 @@ Dispositivos::Dispositivos(QObject *parent)
                [this](int, const QByteArray &, const QString &) { leerSonido(); });
     });
     leerLuz();
+    leerResolucionArranque();
 }
 
 void Dispositivos::correr(const QString &programa, const QStringList &args, Fin fin)
@@ -123,6 +142,8 @@ void Dispositivos::leerPantallas()
             const QJsonObject o = v.toObject();
             QVariantMap p;
             p[QStringLiteral("nombre")] = o.value(QStringLiteral("name")).toString();
+            const bool basica = salidaSinDriver(p[QStringLiteral("nombre")].toString());
+            p[QStringLiteral("basica")] = basica;
             QString desc = (o.value(QStringLiteral("make")).toString() + QLatin1Char(' ')
                             + o.value(QStringLiteral("model")).toString()).trimmed();
             if (desc.isEmpty() || desc == QStringLiteral("Unknown Unknown"))
@@ -178,7 +199,7 @@ void Dispositivos::leerPantallas()
             // Las habituales que no anuncia: menores que la máxima (seguras) y,
             // aparte, mayores (solo con «Mostrar más resoluciones»)
             const double hzPers = std::round(hzBase) >= 59 && std::round(hzBase) <= 61 ? 60.0 : std::round(hzBase);
-            for (const QSize &r : resolucionesHabituales()) {
+            for (const QSize &r : basica ? QList<QSize>() : resolucionesHabituales()) {
                 if (tamanos.contains(QStringLiteral("%1x%2").arg(r.width()).arg(r.height())))
                     continue;
                 const bool menor = maxW == 0 || (r.width() <= maxW && r.height() <= maxH);
@@ -345,6 +366,46 @@ void Dispositivos::guardarPantallas()
     f.write("# Inti OS: pantallas (lo escribe Ajustes; lo aplica titan-pantallas al entrar)\n");
     for (const QVariant &v : std::as_const(m_pantallas))
         f.write(argumentosDe(v.toMap()).join(QLatin1Char(' ')).toUtf8() + '\n');
+}
+
+// En el USB en vivo no hay GRUB propio que cambiar (arranca el de la ISO).
+bool Dispositivos::arranqueCambiable() const
+{
+    return QFile::exists(QStringLiteral("/etc/default/grub")) && !QFile::exists(QStringLiteral("/run/archiso"))
+        && QFile::exists(QStringLiteral("/usr/local/bin/titan-resolucion-arranque"));
+}
+
+void Dispositivos::leerResolucionArranque()
+{
+    if (!arranqueCambiable())
+        return;
+    correr(QStringLiteral("/usr/local/bin/titan-resolucion-arranque"), {QStringLiteral("estado")},
+           [this](int codigo, const QByteArray &salida, const QString &) {
+        const QString v = QString::fromUtf8(salida).trimmed();
+        if (codigo == 0 && !v.isEmpty() && v != m_resArranque) {
+            m_resArranque = v;
+            emit arranqueCambiado();
+        }
+    });
+}
+
+// Con ventana de contraseña ("Por tu seguridad..."); el ayudante solo acepta
+// "auto" o una resolución de su lista.
+void Dispositivos::setResolucionArranque(const QString &valor)
+{
+    if (!arranqueCambiable() || valor == m_resArranque)
+        return;
+    correr(QStringLiteral("pkexec"), {QStringLiteral("/usr/local/bin/titan-resolucion-arranque"), QStringLiteral("poner"), valor},
+           [this, valor](int codigo, const QByteArray &, const QString &error) {
+        if (codigo == 126 || codigo == 127)
+            avisar(QStringLiteral("Cancelado: no se ha cambiado nada."));
+        else if (codigo != 0)
+            avisar(error.isEmpty() ? QStringLiteral("No se pudo cambiar la resolución de arranque") : error);
+        else
+            avisar(QStringLiteral("Listo: la nueva resolución se verá al reiniciar."));
+        leerResolucionArranque();
+        emit arranqueCambiado();   // el desplegable vuelve a lo guardado si se canceló
+    });
 }
 
 void Dispositivos::identificar()

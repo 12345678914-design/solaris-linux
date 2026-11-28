@@ -96,10 +96,31 @@ PaginaAjustes {
                     onElegido: (v) => grupoPantalla.aplicar(v, grupoPantalla.modelData.escala, grupoPantalla.modelData.giro, true)
                 }
             }
+            // Sin driver de la tarjeta la resolución no se puede cambiar aquí:
+            // la fija el arranque (GRUB). Se elige y se aplica al reiniciar.
+            Fila {
+                titulo: "Resolución de arranque"
+                detalle: dispositivos.arranqueCambiable
+                         ? "Tu tarjeta gráfica funciona sin su driver, así que la resolución la fija el arranque. Elige aquí la de tu pantalla: se aplica al reiniciar (te pedirá la contraseña)."
+                         : "Tu tarjeta gráfica funciona sin su driver, así que la resolución la fija el arranque. Cuando instales Inti OS podrás elegirla aquí."
+                visible: grupoPantalla.modelData.activa && grupoPantalla.modelData.basica === true
+                Desplegable {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: dispositivos.arranqueCambiable
+                    ancho: 200
+                    opciones: [{ valor: "auto", texto: "Automática" }].concat(
+                        ["1920x1080", "1680x1050", "1600x900", "1440x900", "1366x768", "1360x768", "1280x1024",
+                         "1280x800", "1280x720", "1024x768", "1024x600", "800x600"].map(function (r) {
+                            return { valor: r, texto: r.replace("x", " × ") }
+                        }))
+                    valor: dispositivos.resolucionArranque
+                    onElegido: (v) => dispositivos.setResolucionArranque(v)
+                }
+            }
             Fila {
                 titulo: "Mostrar más resoluciones"
                 detalle: "Añade resoluciones mayores que la pantalla no anuncia. Si la pantalla no la acepta, se deshace sola en 15 segundos."
-                visible: grupoPantalla.modelData.activa
+                visible: grupoPantalla.modelData.activa && grupoPantalla.modelData.basica !== true
                 Interruptor {
                     anchors.verticalCenter: parent.verticalCenter
                     activo: vista.masResoluciones
