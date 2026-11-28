@@ -73,6 +73,21 @@ bool salidaSinDriver(const QString &salida)
     return false;
 }
 
+// La pantalla no dice qué resolución tiene (EDID vacío: cable VGA,
+// adaptadores, monitores viejos). El driver solo ofrece las seguras
+// (1024x768, 800x600...) aunque el monitor sea de 1920x1080.
+bool salidaSinEdid(const QString &salida)
+{
+    const QDir drm(qEnvironmentVariable("TITAN_SYS_DRM", QStringLiteral("/sys/class/drm")));
+    for (const QString &e : drm.entryList({QStringLiteral("card*-") + salida}, QDir::Dirs | QDir::System)) {
+        QFile f(drm.filePath(e + QStringLiteral("/edid")));
+        if (!f.open(QIODevice::ReadOnly))
+            return false;
+        return f.read(128).size() < 128;
+    }
+    return false;
+}
+
 QString idModo(int w, int h, double hz)
 {
     return QStringLiteral("%1x%2@%3Hz").arg(w).arg(h).arg(QString::number(hz, 'f', 3));
@@ -144,6 +159,8 @@ void Dispositivos::leerPantallas()
             p[QStringLiteral("nombre")] = o.value(QStringLiteral("name")).toString();
             const bool basica = salidaSinDriver(p[QStringLiteral("nombre")].toString());
             p[QStringLiteral("basica")] = basica;
+            const bool sinEdid = !basica && salidaSinEdid(p[QStringLiteral("nombre")].toString());
+            p[QStringLiteral("sinEdid")] = sinEdid;
             QString desc = (o.value(QStringLiteral("make")).toString() + QLatin1Char(' ')
                             + o.value(QStringLiteral("model")).toString()).trimmed();
             if (desc.isEmpty() || desc == QStringLiteral("Unknown Unknown"))
@@ -210,7 +227,7 @@ void Dispositivos::leerPantallas()
                                      {QStringLiteral("actual"), p.value(QStringLiteral("modo")).toString() == id},
                                      {QStringLiteral("preferido"), false},
                                      {QStringLiteral("personalizado"), true},
-                                     {QStringLiteral("mayor"), !menor}};
+                                     {QStringLiteral("mayor"), !menor && !sinEdid}};
             }
             // El personalizado en uso, si no es de la lista de habituales
             const QString enUso = p.value(QStringLiteral("modo")).toString();

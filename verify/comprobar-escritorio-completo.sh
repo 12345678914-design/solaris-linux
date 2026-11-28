@@ -717,6 +717,8 @@ TITAN_CMDLINE="$_tn/cmd" TITAN_PCI="$_tn/pci" sh iso/titan/airootfs/usr/lib/tita
   && fallo "titan-grafica-nvidia no respeta el modo compatibilidad" || ok "Modo compatibilidad: no toca los drivers de NVIDIA"
 rm -rf "$_tn"
 contiene iso/titan/airootfs/root/customize_airootfs.sh 'titan-grafica-nvidia.service' "Servicio titan-grafica-nvidia activado"
+contiene apps/titan-settings/src/Dispositivos.cpp 'salidaSinEdid' "Pantallas: detecta monitores que no dicen su resolución (VGA, adaptadores)"
+contiene apps/titan-settings/qml/PantallasView.qml 'Tu pantalla no dice su resolución' "Pantallas: sin EDID ofrece 1920x1080 y las demás sin esconderlas"
 echo
 echo -e "${AZUL}=== RESUMEN ===${SC}"
 echo "Correctas: ${exitos}   Avisos: ${avisos}   Fallos: ${fallos}"

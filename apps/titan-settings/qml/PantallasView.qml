@@ -99,6 +99,11 @@ PaginaAjustes {
             // Sin driver de la tarjeta la resolución no se puede cambiar aquí:
             // la fija el arranque (GRUB). Se elige y se aplica al reiniciar.
             Fila {
+                titulo: "Tu pantalla no dice su resolución"
+                detalle: "Pasa con cables VGA, adaptadores o monitores antiguos: por eso sale 1024 × 768. Elige arriba la de tu monitor (por ejemplo 1920 × 1080); si no se ve bien, se deshace sola en 15 segundos."
+                visible: grupoPantalla.modelData.activa && grupoPantalla.modelData.sinEdid === true
+            }
+            Fila {
                 titulo: "Resolución de arranque"
                 detalle: dispositivos.arranqueCambiable
                          ? "Tu tarjeta gráfica funciona sin su driver, así que la resolución la fija el arranque. Elige aquí la de tu pantalla: se aplica al reiniciar (te pedirá la contraseña)."
@@ -121,6 +126,7 @@ PaginaAjustes {
                 titulo: "Mostrar más resoluciones"
                 detalle: "Añade resoluciones mayores que la pantalla no anuncia. Si la pantalla no la acepta, se deshace sola en 15 segundos."
                 visible: grupoPantalla.modelData.activa && grupoPantalla.modelData.basica !== true
+                         && grupoPantalla.modelData.sinEdid !== true
                 Interruptor {
                     anchors.verticalCenter: parent.verticalCenter
                     activo: vista.masResoluciones
