@@ -2,13 +2,13 @@
 componentName:  solaris
 
 strings:
-    productName:         "Solaris Linux"
-    shortProductName:    "Solaris"
+    productName:         "Inti OS"
+    shortProductName:    "Inti OS"
     version:             "0.2.0"
     shortVersion:        "0.2.0"
-    versionedName:       "Solaris Linux 0.2.0"
-    shortVersionedName:  "Solaris 0.2.0"
-    bootloaderEntryName: "Solaris Linux"
+    versionedName:       "Inti OS 1.8"
+    shortVersionedName:  "Inti OS 1.8"
+    bootloaderEntryName: "Inti OS"
     productUrl:          "https://solaris-linux.org"
     supportUrl:          "https://solaris-linux.org"
 

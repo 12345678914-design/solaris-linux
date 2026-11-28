@@ -1,0 +1,10 @@
+QT += quick quickcontrols2 gui
+CONFIG += c++17 warn_on release
+QMAKE_CXXFLAGS_RELEASE += -O2 -pipe
+TEMPLATE = app
+TARGET = titan-bienvenida
+INCLUDEPATH += src ../titan-common
+SOURCES += src/main.cpp ../titan-common/ThemeManager.cpp
+HEADERS += ../titan-common/ThemeManager.h
+RESOURCES += resources.qrc
+DESTDIR = .

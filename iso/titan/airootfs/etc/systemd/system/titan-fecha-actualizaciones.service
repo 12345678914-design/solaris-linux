@@ -1,0 +1,7 @@
+[Unit]
+Description=Inti OS: avanzar la fecha de las actualizaciones estables
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/titan-actualizar-sistema fijar-fecha

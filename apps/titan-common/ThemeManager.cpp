@@ -8,6 +8,11 @@
 #include <QUrl>
 #include <QDateTime>
 #include <QDebug>
+#include <QGuiApplication>
+#include <QPalette>
+#include <QColor>
+#include <QLocalSocket>
+#include <QTimer>
 
 ThemeManager *ThemeManager::instance()
 {
@@ -25,6 +30,7 @@ ThemeManager::ThemeManager(QObject *parent)
     QDir().mkpath(m_configDir);
 
     load();
+    aplicarPaleta();
     scanWallpapers();
 
     m_watcher->addPath(m_configDir);
@@ -44,6 +50,9 @@ void ThemeManager::load()
         m_isDark = s.value(QStringLiteral("isDark"), false).toBool();
         m_accent = s.value(QStringLiteral("accent"), QStringLiteral("#0071e3")).toString();
         m_wallpaper = s.value(QStringLiteral("wallpaper")).toString();
+        m_windowStyle = s.value(QStringLiteral("windowStyle"), QStringLiteral("actual")).toString();
+        if (!estiloValido(m_windowStyle))
+            m_windowStyle = QStringLiteral("actual");
         s.endGroup();
     } else {
         m_isDark = false;
@@ -51,7 +60,7 @@ void ThemeManager::load()
     }
 
     if (m_wallpaper.isEmpty() || !QFile::exists(m_wallpaper)) {
-        const QString defaultWp = QStringLiteral("/usr/share/titan/wallpapers/01-macos-golden.jpg");
+        const QString defaultWp = QStringLiteral("/usr/share/titan/wallpapers/01-machu-picchu.jpg");
         if (QFile::exists(defaultWp)) {
             m_wallpaper = defaultWp;
         } else if (QFile::exists(QStringLiteral("/usr/share/titan/wallpaper.jpg"))) {
@@ -68,6 +77,7 @@ void ThemeManager::save()
     s.setValue(QStringLiteral("isDark"), m_isDark);
     s.setValue(QStringLiteral("accent"), m_accent);
     s.setValue(QStringLiteral("wallpaper"), m_wallpaper);
+    s.setValue(QStringLiteral("windowStyle"), m_windowStyle);
     s.endGroup();
     s.sync();
 
@@ -84,10 +94,15 @@ void ThemeManager::onConfigFileChanged()
     bool oldDark = m_isDark;
     QString oldAccent = m_accent;
     QString oldWp = m_wallpaper;
+    const QString oldEstilo = m_windowStyle;
 
     load();
 
+    if (oldEstilo != m_windowStyle)
+        emit windowStyleChanged();
+
     if (oldDark != m_isDark || oldAccent != m_accent) {
+        aplicarPaleta();
         emit themeChanged();
     }
     if (oldWp != m_wallpaper) {
@@ -97,6 +112,60 @@ void ThemeManager::onConfigFileChanged()
     if (QFile::exists(m_configPath) && !m_watcher->files().contains(m_configPath)) {
         m_watcher->addPath(m_configPath);
     }
+
+    // El shell lleva el modo y el acento a GTK/portal (Firefox, OnlyOffice,
+    // apps GTK). Se espera un momento: el aviso llega a veces cuando Ajustes
+    // aún está escribiendo theme.conf, y leerlo entonces daba el modo anterior
+    // (Firefox quedaba al revés: claro -> oscuro y oscuro -> claro).
+    if (m_sincronizaSistema && m_retrasoSync)
+        m_retrasoSync->start();
+}
+
+// theme.conf leído del disco ahora mismo (QSettings guarda una copia en
+// memoria por proceso y puede devolver lo de antes).
+static void leerTemaDelDisco(const QString &ruta, bool *oscuro, QString *acento)
+{
+    QFile f(ruta);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    bool enTema = false;
+    while (!f.atEnd()) {
+        const QString l = QString::fromUtf8(f.readLine()).trimmed();
+        if (l.startsWith(QLatin1Char('['))) { enTema = (l == QStringLiteral("[Theme]")); continue; }
+        if (!enTema) continue;
+        if (l.startsWith(QStringLiteral("isDark=")))
+            *oscuro = l.mid(7).trimmed().compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
+        else if (l.startsWith(QStringLiteral("accent=")))
+            *acento = l.mid(7).trimmed().remove(QLatin1Char('"'));
+    }
+}
+
+// Solo el shell: deja GTK/portal igual que theme.conf si no lo está ya.
+void ThemeManager::repasarSistema()
+{
+    bool oscuro = m_isDark;
+    QString acento = m_accent;
+    leerTemaDelDisco(m_configPath, &oscuro, &acento);
+    if (oscuro != m_isDark || (QColor::isValidColorName(acento) && QColor(acento).name() != m_accent)) {
+        m_isDark = oscuro;
+        if (QColor::isValidColorName(acento))
+            m_accent = QColor(acento).name();
+        aplicarPaleta();
+        emit themeChanged();
+    }
+    if (m_ultimoOscuro != int(m_isDark) || m_ultimoAcento != m_accent)
+        sincronizarGtk();
+}
+
+// ¿Está titan-shell en marcha? Entonces él sincroniza GTK/portal y las demás
+// apps no (dos procesos a la vez podían dejar el valor viejo).
+bool ThemeManager::shellActivo()
+{
+    QLocalSocket s;
+    s.connectToServer(QStringLiteral("titan-shell-ipc-") + qEnvironmentVariable("USER"));
+    const bool hay = s.waitForConnected(150);
+    s.abort();
+    return hay;
 }
 
 void ThemeManager::setIsDark(bool dark)
@@ -104,6 +173,7 @@ void ThemeManager::setIsDark(bool dark)
     if (m_isDark != dark) {
         m_isDark = dark;
         save();
+        aplicarPaleta();
         syncLabwcTheme();
         emit themeChanged();
     }
@@ -111,11 +181,36 @@ void ThemeManager::setIsDark(bool dark)
 
 void ThemeManager::setAccent(const QString &accent)
 {
-    if (m_accent != accent && !accent.isEmpty()) {
-        m_accent = accent;
+    if (m_accent != accent && QColor::isValidColorName(accent)) {
+        m_accent = QColor(accent).name();
         save();
+        aplicarPaleta();
+        syncLabwcTheme();
         emit themeChanged();
     }
+}
+
+bool ThemeManager::estiloValido(const QString &estilo)
+{
+    static const QStringList validos = {
+        QStringLiteral("actual"), QStringLiteral("windows"), QStringLiteral("circulos"),
+        QStringLiteral("acento"), QStringLiteral("capsula"), QStringLiteral("contorno"),
+        QStringLiteral("color")
+    };
+    return validos.contains(estilo);
+}
+
+// Ajustes > Ventanas. Las apps de Inti y Wayfire lo leen de theme.conf al
+// momento; GTK (Firefox...) y labwc los prepara titan-estilo-ventanas.
+void ThemeManager::setWindowStyle(const QString &estilo)
+{
+    if (!estiloValido(estilo) || estilo == m_windowStyle)
+        return;
+    m_windowStyle = estilo;
+    save();
+    emit windowStyleChanged();
+    if (QFile::exists(QStringLiteral("/usr/local/bin/titan-estilo-ventanas")))
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-estilo-ventanas"), {estilo});
 }
 
 void ThemeManager::setWallpaper(const QString &wallpaper)
@@ -125,6 +220,26 @@ void ThemeManager::setWallpaper(const QString &wallpaper)
         save();
         emit wallpaperChanged();
     }
+}
+
+// Seleccion de texto, enlaces y controles de Qt Quick Controls con el acento.
+void ThemeManager::aplicarPaleta()
+{
+    auto *app = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    if (!app)
+        return;
+    const QColor acento(m_accent);
+    if (!acento.isValid())
+        return;
+    QPalette pal = QGuiApplication::palette();
+    const QColor sobre = acento.lightnessF() > 0.70 ? QColor(QStringLiteral("#1d1d1f")) : QColor(Qt::white);
+    for (auto grupo : {QPalette::Active, QPalette::Inactive}) {
+        pal.setColor(grupo, QPalette::Highlight, acento);
+        pal.setColor(grupo, QPalette::HighlightedText, sobre);
+        pal.setColor(grupo, QPalette::Link, acento);
+        pal.setColor(grupo, QPalette::Accent, acento);
+    }
+    QGuiApplication::setPalette(pal);
 }
 
 void ThemeManager::toggleTheme()
@@ -172,7 +287,14 @@ void ThemeManager::scanWallpapers()
             QVariantMap item;
             QString base = fi.baseName();
             QString title = base;
-            // Limpiar prefijo numérico como "01-macos-golden" -> "macOS Golden"
+            // Nombres de los fondos de serie (con tildes y ñ); los demás se
+            // sacan del fichero: "05-mi-foto" -> "Mi Foto"
+            static const QHash<QString, QString> nombres = {
+                {QStringLiteral("01-machu-picchu"), QStringLiteral("Machu Picchu")},
+                {QStringLiteral("02-montana-de-colores"), QStringLiteral("Montaña de Colores")},
+                {QStringLiteral("03-chimborazo"), QStringLiteral("Chimborazo")},
+                {QStringLiteral("04-machu-picchu-nubes"), QStringLiteral("Machu Picchu entre nubes")},
+            };
             if (title.length() > 3 && title.at(2) == QLatin1Char('-')) {
                 title = title.mid(3);
             }
@@ -185,7 +307,7 @@ void ThemeManager::scanWallpapers()
             }
             title = words.join(QLatin1Char(' '));
 
-            item[QStringLiteral("name")] = title;
+            item[QStringLiteral("name")] = nombres.value(base, title);
             item[QStringLiteral("path")] = fi.absoluteFilePath();
             
             QString thumb = fi.absolutePath() + QStringLiteral("/thumbnails/") + fi.fileName();
@@ -212,10 +334,9 @@ void ThemeManager::syncLabwcTheme()
         if (m_isDark) {
             out << "# Titan Linux - Tema macOS Dark para Labwc\n"
                 << "window.active.title.bg: flat solid\n"
-                << "window.active.title.bg.color: #1e2028\n"
+                << "window.active.title.bg.color: #111113\n"
                 << "window.inactive.title.bg: flat solid\n"
-                << "window.inactive.title.bg.color: #15161c\n"
-                << "window.active.border.color: #383c4c\n"
+                << "window.inactive.title.bg.color: #0a0a0b\n"
                 << "window.inactive.border.color: #20222c\n"
                 << "border.width: 1\n"
                 << "window.active.label.text.color: #f2f4f8\n"
@@ -226,12 +347,15 @@ void ThemeManager::syncLabwcTheme()
                 << "window.active.title.bg.color: #e8e8ed\n"
                 << "window.inactive.title.bg: flat solid\n"
                 << "window.inactive.title.bg.color: #f2f2f7\n"
-                << "window.active.border.color: #d1d1d6\n"
                 << "window.inactive.border.color: #e5e5ea\n"
                 << "border.width: 1\n"
                 << "window.active.label.text.color: #1d1d1f\n"
                 << "window.inactive.label.text.color: #8e8e93\n";
         }
+        // Borde de la ventana activa y menus de labwc con el color de acento.
+        out << "window.active.border.color: " << m_accent << "\n"
+            << "menu.items.active.bg.color: " << m_accent << "\n"
+            << "menu.items.active.text.color: #ffffff\n";
         out << "window.label.text.justify: center\n"
             << "window.active.button.close.unpressed.image.color: #ff5f56\n"
             << "window.active.button.close.hover.image.color: #e0443e\n"
@@ -255,16 +379,54 @@ void ThemeManager::syncLabwcTheme()
         QProcess::startDetached(QStringLiteral("labwc"), {QStringLiteral("--reconfigure")});
     }
 
-    // Sincronizar tema del sistema (GTK 3, GTK 4, GNOME y Portal de apariencia)
-    QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
-    QString gtkTheme = m_isDark ? QStringLiteral("Adwaita-dark") : QStringLiteral("Adwaita");
+    if (m_sincronizaSistema || !shellActivo())
+        sincronizarGtk();
+}
 
-    QProcess::startDetached(QStringLiteral("gsettings"), {
-        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"), gtkColorScheme
+// Claro/oscuro para lo que no es Qt: GTK 3/4, libadwaita y el portal de
+// apariencia (Firefox, OnlyOffice, apps GTK y Flatpak leen color-scheme).
+void ThemeManager::sincronizarGtk()
+{
+    QString gtkColorScheme = m_isDark ? QStringLiteral("prefer-dark") : QStringLiteral("default");
+    // El tema GTK de dconf queda SIEMPRE en "Adwaita"; el modo va solo en
+    // color-scheme, como hace GNOME. Firefox (y Thunderbird) elige solo su
+    // variante oscura a partir de color-scheme, pero si además cambiaba el
+    // tema GTK se quedaba un paso por detrás (oscuro -> seguía claro; claro
+    // -> ventana oscura y páginas claras). Las apps GTK 3 que se abren
+    // después siguen el modo por gtk-application-prefer-dark-theme de
+    // settings.ini (más abajo); las GTK 4/libadwaita, por color-scheme.
+    QString gtkTheme = QStringLiteral("Adwaita");
+
+    m_ultimoOscuro = int(m_isDark);
+    m_ultimoAcento = m_accent;
+
+    QProcess::startDetached(QStringLiteral("sh"), {
+        QStringLiteral("-c"),
+        QStringLiteral("gsettings set org.gnome.desktop.interface color-scheme '%2'; "
+                       "[ \"$(gsettings get org.gnome.desktop.interface gtk-theme)\" = \"'%1'\" ] || "
+                       "gsettings set org.gnome.desktop.interface gtk-theme '%1'")
+            .arg(gtkTheme, gtkColorScheme)
     });
-    QProcess::startDetached(QStringLiteral("gsettings"), {
-        QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("gtk-theme"), gtkTheme
-    });
+
+    // GTK, libadwaita, kitty y la pantalla de bloqueo siguen el acento.
+    if (QFile::exists(QStringLiteral("/usr/local/bin/titan-acento")))
+        QProcess::startDetached(QStringLiteral("/usr/local/bin/titan-acento"), {});
+
+    // Discover (la App Store) lee sus ajustes GTK de este fichero, no de
+    // dconf (ver /usr/local/bin/plasma-discover): asi sigue el modo y usa
+    // iconos Breeze claros u oscuros sin cambiar los de las demas apps GTK.
+    {
+        const QString dir = QDir::homePath() + QStringLiteral("/.config/glib-2.0/settings");
+        QDir().mkpath(dir);
+        QFile kf(dir + QStringLiteral("/keyfile"));
+        if (kf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QTextStream k(&kf);
+            k << "[org/gnome/desktop/interface]\n"
+              << "color-scheme='" << gtkColorScheme << "'\n"
+              << "gtk-theme='" << (m_isDark ? "Adwaita-dark" : "Adwaita") << "'\n"
+              << "icon-theme='" << (m_isDark ? "breeze-dark" : "breeze") << "'\n";
+        }
+    }
 
     for (const QString &ver : {QStringLiteral("gtk-3.0"), QStringLiteral("gtk-4.0")}) {
         QString p = QDir::homePath() + QStringLiteral("/.config/") + ver;
@@ -272,11 +434,28 @@ void ThemeManager::syncLabwcTheme()
         QFile gf(p + QStringLiteral("/settings.ini"));
         if (gf.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream gout(&gf);
+            // Window buttons on the left like the Titan apps (the traffic
+            // lights are drawn by ~/.config/gtk-*/gtk.css).
             gout << "[Settings]\n"
                  << "gtk-application-prefer-dark-theme=" << (m_isDark ? "1" : "0") << "\n"
-                 << "gtk-theme-name=" << gtkTheme << "\n";
+                 << "gtk-theme-name=" << gtkTheme << "\n"
+                 << "gtk-icon-theme-name=Adwaita\n"
+                 << "gtk-decoration-layout=close,minimize,maximize:\n";
             gf.close();
         }
     }
 }
 
+void ThemeManager::setSincronizaSistema(bool activo)
+{
+    m_sincronizaSistema = activo;
+    if (activo) {
+        if (!m_retrasoSync) {
+            m_retrasoSync = new QTimer(this);
+            m_retrasoSync->setSingleShot(true);
+            m_retrasoSync->setInterval(350);
+            connect(m_retrasoSync, &QTimer::timeout, this, &ThemeManager::repasarSistema);
+        }
+        sincronizarGtk(); // al entrar: dconf puede no coincidir con theme.conf
+    }
+}

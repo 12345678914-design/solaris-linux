@@ -1,0 +1,160 @@
+#!/bin/sh
+# Inti OS - AppImage con doble clic, como un instalador de Windows.
+#
+# Al abrir un .AppImage (Finder, escritorio, descargas de Firefox) se pregunta:
+#   Instalar           -> se MUEVE a ~/.local/bin, se hace ejecutable, sale en
+#                         el menu de inicio con su nombre e icono y se abre.
+#   Abrir solo esta vez -> se hace ejecutable y se abre donde esta.
+# Todo en la cuenta de la persona: no hace falta la contrasena de
+# administrador (un AppImage no toca el sistema). El nombre y el icono se
+# LEEN del AppImage sin ejecutarlo (unsquashfs / bsdtar).
+#
+# Uso: titan-appimage FICHERO.AppImage      (lo que lanza el doble clic)
+#      titan-appimage quitar FICHERO.desktop (Desinstalar del menu de inicio)
+set -u
+datos="${XDG_DATA_HOME:-$HOME/.local/share}"
+bin="$HOME/.local/bin"
+apps="$datos/applications"
+iconos="$datos/icons/inti-appimage"
+pregunta=/usr/share/titan/appimage/Pregunta.qml
+
+avisar() { command -v notify-send >/dev/null 2>&1 && notify-send -a "Inti" -i "${3:-system-software-install}" "$1" "$2"; }
+
+# AppImage de verdad: ELF con la marca "AI" 1 o 2 en el byte 8.
+tipo_appimage() {
+    [ -f "$1" ] || return 1
+    [ "$(od -An -c -N4 "$1" 2>/dev/null | tr -d ' ')" = '177ELF' ] || return 1
+    case "$(od -An -c -j8 -N3 "$1" 2>/dev/null | tr -d ' ')" in
+        AI001) echo 1 ;;
+        AI002) echo 2 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Saca .desktop e icono a $2 sin ejecutar nada del AppImage.
+extraer() {
+    f="$1"; x="$2"; mkdir -p "$x"
+    if [ "$(tipo_appimage "$f")" = 2 ]; then
+        # El sistema de ficheros empieza donde acaba el ELF (64 bits):
+        # e_shoff + e_shentsize * e_shnum
+        [ "$(od -An -t u1 -j4 -N1 "$f" | tr -d ' ')" = 2 ] || return 1
+        shoff=$(od -An -t u8 -j40 -N8 "$f" | tr -d ' ')
+        tam=$(od -An -t u2 -j58 -N2 "$f" | tr -d ' ')
+        num=$(od -An -t u2 -j60 -N2 "$f" | tr -d ' ')
+        desde=$((shoff + tam * num))
+        unsquashfs -q -n -f -o "$desde" -d "$x" "$f" '*.desktop' '.DirIcon' '*.png' '*.svg' >/dev/null 2>&1
+    else
+        bsdtar -xf "$f" -C "$x" '*.desktop' '.DirIcon' '*.png' '*.svg' >/dev/null 2>&1
+    fi
+    return 0
+}
+
+# Valor de una clave del grupo [Desktop Entry] (una linea, sin saltos).
+clave() {
+    sed -n '/^\[Desktop Entry\]/,/^\[/p' "$1" 2>/dev/null | sed -n "s/^$2=//p" | head -n 1 | tr -d '\r\n'
+}
+
+# Icono dentro de $1 que no apunte fuera de el (por si trae enlaces raros).
+icono_en() {
+    x="$1"; nombre="$2"
+    for c in "$x/$nombre.png" "$x/$nombre.svg" "$x/.DirIcon"; do
+        [ -f "$c" ] || continue
+        real=$(realpath -e "$c" 2>/dev/null) || continue
+        case "$real" in "$(realpath "$x")"/*) echo "$real"; return 0 ;; esac
+    done
+    return 1
+}
+
+ejecutar() { chmod u+x "$1" 2>/dev/null; setsid -f "$1" >/dev/null 2>&1 < /dev/null; }
+
+# ------------------------------------------------------------------ quitar
+if [ "${1:-}" = quitar ]; then
+    d="${2:-}"
+    case "$d" in "$apps"/inti-appimage-*.desktop) ;; *) echo "no es un AppImage instalado" >&2; exit 1 ;; esac
+    [ -f "$d" ] || exit 1
+    prog=$(clave "$d" X-Inti-AppImage)
+    ico=$(clave "$d" Icon)
+    case "$prog" in "$bin"/*.AppImage) rm -f -- "$prog" ;; esac
+    case "$ico" in "$iconos"/*) rm -f -- "$ico" ;; esac
+    rm -f -- "$d"
+    /usr/local/bin/titan-shell --recargar-apps >/dev/null 2>&1
+    exit 0
+fi
+
+# ------------------------------------------------------------------ abrir
+f="${1:-}"
+[ -n "$f" ] || { echo "uso: titan-appimage FICHERO.AppImage" >&2; exit 2; }
+case "$f" in file://*) f=$(printf '%s' "${f#file://}" | sed 's/%20/ /g') ;; esac
+f=$(realpath -e -- "$f" 2>/dev/null) || { avisar "No se encuentra el archivo" "$1"; exit 1; }
+if ! tipo_appimage "$f" >/dev/null; then
+    avisar "No es una aplicación AppImage" "$(basename "$f") no se puede abrir como aplicación." dialog-error
+    exit 1
+fi
+
+# Ya instalado: se abre sin preguntar.
+case "$f" in "$bin"/*.AppImage) ejecutar "$f"; exit 0 ;; esac
+
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+extraer "$f" "$tmp/x"
+desk=$(find "$tmp/x" -maxdepth 1 -name '*.desktop' -type f 2>/dev/null | head -n 1)
+nombre=""; icono_n=""; categorias=""; comentario=""
+if [ -n "$desk" ]; then
+    nombre=$(clave "$desk" 'Name\[es\]'); [ -n "$nombre" ] || nombre=$(clave "$desk" Name)
+    icono_n=$(clave "$desk" Icon)
+    categorias=$(clave "$desk" Categories)
+    comentario=$(clave "$desk" 'Comment\[es\]'); [ -n "$comentario" ] || comentario=$(clave "$desk" Comment)
+fi
+# Sin .desktop: el nombre del fichero ("Mi_Programa-1.2-x86_64.AppImage" -> "Mi Programa")
+[ -n "$nombre" ] || nombre=$(basename "$f" | sed -E 's/\.[Aa]pp[Ii]mage$//; s/[-_ ]?(v?[0-9][0-9.]*.*|x86_64|amd64)$//; s/[-_]/ /g')
+[ -n "$nombre" ] || nombre="Aplicación"
+icono=$(icono_en "$tmp/x" "${icono_n:-x}") || icono=""
+
+# Pregunta con el aspecto de Inti (claro/oscuro y acento de Ajustes).
+tema="${XDG_CONFIG_HOME:-$HOME/.config}/titan/theme.conf"
+oscuro=$(sed -n 's/^isDark=//p' "$tema" 2>/dev/null | tail -n 1)
+acento=$(sed -n 's/^accent=//p' "$tema" 2>/dev/null | tail -n 1 | tr -d '"')
+printf '%s' "$acento" | grep -Eq '^#[0-9a-fA-F]{6}$' || acento="#0071e3"
+qml=$(command -v qml6 || echo /usr/lib/qt6/bin/qml)
+QT_QUICK_CONTROLS_STYLE=Basic "$qml" "$pregunta" -- "$nombre" "$icono" "${oscuro:-false}" "$acento" "$(dirname "$f")" >/dev/null 2>&1
+respuesta=$?
+
+case "$respuesta" in
+    11) ejecutar "$f"; exit 0 ;;
+    10) ;;
+    *) exit 0 ;;
+esac
+
+# ------------------------------------------------------------------ instalar
+id=$(printf '%s' "$nombre" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//')
+[ -n "$id" ] || id="aplicacion"
+mkdir -p "$bin" "$apps" "$iconos"
+dst="$bin/$id.AppImage"
+if [ "$f" != "$dst" ]; then
+    mv -f -- "$f" "$dst" || { avisar "No se pudo instalar $nombre" "No se pudo mover el archivo a $bin." dialog-error; exit 1; }
+fi
+chmod 755 "$dst"
+ico_dst="application-x-executable"
+if [ -n "$icono" ]; then
+    ext="${icono##*.}"; case "$ext" in svg) ;; *) ext=png ;; esac
+    cp -f -- "$icono" "$iconos/$id.$ext" && ico_dst="$iconos/$id.$ext"
+fi
+limpio() { printf '%s' "$1" | tr -d '\n\r' | sed 's/[;]*$//'; }
+{
+    echo "[Desktop Entry]"
+    echo "Type=Application"
+    echo "Name=$(limpio "$nombre")"
+    [ -n "$comentario" ] && echo "Comment=$(limpio "$comentario")"
+    echo "Exec=\"$dst\" %U"
+    echo "TryExec=$dst"
+    echo "Icon=$ico_dst"
+    echo "Categories=$(limpio "${categorias:-Utility}");"
+    echo "Terminal=false"
+    echo "X-Inti-AppImage=$dst"
+} > "$apps/inti-appimage-$id.desktop"
+chmod 644 "$apps/inti-appimage-$id.desktop"
+
+/usr/local/bin/titan-shell --recargar-apps >/dev/null 2>&1
+avisar "$nombre instalado" "Ya está en el menú de inicio. Para quitarlo: clic derecho > Desinstalar." "$ico_dst"
+ejecutar "$dst"
+exit 0

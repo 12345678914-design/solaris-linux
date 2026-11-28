@@ -1,0 +1,37 @@
+#!/bin/sh
+# Inti OS - "Cambiar de usuario" (boton de la pantalla de bloqueo).
+#
+# La sesion actual sigue abierta y bloqueada; se abre otra pantalla de inicio
+# en una consola libre (8-12). Si ya hay una esperando, se va a esa.
+# Desde esa pantalla se entra con otra cuenta, o se vuelve a una sesion
+# abierta (que pide su contrasena en su propia pantalla de bloqueo).
+set -u
+[ -d /run/archiso ] && exit 0
+systemctl is-active -q greetd.service 2>/dev/null || exit 0
+
+# Sesiones: id, clase y consola
+sesiones() {
+    loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}' | while read -r s; do
+        printf '%s %s %s\n' "$s" \
+            "$(loginctl show-session "$s" -p Class --value 2>/dev/null)" \
+            "$(loginctl show-session "$s" -p VTNr --value 2>/dev/null)"
+    done
+}
+lista=$(sesiones)
+
+# 1. Ya hay una pantalla de inicio extra esperando: ir a ella
+for vt in 8 9 10 11 12; do
+    s=$(printf '%s\n' "$lista" | awk -v vt="$vt" '$2 == "greeter" && $3 == vt {print $1; exit}')
+    if [ -n "$s" ]; then
+        exec loginctl activate "$s"
+    fi
+done
+
+# 2. Abrir una nueva en la primera consola libre
+for vt in 8 9 10 11 12; do
+    systemctl is-active -q "titan-otro-usuario@$vt.service" && continue
+    printf '%s\n' "$lista" | awk -v vt="$vt" '$3 == vt {f = 1} END {exit !f}' && continue
+    exec systemctl start --no-block "titan-otro-usuario@$vt.service"
+done
+echo "No hay consolas libres para otra sesion" >&2
+exit 1

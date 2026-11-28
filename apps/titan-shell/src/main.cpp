@@ -1,9 +1,18 @@
+#include "TitanTinte.h"
+#include <QTimer>
 #include "ShellBackend.h"
+#include "Usuarios.h"
 #include "WindowTracker.h"
+#include "WayfireIpc.h"
 #include "DockModel.h"
 #include "LauncherBackend.h"
 #include "DesktopBackend.h"
 #include "ThemeManager.h"
+#include "Mpris.h"
+#include "Portapapeles.h"
+#include "TitanPrefs.h"
+#include <QQuickItem>
+#include <QRegion>
 
 #include <QGuiApplication>
 #include <QDir>
@@ -14,8 +23,18 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <iostream>
+#include <memory>
+#include <QScreen>
 
 #include <LayerShellQt/window.h>
+#include <QDir>
+#include <QFile>
+#include <QHash>
+#include <QLocale>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include "ColaApps.h"
 
 namespace {
 
@@ -39,6 +58,22 @@ void configurarCapa(QQuickWindow *win, LayerShellQt::Window::Layer capa,
         return;
     }
 
+    // Qt 6 pierde la zona de clics (mascara) al ocultar y volver a mostrar
+    // una ventana: la superficie nueva nace sin ella y Qt no la reenvia
+    // porque "no ha cambiado". Sin esto, el Dock movido a un lado (se oculta
+    // para reanclarlo) se comia el raton en toda su franja de 320 px.
+    QObject::connect(win, &QWindow::visibleChanged, win, [win](bool visible) {
+        if (!visible)
+            return;
+        QTimer::singleShot(0, win, [win]() {
+            const QRegion m = win->mask();
+            if (m.isEmpty())
+                return;
+            win->setMask(QRegion());
+            win->setMask(m);
+        });
+    });
+
     ls->setLayer(capa);
     ls->setAnchors(anclas);
     ls->setExclusiveZone(zonaExclusiva);
@@ -50,6 +85,53 @@ void configurarCapa(QQuickWindow *win, LayerShellQt::Window::Layer capa,
 }
 
 } // namespace
+
+
+// Idioma al momento (Ajustes > General > Idioma): lee ~/.config/locale.conf
+// (o /etc/locale.conf) como /etc/profile.d/locale.sh al entrar y lo pone en
+// el entorno del shell y de D-Bus/systemd. Las apps que se abran desde ese
+// momento (Dock, Launchpad, escritorio, servicios) salen ya en el idioma
+// nuevo, sin cerrar la sesión.
+static void aplicarIdioma()
+{
+    QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/locale.conf");
+    if (!QFile::exists(conf))
+        conf = QStringLiteral("/etc/locale.conf");
+    static const QStringList claves = {
+        QStringLiteral("LANG"), QStringLiteral("LANGUAGE"), QStringLiteral("LC_CTYPE"), QStringLiteral("LC_NUMERIC"),
+        QStringLiteral("LC_TIME"), QStringLiteral("LC_COLLATE"), QStringLiteral("LC_MONETARY"), QStringLiteral("LC_MESSAGES"),
+        QStringLiteral("LC_PAPER"), QStringLiteral("LC_NAME"), QStringLiteral("LC_ADDRESS"), QStringLiteral("LC_TELEPHONE"),
+        QStringLiteral("LC_MEASUREMENT"), QStringLiteral("LC_IDENTIFICATION")};
+    static const QRegularExpression valido(QStringLiteral("^[A-Za-z0-9_.@:-]*$"));
+    QHash<QString, QString> v;
+    QFile f(conf);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!f.atEnd()) {
+            const QString l = QString::fromUtf8(f.readLine()).trimmed();
+            const int i = l.indexOf(QLatin1Char('='));
+            if (i <= 0 || l.startsWith(QLatin1Char('#')))
+                continue;
+            const QString k = l.left(i).trimmed();
+            QString val = l.mid(i + 1).trimmed();
+            if (val.size() >= 2 && (val.startsWith(QLatin1Char('"')) || val.startsWith(QLatin1Char('\''))))
+                val = val.mid(1, val.size() - 2);
+            if (claves.contains(k) && valido.match(val).hasMatch())
+                v.insert(k, val);
+        }
+    }
+    if (v.value(QStringLiteral("LANG")).isEmpty())
+        v.insert(QStringLiteral("LANG"), QStringLiteral("C.UTF-8"));
+    QStringList entorno;
+    for (const QString &k : claves) {
+        const QString val = v.value(k);
+        if (val.isEmpty()) qunsetenv(k.toLatin1().constData());
+        else qputenv(k.toLatin1().constData(), val.toUtf8());
+        entorno << k + QLatin1Char('=') + val;
+    }
+    QLocale::setDefault(QLocale(v.value(QStringLiteral("LANG")).section(QLatin1Char('.'), 0, 0)));
+    // Servicios que arranca D-Bus o systemd (portales, llavero...)
+    QProcess::startDetached(QStringLiteral("dbus-update-activation-environment"), QStringList{QStringLiteral("--systemd")} + entorno);
+}
 
 int main(int argc, char *argv[])
 {
@@ -70,6 +152,17 @@ int main(int argc, char *argv[])
             socket.connectToServer(socketName);
             if (socket.waitForConnected(600)) {
                 socket.write("toggle-launcher\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
+        // titan-appimage: el menu de inicio vuelve a leer las apps al momento
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--recargar-apps")) {
+            QLocalSocket socket;
+            socket.connectToServer(QStringLiteral("titan-shell-ipc-") + qgetenv("USER"));
+            if (socket.waitForConnected(600)) {
+                socket.write("apps\n");
                 socket.flush();
                 socket.waitForBytesWritten(600);
             }
@@ -123,12 +216,36 @@ int main(int argc, char *argv[])
             }
             return 0;
         }
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-control-center")) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("toggle-control-center\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
         if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--toggle-notifications")) {
             const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
             QLocalSocket socket;
             socket.connectToServer(socketName);
             if (socket.waitForConnected(600)) {
                 socket.write("toggle-notifications\n");
+                socket.flush();
+                socket.waitForBytesWritten(600);
+            }
+            return 0;
+        }
+        // Teclas de volumen, brillo, multimedia...: las enlaza el compositor
+        // (wayfire.ini [command], labwc rc.xml). Sin shell no hacen nada.
+        if (QString::fromLocal8Bit(argv[i]) == QStringLiteral("--tecla") && i + 1 < argc) {
+            const QString socketName = QStringLiteral("titan-shell-ipc-") + qgetenv("USER");
+            QLocalSocket socket;
+            socket.connectToServer(socketName);
+            if (socket.waitForConnected(600)) {
+                socket.write("tecla " + QByteArray(argv[i + 1]) + "\n");
                 socket.flush();
                 socket.waitForBytesWritten(600);
             }
@@ -176,7 +293,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("titan-shell"));
-    QGuiApplication::setOrganizationName(QStringLiteral("SolarisLinux"));
+    QGuiApplication::setOrganizationName(QStringLiteral("IntiOS"));
     
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     
@@ -199,9 +316,13 @@ int main(int argc, char *argv[])
     QLocalServer server;
     server.removeServer(socketName);
     if (server.listen(socketName)) {
-        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend]() {
+        QObject::connect(&server, &QLocalServer::newConnection, [&server, &shellBackend, &windowTracker, &launcherBackend]() {
             while (QLocalSocket *client = server.nextPendingConnection()) {
-                QObject::connect(client, &QLocalSocket::readyRead, [client, &shellBackend]() {
+                // Se procesa tambien lo que ya llego antes de conectar readyRead:
+                // con varias teclas seguidas (volumen, brillo) se perdia alguna.
+                auto procesar = [client, &shellBackend, &windowTracker, &launcherBackend]() {
+                    if (client->bytesAvailable() <= 0)
+                        return;
                     const QByteArray cmd = client->readAll().trimmed();
                     if (cmd == "toggle-launcher") {
                         shellBackend.toggleLauncher();
@@ -213,8 +334,27 @@ int main(int argc, char *argv[])
                         shellBackend.toggleTheme();
                     } else if (cmd == "toggle-notifications") {
                         shellBackend.toggleNotificationCenter();
+                    } else if (cmd == "toggle-control-center") {
+                        shellBackend.toggleControlCenter();
+                    } else if (cmd == "apps") {
+                        launcherBackend.reload();
+                    } else if (cmd == "idioma") {
+                        aplicarIdioma();
                     } else if (cmd == "lock") {
                         shellBackend.lockScreen();
+                    } else if (cmd == "tecla escritorio") {
+                        windowTracker.mostrarEscritorio();
+                    } else if (cmd.startsWith("tecla mover-")) {
+                        // Win+Mayús+N: si el escritorio N aún no existe, se crea
+                        bool ok = false;
+                        const int n = QString::fromUtf8(cmd.mid(12)).trimmed().toInt(&ok);
+                        if (ok && n >= 1 && n <= 8) {
+                            while (shellBackend.workspaces().size() < n)
+                                shellBackend.addWorkspace();
+                            windowTracker.moverActivaAEscritorio(n - 1);
+                        }
+                    } else if (cmd.startsWith("tecla ")) {
+                        shellBackend.tecla(QString::fromUtf8(cmd.mid(6)).trimmed());
                     } else if (cmd.startsWith("notify ")) {
                         QString payload = QString::fromUtf8(cmd.mid(7));
                         QStringList parts = payload.split(QLatin1Char('|'));
@@ -230,18 +370,52 @@ int main(int argc, char *argv[])
                         }
                     }
                     client->disconnectFromServer();
-                });
+                };
+                QObject::connect(client, &QLocalSocket::readyRead, client, procesar);
+                QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
+                procesar();
             }
         });
     }
     
+    // Lo que suena ahora (MPRIS), para la Isla Dinamica. Antes que el motor
+    // QML: se destruye despues de el.
+    Mpris mpris;
+    // Preferencias del escritorio (Ajustes las cambia; aqui se aplican en vivo).
+    TitanPrefs prefs;
+    shellBackend.setPrefs(&prefs);
+
+    // El shell mantiene claro/oscuro de GTK y del portal igual que theme.conf
+    // (Firefox y OnlyOffice en modo "sistema" lo leen de ahí).
+    if (!modoComprobar)
+        ThemeManager::instance()->setSincronizaSistema(true);
+
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("tinte"), new TitanTinte); // carpetas con el acento
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
+    engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
     engine.rootContext()->setContextProperty(QStringLiteral("shellBackend"), &shellBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("windowTracker"), &windowTracker);
     engine.rootContext()->setContextProperty(QStringLiteral("dockModel"), &dockModel);
+    // Abrir apps de una en una (Dock, Launchpad, búsqueda, escritorio)
+    ColaApps::instancia()->setTracker(&windowTracker);
+    engine.rootContext()->setContextProperty(QStringLiteral("colaApps"), ColaApps::instancia());
     engine.rootContext()->setContextProperty(QStringLiteral("launcherBackend"), &launcherBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopBackend"), &desktopBackend);
+    engine.rootContext()->setContextProperty(QStringLiteral("mpris"), &mpris);
+    // Hija de la aplicación: vive más que el motor QML que la usa
+    engine.rootContext()->setContextProperty(QStringLiteral("portapapeles"), new Portapapeles(&app));
+    // Usuarios y grupos (panel compartido con titan-greeter, en la pantalla de bloqueo)
+    Usuarios usuarios;
+    engine.rootContext()->setContextProperty(QStringLiteral("usuarios"), &usuarios);
+    // Desenfoque real: Wayfire con el plugin blur (wayfire.ini lo aplica a las
+    // capas titan-*). Con labwc o sin GPU, GlassPanel sigue con el fondo falso.
+    // TITAN_BLUR=0 lo desactiva a mano.
+    const bool blurReal = qgetenv("TITAN_BLUR") != "0"
+        && qgetenv("QT_QUICK_BACKEND") != "software"
+        && WayfireIpc::instancia()->disponible()
+        && WayfireIpc::instancia()->pluginActivo(QStringLiteral("blur"));
+    engine.rootContext()->setContextProperty(QStringLiteral("compositorBlur"), blurReal);
     
     const QUrl url(QStringLiteral("qrc:/qml/Shell.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
@@ -290,27 +464,77 @@ int main(int argc, char *argv[])
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive();
+            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                              && prefs.b(QStringLiteral("Barra/visible"));
             configurarCapa(win, LayerShellQt::Window::LayerTop, a, 28, QStringLiteral("titan-topbar"),
                            LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
-            auto updateTopBarVis = [win, &shellBackend]() {
-                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive());
+            // Oculta (Ajustes > Barra de menus), la barra deja de reservar sus 28 px.
+            auto updateTopBarVis = [win, &shellBackend, &prefs]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                                && prefs.b(QStringLiteral("Barra/visible")));
             };
             QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateTopBarVis);
             QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateTopBarVis);
+            QObject::connect(&prefs, &TitanPrefs::cambiado, win, updateTopBarVis);
         } else if (name == QStringLiteral("dockWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            bool shouldShow = shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible();
+            auto dockDebeVerse = [&shellBackend, &prefs]() {
+                return shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                       && !shellBackend.launcherVisible() && prefs.b(QStringLiteral("Dock/visible"));
+            };
             configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dock"),
-                           LayerShellQt::Window::KeyboardInteractivityNone, shouldShow);
-            auto updateDockVis = [win, &shellBackend]() {
-                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive() && !shellBackend.launcherVisible());
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            // Posicion del Dock (Ajustes > Escritorio y Dock): abajo, izquierda o
+            // derecha. La capa se ancla a ese borde; para cambiarla se oculta,
+            // se reancla y se vuelve a mostrar.
+            auto posicionActual = std::make_shared<QString>();
+            auto colocarDock = [win, &prefs, posicionActual, dockDebeVerse]() {
+                const QString pos = prefs.s(QStringLiteral("Dock/posicion"));
+                const bool cambia = pos != *posicionActual;
+                *posicionActual = pos;
+                if (cambia && QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))) {
+                    if (auto *ls = LayerShellQt::Window::get(win)) {
+                        LayerShellQt::Window::Anchors an;
+                        QSize tam;
+                        QScreen *pantalla = win->screen();
+                        const QSize sc = pantalla ? pantalla->size() : QSize(1280, 800);
+                        if (pos == QStringLiteral("izquierda") || pos == QStringLiteral("derecha")) {
+                            an = LayerShellQt::Window::AnchorTop;
+                            an |= LayerShellQt::Window::AnchorBottom;
+                            an |= pos == QStringLiteral("izquierda") ? LayerShellQt::Window::AnchorLeft
+                                                                     : LayerShellQt::Window::AnchorRight;
+                            ls->setDesiredSize(QSize(320, 0));
+                            tam = QSize(320, sc.height());
+                        } else {
+                            an = LayerShellQt::Window::AnchorBottom;
+                            an |= LayerShellQt::Window::AnchorLeft;
+                            an |= LayerShellQt::Window::AnchorRight;
+                            ls->setDesiredSize(QSize(0, 320));
+                            tam = QSize(sc.width(), 320);
+                        }
+                        const bool estabaVisible = win->isVisible();
+                        if (estabaVisible)
+                            win->setVisible(false);
+                        ls->setAnchors(an);
+                        win->resize(tam);
+                        if (estabaVisible)
+                            win->setVisible(true);
+                    }
+                }
+                const bool ver = dockDebeVerse();
+                if (win->isVisible() != ver)
+                    win->setVisible(ver);
+            };
+            colocarDock();
+            auto updateDockVis = [win, dockDebeVerse]() {
+                win->setVisible(dockDebeVerse());
             };
             QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, updateDockVis);
             QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, updateDockVis);
             QObject::connect(&shellBackend, &ShellBackend::launcherVisibleChanged, win, updateDockVis);
+            QObject::connect(&prefs, &TitanPrefs::cambiado, win, colocarDock);
         } else if (name == QStringLiteral("controlCenterWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;
@@ -374,21 +598,98 @@ int main(int argc, char *argv[])
             QObject::connect(&shellBackend, &ShellBackend::notificationCenterVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.notificationCenterVisible());
             });
-        } else if (name == QStringLiteral("dynamicIslandWindow")) {
+        } else if (name == QStringLiteral("calendarioWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-dynamic-island"),
-                           LayerShellQt::Window::KeyboardInteractivityNone, false);
-            QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, [win, &shellBackend]() {
-                win->setVisible(shellBackend.islandActive());
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-calendario"),
+                           LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
+            QObject::connect(&shellBackend, &ShellBackend::calendarioVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.calendarioVisible());
             });
+            // Abrir los avisos cierra el calendario
+            QObject::connect(&shellBackend, &ShellBackend::notificationCenterVisibleChanged, win, [&shellBackend]() {
+                if (shellBackend.notificationCenterVisible()) shellBackend.closeCalendario();
+            });
+        } else if (name == QStringLiteral("esquinaWindow")) {
+            // Esquina inferior derecha: quedarse 2,5 s abre los escritorios.
+            // Ámbito sin "titan-": sin desenfoque; zona -1: en el borde mismo.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("inti-esquina"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            auto verEsquina = [win, &shellBackend]() {
+                win->setVisible(shellBackend.bootSplashFinished() && !shellBackend.lockScreenActive()
+                                && !shellBackend.workspacesVisible());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::bootSplashFinishedChanged, win, verEsquina);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, verEsquina);
+            QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, verEsquina);
+            verEsquina();
+        } else if (name == QStringLiteral("dynamicIslandWindow")) {
+            // Anclada solo arriba: el compositor la centra y la ventana mide lo
+            // que la isla (Shell.qml), sin ocupar el resto de la franja.
+            // Zona exclusiva -1: arriba del todo, encima de la barra superior.
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, LayerShellQt::Window::AnchorTop, -1,
+                           QStringLiteral("titan-dynamic-island"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            // Visible con una notificacion o con musica sonando.
+            auto actualizarIsla = [win, &shellBackend, &mpris]() {
+                // La pantalla de bloqueo ensena sus propios avisos y musica.
+                win->setVisible((shellBackend.islandActive() || mpris.disponible()
+                                 || shellBackend.indicadorActivo())
+                                && !shellBackend.lockScreenActive());
+            };
+            QObject::connect(&shellBackend, &ShellBackend::indicadorChanged, win, actualizarIsla);
+            QObject::connect(&shellBackend, &ShellBackend::lockScreenActiveChanged, win, actualizarIsla);
+            QObject::connect(&shellBackend, &ShellBackend::islandChanged, win, actualizarIsla);
+            QObject::connect(&mpris, &Mpris::cambiado, win, actualizarIsla);
+            actualizarIsla();
+        } else if (name == QStringLiteral("cambiadorWindow")) {
+            // Teclado exclusivo: hace falta para ver cuándo se suelta Alt
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-alt-tab"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, false);
+            QObject::connect(&shellBackend, &ShellBackend::cambiadorVisibleChanged, win, [win, &shellBackend]() {
+                win->setVisible(shellBackend.cambiadorVisible());
+                if (win->isVisible())
+                    win->requestActivate();
+            });
+        } else if (name == QStringLiteral("panelSistemaWindow")) {
+            // Ctrl+Alt+Supr, Win+V, Win+. y Win+F1 (PanelSistema.qml). Teclado
+            // exclusivo: Esc, flechas e Intro van al panel, no a la app.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorBottom;
+            a |= LayerShellQt::Window::AnchorLeft;
+            a |= LayerShellQt::Window::AnchorRight;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-panel-sistema"),
+                           LayerShellQt::Window::KeyboardInteractivityExclusive, false);
+            QObject::connect(&shellBackend, &ShellBackend::panelChanged, win, [win, &shellBackend]() {
+                win->setVisible(!shellBackend.panel().isEmpty());
+                if (win->isVisible())
+                    win->requestActivate();
+            });
+        } else if (name == QStringLiteral("cursorWindow")) {
+            // Indicador "abriendo…" junto al puntero (ColaApps lo mueve con
+            // los márgenes). Ámbito sin "titan-" para que Wayfire no le
+            // aplique el desenfoque de las capas titan-*.
+            LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
+            a |= LayerShellQt::Window::AnchorLeft;
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("inti-abriendo"),
+                           LayerShellQt::Window::KeyboardInteractivityNone, false);
+            ColaApps::instancia()->setVentanaIndicador(win);
         } else if (name == QStringLiteral("workspacesWindow")) {
             LayerShellQt::Window::Anchors a = LayerShellQt::Window::AnchorTop;
             a |= LayerShellQt::Window::AnchorBottom;
             a |= LayerShellQt::Window::AnchorLeft;
             a |= LayerShellQt::Window::AnchorRight;
-            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, 0, QStringLiteral("titan-workspaces"),
+            // -1: tapa también la barra superior (en esta vista solo se ve
+            // la hora, que pinta WorkspacesView); sin recolocar ventanas.
+            configurarCapa(win, LayerShellQt::Window::LayerOverlay, a, -1, QStringLiteral("titan-workspaces"),
                            LayerShellQt::Window::KeyboardInteractivityOnDemand, false);
             QObject::connect(&shellBackend, &ShellBackend::workspacesVisibleChanged, win, [win, &shellBackend]() {
                 win->setVisible(shellBackend.workspacesVisible());

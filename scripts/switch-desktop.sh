@@ -3,12 +3,13 @@
 # switch-desktop.sh - Conmutador entre KDE Plasma y Titan-Shell (Labwc)
 #
 # Permite alternar fácilmente el entorno de escritorio configurado
-# tanto en el sistema de desarrollo como en la imagen live de Solaris.
+# tanto en el sistema de desarrollo como en la imagen live de Inti OS.
 #
 
 set -euo pipefail
 
-DESTINO_LIVE="/home/isai/Proyectos/titan-linux/iso/titan/airootfs"
+RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DESTINO_LIVE="${RAIZ}/iso/titan/airootfs"
 MARKER_FILE="${DESTINO_LIVE}/etc/titan/escritorio-titan-shell"
 
 uso() {
@@ -26,8 +27,8 @@ accion="${1:-status}"
 case "${accion}" in
     kde)
         rm -f "${MARKER_FILE}"
-        echo "✓ Escritorio cambiado a: KDE Plasma 6 (Solaris macOS Edition)"
-        echo "  - Splash Screen: Logo Solaris con barra minimalista"
+        echo "✓ Escritorio cambiado a: KDE Plasma 6 (Inti OS macOS Edition)"
+        echo "  - Splash Screen: Logo Inti OS con barra minimalista"
         echo "  - Panel superior: Menú global, reloj y bandeja del sistema"
         echo "  - Panel inferior: Dock flotante estilo macOS con salto de iconos"
         ;;
@@ -41,7 +42,7 @@ case "${accion}" in
         if [ -f "${MARKER_FILE}" ]; then
             echo "Escritorio activo: Titan-Shell (Labwc + Qt Quick Shell)"
         else
-            echo "Escritorio activo: KDE Plasma 6 (Solaris macOS Edition)"
+            echo "Escritorio activo: KDE Plasma 6 (Inti OS macOS Edition)"
         fi
         ;;
     *)

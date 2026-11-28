@@ -15,6 +15,7 @@ struct MonitorTareas::Privado
 {
     MonitorTareas *q = nullptr;
     wl_display *display = nullptr;
+    bool displayPropio = true;
     wl_registry *registry = nullptr;
     wl_seat *seat = nullptr;
     zwlr_foreign_toplevel_manager_v1 *manager = nullptr;
@@ -229,15 +230,18 @@ MonitorTareas::~MonitorTareas()
     }
     if (d->display) {
         wl_display_flush(d->display);
-        wl_display_disconnect(d->display);
+        if (d->displayPropio) {
+            wl_display_disconnect(d->display);
+        }
     }
     delete d;
     d = nullptr;
 }
 
-bool MonitorTareas::iniciar(QString *error)
+bool MonitorTareas::iniciar(QString *error, wl_display *compartido)
 {
-    d->display = wl_display_connect(nullptr);
+    d->displayPropio = (compartido == nullptr);
+    d->display = compartido ? compartido : wl_display_connect(nullptr);
     if (!d->display) {
         if (error) {
             *error = QStringLiteral(
@@ -269,6 +273,11 @@ bool MonitorTareas::iniciar(QString *error)
         return false;
     }
 
+    if (!d->displayPropio) {
+        // Qt lee el socket y despacha la cola por defecto en el hilo principal.
+        return true;
+    }
+
     const int fd = wl_display_get_fd(d->display);
     d->notificador = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(d->notificador, &QSocketNotifier::activated, this,
@@ -281,6 +290,9 @@ bool MonitorTareas::iniciar(QString *error)
 void MonitorTareas::procesar()
 {
     if (!d->display) {
+        return;
+    }
+    if (!d->displayPropio) {
         return;
     }
     if (wl_display_dispatch(d->display) < 0) {
@@ -350,5 +362,18 @@ void MonitorTareas::cerrar(quintptr id)
         return;
     }
     zwlr_foreign_toplevel_handle_v1_close((*it)->handle);
+    wl_display_flush(d->display);
+}
+
+void MonitorTareas::ponerRectangulo(quintptr id, wl_surface *superficie,
+                                    int x, int y, int ancho, int alto)
+{
+    auto it = d->manejadores.constFind(id);
+    if (it == d->manejadores.constEnd() || !superficie) {
+        return;
+    }
+    zwlr_foreign_toplevel_handle_v1_set_rectangle((*it)->handle, superficie,
+                                                  x, y, qMax(0, ancho),
+                                                  qMax(0, alto));
     wl_display_flush(d->display);
 }

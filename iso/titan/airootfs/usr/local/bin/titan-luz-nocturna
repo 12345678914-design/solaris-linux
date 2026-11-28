@@ -1,0 +1,32 @@
+#!/bin/sh
+# Inti OS - luz nocturna (pantalla mas calida por la noche) con wlsunset.
+# Lee ~/.config/titan/luz-nocturna.conf (lo escribe Ajustes > Pantallas):
+#   activa=true  temperatura=4000  desde=20:00  hasta=07:00
+# Cada vez que se lanza, para el wlsunset anterior y arranca uno nuevo con
+# los valores actuales (o ninguno si esta apagada).
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/titan/luz-nocturna.conf"
+
+leer() {
+    v=$(sed -n "s/^$1=//p" "$conf" 2>/dev/null | tail -n 1 | tr -d '"')
+    [ -n "$v" ] && printf '%s' "$v" || printf '%s' "$2"
+}
+
+pkill -u "$(id -u)" -x wlsunset 2>/dev/null
+
+[ -r "$conf" ] || exit 0
+[ "$(leer activa false)" = "true" ] || exit 0
+command -v wlsunset >/dev/null 2>&1 || { echo "titan-luz-nocturna: falta wlsunset" >&2; exit 1; }
+
+temp=$(leer temperatura 4000)
+desde=$(leer desde 20:00)
+hasta=$(leer hasta 07:00)
+case "$temp" in ''|*[!0-9]*) temp=4000 ;; esac
+[ "$temp" -lt 1900 ] && temp=1900
+[ "$temp" -gt 6400 ] && temp=6400
+hhmm='^[0-2][0-9]:[0-5][0-9]$'
+printf '%s' "$desde" | grep -Eq "$hhmm" || desde=20:00
+printf '%s' "$hasta" | grep -Eq "$hhmm" || hasta=07:00
+
+# -s: se pone el sol (empieza), -S: sale el sol (termina), -d: transicion (s).
+setsid -f wlsunset -t "$temp" -T 6500 -s "$desde" -S "$hasta" -d 900 \
+    >/dev/null 2>&1 </dev/null

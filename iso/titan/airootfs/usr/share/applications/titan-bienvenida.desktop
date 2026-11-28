@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Bienvenida
+Name[en]=Welcome
+Comment=Elige el estilo de las ventanas, claro u oscuro, y aprende los atajos básicos
+Exec=titan-bienvenida
+Icon=/usr/share/titan/solaris-symbol.png
+Terminal=false
+Categories=System;
+Keywords=bienvenida;welcome;primeros pasos;tutorial;windows;
+StartupWMClass=titan-bienvenida

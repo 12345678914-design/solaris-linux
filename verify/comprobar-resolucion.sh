@@ -100,7 +100,8 @@ else
 fi
 
 grep -q 'detectar-resolucion.sh' "${RAIZ}/scripts/run-qemu.sh" \
-  && grep -q 'virtio-vga,xres=' "${RAIZ}/scripts/run-qemu.sh" \
+  && grep -q 'virtio-vga,xres=${ancho},yres=${alto}' "${RAIZ}/scripts/run-qemu.sh" \
+  && grep -q 'virtio-vga-gl,xres=${ancho},yres=${alto}' "${RAIZ}/scripts/run-qemu.sh" \
   && ! grep -q 'xres=1920' "${RAIZ}/scripts/run-qemu.sh" \
   && ok "run-qemu detecta y pasa la resolucion a virtio-vga" \
   || mal "run-qemu no usa la deteccion dinamica"

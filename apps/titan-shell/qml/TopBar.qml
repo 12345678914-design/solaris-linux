@@ -7,18 +7,97 @@ Rectangle {
 
     TitanTheme { id: titanTheme }
 
-    gradient: Gradient {
-        GradientStop { position: 0.0; color: titanTheme.headerTop }
-        GradientStop { position: 1.0; color: titanTheme.headerBottom }
+    // ---------- Barra de menús transparente (estilo Tahoe) ----------
+    // Sin fondo: el texto flota sobre el fondo de pantalla. Para que se lea
+    // siempre, se mide el brillo de la franja superior del fondo y se elige
+    // texto oscuro (fondo claro) o blanco (fondo oscuro), con una sombra muy
+    // suave detrás. Sin fondo de pantalla, se usa el tema.
+    readonly property string wallpaperPath: shellBackend.currentWallpaper ? shellBackend.currentWallpaper : ""
+    property real wallLuma: -1          // 0..1, -1 = aún sin medir
+    // Preferencias (Ajustes > Barra de menús / Apariencia)
+    readonly property string estilo: { prefs.version; var e = prefs.s("Barra/estilo"); return (e === "vidrio" || e === "solido") ? e : "transparente" }
+    readonly property bool p24h: { prefs.version; return prefs.b("Barra/reloj24h") }
+    readonly property bool pSegundos: { prefs.version; return prefs.b("Barra/segundos") }
+    readonly property bool pFecha: { prefs.version; return prefs.b("Barra/fecha") }
+    readonly property bool pDia: { prefs.version; return prefs.b("Barra/diaSemana") }
+    readonly property bool pBateria: { prefs.version; return prefs.b("Barra/bateriaPorcentaje") }
+    readonly property bool pWifi: { prefs.version; return prefs.b("Barra/iconoWifi") }
+    readonly property bool pBluetooth: { prefs.version; return prefs.b("Barra/iconoBluetooth") }
+    readonly property bool pFondo: { prefs.version; return prefs.b("Barra/iconoFondo") }
+    readonly property string formatoReloj: (pDia ? "ddd " : "") + (pFecha ? "d MMM  " : "")
+                                           + (p24h ? "HH:mm" : "h:mm") + (pSegundos ? ":ss" : "") + (p24h ? "" : " AP")
+    property date ahora: new Date()
+
+    // Con barra de vidrio o sólida el texto sigue al tema; transparente, al fondo.
+    readonly property bool wallBright: estilo !== "transparente" ? !titanTheme.isDark
+                                       : (wallLuma >= 0 ? wallLuma > 0.62 : !titanTheme.isDark)
+    readonly property color barText: wallBright ? "#1d1d1f" : "#ffffff"
+    readonly property color barTextMuted: wallBright ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(1, 1, 1, 0.65)
+    readonly property color barHover: wallBright ? Qt.rgba(0, 0, 0, 0.09) : Qt.rgba(1, 1, 1, 0.20)
+
+    function toUrl(p) {
+        if (!p) return ""
+        if (p.indexOf("://") !== -1 || p.indexOf("qrc:") === 0) return p
+        return "file://" + p
     }
-    
+
+    color: "transparent"
     border.width: 0
-    
+
+    // Barra de vidrio (translúcida) o sólida.
     Rectangle {
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: 1
-        color: titanTheme.headerBorder
+        anchors.fill: parent
+        visible: topBar.estilo !== "transparente"
+        color: topBar.estilo === "solido"
+               ? (titanTheme.isDark ? "#1c1d23" : "#f2f2f7")
+               : (titanTheme.isDark ? Qt.rgba(0.10, 0.11, 0.16, 0.58) : Qt.rgba(1, 1, 1, 0.58))
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
+        }
+    }
+
+    // Sombra suave de arriba abajo: da contraste sin parecer una barra.
+    Rectangle {
+        visible: topBar.estilo === "transparente"
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: topBar.wallBright ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.28) }
+            GradientStop { position: 1.0; color: "transparent" }
+        }
+    }
+
+    // Medidor de brillo: dibuja el fondo en 16×40 px y promedia las 3 filas de
+    // arriba (lo que queda detrás de la barra). Se repite solo al cambiar el fondo.
+    Canvas {
+        id: lumaProbe
+        width: 16
+        height: 40
+        visible: false
+        renderTarget: Canvas.Image
+        property string src: topBar.toUrl(topBar.wallpaperPath)
+        onSrcChanged: {
+            topBar.wallLuma = -1
+            if (src !== "") loadImage(src)
+        }
+        onImageLoaded: requestPaint()
+        onPaint: {
+            if (src === "" || !isImageLoaded(src)) return
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            ctx.drawImage(src, 0, 0, width, height)
+            var d = ctx.getImageData(0, 0, width, 3).data
+            var sum = 0, n = 0
+            for (var i = 0; i < d.length; i += 4) {
+                sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255
+                n++
+            }
+            if (n > 0) topBar.wallLuma = sum / n
+        }
+        Component.onCompleted: if (src !== "") loadImage(src)
     }
     
     // 1. LADO IZQUIERDO: ÚNICAMENTE EL BOTÓN INICIO
@@ -38,7 +117,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: 5
-                color: inicioMouseArea.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                color: inicioMouseArea.containsMouse ? topBar.barHover : "transparent"
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
             
@@ -58,7 +137,7 @@ Rectangle {
                 
                 Text {
                     text: "Inicio"
-                    color: titanTheme.headerText
+                    color: topBar.barText
                     font.pixelSize: 12
                     font.bold: true
                     anchors.verticalCenter: parent.verticalCenter
@@ -85,6 +164,7 @@ Rectangle {
         // Botón Selector de Fondo de Pantalla (Brocheta / Brocha de pintar - Ctrl + W)
         Item {
             id: wallpaperBtn
+            visible: topBar.pFondo
             width: 24
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -93,20 +173,26 @@ Rectangle {
                 anchors.fill: parent
                 radius: 5
                 color: shellBackend.wallpaperPickerVisible || wpMouse.containsMouse
-                       ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.10))
+                       ? topBar.barHover
                        : "transparent"
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
             Canvas {
+
+                // Repintar si cambia el color del texto (tema o fondo)
+
+                property color ink: topBar.barText
+
+                onInkChanged: requestPaint()
                 id: brushCanvas
                 width: 16; height: 16
                 anchors.centerIn: parent
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
-                    ctx.fillStyle = titanTheme.headerText;
-                    ctx.strokeStyle = titanTheme.headerText;
+                    ctx.fillStyle = topBar.barText;
+                    ctx.strokeStyle = topBar.barText;
                     ctx.lineWidth = 1.3;
                     ctx.lineCap = "round";
                     ctx.lineJoin = "round";
@@ -152,7 +238,7 @@ Rectangle {
         // Icono de Wi-Fi fiel al estado (encendido y conectado, oculto si hay cable Ethernet)
         Item {
             id: wifiItem
-            visible: !shellBackend.ethernetConnected
+            visible: !shellBackend.ethernetConnected && topBar.pWifi
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -160,17 +246,23 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: 4
-                color: wifiMouse.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                color: wifiMouse.containsMouse ? topBar.barHover : "transparent"
             }
 
             Canvas {
+
+                // Repintar si cambia el color del texto (tema o fondo)
+
+                property color ink: topBar.barText
+
+                onInkChanged: requestPaint()
                 width: 16; height: 16
                 anchors.centerIn: parent
                 opacity: shellBackend.wifiEnabled ? (shellBackend.wifiConnected ? 1.0 : 0.65) : 0.30
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
-                    ctx.strokeStyle = titanTheme.headerText;
+                    ctx.strokeStyle = topBar.barText;
                     ctx.lineWidth = 1.6;
                     ctx.lineCap = "round";
                     ctx.beginPath();
@@ -179,7 +271,7 @@ Rectangle {
                     ctx.beginPath();
                     ctx.arc(8, 13, 6.5, -Math.PI * 0.75, -Math.PI * 0.25);
                     ctx.stroke();
-                    ctx.fillStyle = titanTheme.headerText;
+                    ctx.fillStyle = topBar.barText;
                     ctx.beginPath();
                     ctx.arc(8, 13, 1.5, 0, Math.PI * 2);
                     ctx.fill();
@@ -203,6 +295,7 @@ Rectangle {
 
         // Icono de Bluetooth fiel al estado (encendido y conectado)
         Item {
+            visible: topBar.pBluetooth
             width: 20
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -210,17 +303,23 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: 4
-                color: btMouse.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                color: btMouse.containsMouse ? topBar.barHover : "transparent"
             }
 
             Canvas {
+
+                // Repintar si cambia el color del texto (tema o fondo)
+
+                property color ink: topBar.barText
+
+                onInkChanged: requestPaint()
                 width: 15; height: 15
                 anchors.centerIn: parent
                 opacity: shellBackend.bluetoothEnabled ? 1.0 : 0.30
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
-                    ctx.strokeStyle = shellBackend.bluetoothConnected ? titanTheme.accent : titanTheme.headerText;
+                    ctx.strokeStyle = shellBackend.bluetoothConnected ? titanTheme.accent : topBar.barText;
                     ctx.lineWidth = 1.6;
                     ctx.lineCap = "round";
                     ctx.lineJoin = "round";
@@ -263,7 +362,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: 5
                 color: shellBackend.controlCenterVisible || ccMouse.containsMouse
-                       ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.10))
+                       ? topBar.barHover
                        : "transparent"
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
@@ -274,14 +373,14 @@ Rectangle {
 
                 Row {
                     spacing: 2
-                    Rectangle { width: 4; height: 3; radius: 1.5; color: titanTheme.headerText }
-                    Rectangle { width: 10; height: 3; radius: 1.5; color: Qt.rgba(titanTheme.headerText.r, titanTheme.headerText.g, titanTheme.headerText.b, 0.4) }
+                    Rectangle { width: 4; height: 3; radius: 1.5; color: topBar.barText }
+                    Rectangle { width: 10; height: 3; radius: 1.5; color: Qt.rgba(topBar.barText.r, topBar.barText.g, topBar.barText.b, 0.4) }
                 }
 
                 Row {
                     spacing: 2
-                    Rectangle { width: 8; height: 3; radius: 1.5; color: Qt.rgba(titanTheme.headerText.r, titanTheme.headerText.g, titanTheme.headerText.b, 0.4) }
-                    Rectangle { width: 6; height: 3; radius: 1.5; color: titanTheme.headerText }
+                    Rectangle { width: 8; height: 3; radius: 1.5; color: Qt.rgba(topBar.barText.r, topBar.barText.g, topBar.barText.b, 0.4) }
+                    Rectangle { width: 6; height: 3; radius: 1.5; color: topBar.barText }
                 }
             }
 
@@ -305,16 +404,22 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: 4
-                color: ethMouse.containsMouse ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                color: ethMouse.containsMouse ? topBar.barHover : "transparent"
             }
 
             Canvas {
+
+                // Repintar si cambia el color del texto (tema o fondo)
+
+                property color ink: topBar.barText
+
+                onInkChanged: requestPaint()
                 width: 16; height: 16
                 anchors.centerIn: parent
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
-                    ctx.strokeStyle = titanTheme.headerText;
+                    ctx.strokeStyle = topBar.barText;
                     ctx.fillStyle = "#30d158";
                     ctx.lineWidth = 1.3;
                     ctx.lineCap = "round";
@@ -353,13 +458,14 @@ Rectangle {
             spacing: 5
 
             // Borde negro en modo claro, blanco en modo oscuro
-            readonly property color batBorderColor: titanTheme.isDark ? "#ffffff" : "#000000"
-            // Relleno verde si está cargando, blanco si no está cargando
-            readonly property color batFillColor: shellBackend.isCharging ? "#30d158" : "#ffffff"
-            // Color de texto
-            readonly property color batTextColor: shellBackend.isCharging ? "#30d158" : (titanTheme.isDark ? "#ffffff" : "#1d1d1f")
+            readonly property color batBorderColor: topBar.wallBright ? "#000000" : "#ffffff"
+            // Sigue el tema (blanco o negro) al cargar y al descargar; rojo solo
+            // con poca batería y sin cargador. El rayo indica que está cargando.
+            readonly property color batFillColor: !shellBackend.isCharging && shellBackend.batteryPercent <= 20 ? "#ff3b30" : topBar.barText
+            readonly property color batTextColor: topBar.barText
 
             Text {
+                visible: topBar.pBateria
                 text: (shellBackend.isCharging ? "⚡ " : "") + shellBackend.batteryPercent + "%"
                 color: batteryWidget.batTextColor
                 font.pixelSize: 11
@@ -402,21 +508,40 @@ Rectangle {
             }
         }
 
-        // Fecha y Reloj digital
+        // Fecha y reloj: al pulsarla, el calendario del mes (como Windows)
+        Item {
+            id: relojBtn
+            width: clockText.width + 12
+            height: 22
+            anchors.verticalCenter: parent.verticalCenter
+            Rectangle {
+                anchors.fill: parent
+                radius: 5
+                color: shellBackend.calendarioVisible || relojMouse.containsMouse ? topBar.barHover : "transparent"
+                Behavior on color { ColorAnimation { duration: 120 } }
+            }
+            MouseArea {
+                id: relojMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: shellBackend.toggleCalendario()
+            }
         Text {
             id: clockText
-            text: Qt.formatDateTime(new Date(), "ddd d MMM  hh:mm")
-            color: titanTheme.headerText
+            anchors.centerIn: parent
+            text: Qt.formatDateTime(topBar.ahora, topBar.formatoReloj)
+            color: topBar.barText
             font.pixelSize: 11
             font.weight: Font.Medium
-            anchors.verticalCenter: parent.verticalCenter
             
             Timer {
                 interval: 1000
                 running: true
                 repeat: true
-                onTriggered: clockText.text = Qt.formatDateTime(new Date(), "ddd d MMM  hh:mm")
+                onTriggered: topBar.ahora = new Date()
             }
+        }
         }
 
         // Botón de Notificaciones (Campana) a lado de la fecha/reloj
@@ -430,20 +555,26 @@ Rectangle {
                 anchors.fill: parent
                 radius: 5
                 color: shellBackend.notificationCenterVisible || bellMouse.containsMouse
-                       ? (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.10))
+                       ? topBar.barHover
                        : "transparent"
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
             Canvas {
+
+                // Repintar si cambia el color del texto (tema o fondo)
+
+                property color ink: topBar.barText
+
+                onInkChanged: requestPaint()
                 id: bellCanvas
                 width: 16; height: 16
                 anchors.centerIn: parent
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
-                    ctx.strokeStyle = titanTheme.headerText;
-                    ctx.fillStyle = titanTheme.headerText;
+                    ctx.strokeStyle = topBar.barText;
+                    ctx.fillStyle = topBar.barText;
                     ctx.lineWidth = 1.3;
                     ctx.lineCap = "round";
                     ctx.lineJoin = "round";
@@ -487,7 +618,7 @@ Rectangle {
                 height: 7
                 radius: 3.5
                 color: "#ff3b30"
-                border.color: titanTheme.headerTop
+                border.color: topBar.wallBright ? "#ffffff" : "#1d1d1f"
                 border.width: 1
             }
 
@@ -499,38 +630,83 @@ Rectangle {
                 onClicked: shellBackend.toggleNotificationCenter()
             }
         }
-    }
 
-    // ── Hot Corner superior derecho para abrir el Sistema de Escritorios ────────
-    Timer {
-        id: hotCornerTimer
-        interval: 90
-        repeat: false
-        onTriggered: {
-            if (hotCornerWorkspaces.containsMouse && !shellBackend.workspacesVisible) {
-                shellBackend.setWorkspacesVisible(true)
+        // Mostrar el escritorio (Win+D), como la franja del borde derecho de
+        // la barra de Windows: una raya fina; otro clic devuelve las ventanas.
+        Item {
+            id: escritorioBtn
+            width: 12
+            height: 22
+            anchors.verticalCenter: parent.verticalCenter
+            Rectangle {   // separador a la izquierda
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1; height: 16
+                color: topBar.barText
+                opacity: 0.35
             }
+            Rectangle {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 6; height: 20; radius: 3
+                color: topBar.barText
+                opacity: escritorioMouse.pressed ? 0.45 : escritorioMouse.containsMouse ? 0.28 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+            MouseArea {
+                id: escritorioMouse
+                anchors.fill: parent
+                anchors.rightMargin: -12   // hasta el borde de la pantalla
+                hoverEnabled: true
+                onClicked: windowTracker.mostrarEscritorio()
+            }
+            ToolTip.visible: escritorioMouse.containsMouse
+            ToolTip.delay: 700
+            ToolTip.text: "Mostrar el escritorio (Win+D)"
         }
     }
 
-    MouseArea {
-        id: hotCornerWorkspaces
-        anchors.top: parent.top
-        anchors.right: parent.right
-        width: 28
-        height: parent.height
-        z: 100
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onEntered: {
-            hotCornerTimer.start()
-        }
-        onExited: {
-            hotCornerTimer.stop()
-        }
-        onClicked: {
-            hotCornerTimer.stop()
-            shellBackend.toggleWorkspaces()
+    // 3. CENTRO: los escritorios creados; el actual, coloreado. Clic para ir.
+    // Si la Isla Dinámica ocupa el centro (música o aviso), se ponen a su izquierda.
+    readonly property bool islaVisible: shellBackend.islandActive || mpris.disponible || shellBackend.indicadorActivo
+    readonly property real anchoIsla: (mpris.disponible && !shellBackend.islandActive ? 236 : 140) + 16
+    Row {
+        id: escritorios
+        spacing: 4
+        anchors.verticalCenter: parent.verticalCenter
+        x: topBar.islaVisible ? (topBar.width - topBar.anchoIsla) / 2 - width - 10
+                              : (topBar.width - width) / 2
+        Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        Repeater {
+            model: shellBackend.workspaces
+            delegate: Rectangle {
+                required property int index
+                required property string modelData
+                readonly property bool actual: index === shellBackend.currentWorkspace
+                width: 22; height: 18; radius: 5
+                color: actual ? titanTheme.accent
+                              : (zonaEsc.containsMouse ? topBar.barHover : "transparent")
+                border.width: actual ? 0 : 1
+                border.color: Qt.rgba(topBar.barText.r, topBar.barText.g, topBar.barText.b, 0.35)
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Text {
+                    anchors.centerIn: parent
+                    text: parent.index + 1
+                    color: parent.actual ? "white" : topBar.barText
+                    font.pixelSize: 11
+                    font.weight: parent.actual ? Font.Bold : Font.Medium
+                }
+                MouseArea {
+                    id: zonaEsc
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shellBackend.switchToWorkspace(parent.index)
+                }
+                ToolTip.visible: zonaEsc.containsMouse
+                ToolTip.delay: 700
+                ToolTip.text: modelData
+            }
         }
     }
 }

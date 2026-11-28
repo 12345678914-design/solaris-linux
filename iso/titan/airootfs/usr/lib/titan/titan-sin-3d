@@ -1,0 +1,30 @@
+#!/bin/sh
+# Inti OS - ¿hay aceleración 3D de verdad?
+# Sale con 0 si NO la hay; con 1 si la hay (o si no se puede saber).
+#
+# No basta con que exista /dev/dri/renderD*: tarjetas antiguas (Radeon
+# r100/r200, NVIDIA anteriores a GeForce FX, algunas Intel GMA...) tienen
+# driver en el kernel pero Mesa ya no trae su driver 3D, y todo acaba
+# dibujándose con llvmpipe (el procesador simulando una tarjeta). Ahí
+# Wayfire y Qt con OpenGL gastan unas 10 veces más que labwc (pixman) y Qt
+# en modo software, así que hay que tratarlas como "sin aceleración".
+#
+#   titan-sin-3d          (código de salida)
+#   titan-sin-3d -v       además escribe el motivo
+dri="${TITAN_DRM_DIR:-/dev/dri}"
+dime() { [ "${1:-}" = "-v" ] && echo "$2"; }
+
+if ! ls "$dri"/renderD* >/dev/null 2>&1; then
+    dime "$1" "sin aceleración (no hay nodo de render en $dri)"; exit 0
+fi
+# Si no está eglinfo o no responde, se da por buena la tarjeta (como antes).
+command -v eglinfo >/dev/null 2>&1 || { dime "$1" "con aceleración (sin eglinfo para comprobarlo)"; exit 1; }
+r=$(timeout 4 eglinfo -B -p surfaceless 2>/dev/null | grep -m1 -i 'renderer:' | sed 's/.*renderer: *//')
+case "$r" in
+    *llvmpipe*|*softpipe*|*swrast*|*"Software Rasterizer"*|*lavapipe*)
+        dime "$1" "sin aceleración (la tarjeta no tiene driver 3D; dibuja $r)"; exit 0 ;;
+    "")
+        dime "$1" "con aceleración (no se pudo consultar)"; exit 1 ;;
+    *)
+        dime "$1" "con aceleración ($r)"; exit 1 ;;
+esac

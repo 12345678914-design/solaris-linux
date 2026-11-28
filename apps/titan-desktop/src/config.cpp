@@ -94,7 +94,7 @@ QString Config::soNombre() const
 
 QString Config::soVersion() const
 {
-    return valor(QStringLiteral("TITAN_SO_VERSION"), QStringLiteral("0.2.0"));
+    return valor(QStringLiteral("TITAN_SO_VERSION"), QStringLiteral("1.8"));
 }
 
 QString Config::soId() const

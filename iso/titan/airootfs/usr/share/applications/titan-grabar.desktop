@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Grabar pantalla
+Comment=Graba la pantalla en vídeo. Ábrelo otra vez (o pulsa Super+Mayús+5) para parar y guardar
+Exec=titan-grabar
+Icon=media-record
+Terminal=false
+Categories=Utility;AudioVideo;Recorder;
+Keywords=grabar;vídeo;pantalla;screencast;captura;

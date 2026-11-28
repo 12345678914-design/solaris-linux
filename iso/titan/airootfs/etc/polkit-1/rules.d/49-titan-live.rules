@@ -1,0 +1,9 @@
+// Inti OS - SOLO EN EL LIVE: el usuario del live (grupo wheel) no tiene que
+// escribir contrasena para administrar, igual que sudo en el live. El
+// instalador borra este fichero del sistema instalado, donde polkit pide la
+// contrasena con la ventana de titan-polkit.
+polkit.addRule(function (action, subject) {
+    if (subject.isInGroup("wheel") && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

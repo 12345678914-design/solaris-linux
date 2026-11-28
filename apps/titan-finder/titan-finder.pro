@@ -1,5 +1,6 @@
-QT += quick quickcontrols2 gui
-CONFIG += c++17 warn_on release
+QT += quick quickcontrols2 gui concurrent network
+CONFIG += c++17 warn_on release link_pkgconfig
+PKGCONFIG += gio-2.0
 QMAKE_CXXFLAGS_RELEASE += -O3 -pipe -fno-plt
 QMAKE_LFLAGS_RELEASE += -Wl,-O1,--as-needed
 TEMPLATE = app
@@ -10,11 +11,15 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
 INCLUDEPATH += src ../titan-common
 
 SOURCES += \
+    src/Red.cpp \
     src/main.cpp \
     src/FinderBackend.cpp \
+    src/Operaciones.cpp \
+    src/Explorador.cpp \
     ../titan-common/ThemeManager.cpp
 
 HEADERS += \
+    src/Red.h \
     src/FinderBackend.h \
     ../titan-common/ThemeManager.h
 

@@ -1,0 +1,12 @@
+/* Inti OS - botones de ventana: Inti acento. GTK 3. */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 26px; min-height: 22px; margin: 0 1px; padding: 0 2px;
+  border: none; border-radius: 7px; background: none; box-shadow: none;
+  -gtk-icon-shadow: none; transition: background-color 100ms ease-out, color 100ms ease-out;
+}
+headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover { background-color: alpha(@accent_color, 0.2); color: @accent_color; }
+headerbar button.titlebutton:active, .titlebar button.titlebutton:active { background-color: alpha(@accent_color, 0.32); color: @accent_color; }
+headerbar button.titlebutton.close:hover, .titlebar button.titlebutton.close:hover { background-color: #e5484d; color: #ffffff; }
+headerbar button.titlebutton.close:active, .titlebar button.titlebutton.close:active { background-color: #c93a3f; color: #ffffff; }
+headerbar:backdrop button.titlebutton, .titlebar:backdrop button.titlebutton { color: alpha(currentColor, 0.45); }

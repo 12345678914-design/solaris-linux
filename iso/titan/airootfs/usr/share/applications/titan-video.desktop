@@ -9,5 +9,5 @@ Exec=titan-video %U
 Icon=/usr/share/titan/icons/video.png
 Terminal=false
 Categories=AudioVideo;Video;Player;
-MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/avi;video/x-msvideo;
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/avi;video/x-msvideo;video/mpeg;video/ogg;video/x-flv;
 StartupWMClass=titan-video

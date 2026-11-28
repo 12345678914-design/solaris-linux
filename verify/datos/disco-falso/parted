@@ -1,0 +1,15 @@
+#!/bin/sh
+# parted falso: solo responde a «print»; cualquier otra orden se apunta en
+# $PARTED_REGISTRO (la prueba exige que quede vacío: planear no escribe).
+case "$*" in
+  *print*) cat <<P
+BYT;
+/dev/vda:524288MiB:nvme:512:512:gpt:Disco de prueba:;
+1:1.00MiB:101MiB:100MiB:fat32:EFI system partition:boot, esp;
+2:101MiB:117MiB:16.0MiB::Microsoft reserved partition:msftres;
+3:117MiB:442000MiB:441883MiB:ntfs:Basic data partition:msftdata;
+4:522000MiB:524286MiB:2286MiB:ntfs::hidden, diag;
+P
+;;
+  *) echo "parted $*" >> "${PARTED_REGISTRO:-/dev/null}";;
+esac

@@ -86,9 +86,32 @@ probar 'ya dentro de tmux no arranca' \
 probar 'TITAN_GRAFICO=1 no repite' \
        '/dev/tty1' "${tmp}/drm" "${tmp}/cmdline" 'grafico' 0
 
+# Cursor: en una VM tiene que ir por hardware. Si la sesion lo dibuja ella
+# (WLR_NO_HARDWARE_CURSORS=1), tras la pantalla de inicio se ven dos flechas:
+# la que dibuja Wayfire/labwc y la que QEMU sigue mostrando del greeter.
+cursor_tras_capa() {
+  ES_VM="$1" WLR_NO_HARDWARE_CURSORS="${2:-}" TITAN_SCRIPT="${script}" bash --norc -c '
+    [ -n "${WLR_NO_HARDWARE_CURSORS}" ] || unset WLR_NO_HARDWARE_CURSORS
+    eval "$(sed -n "/^aplicar_capa_compatibilidad() {/,/^}/p" "$TITAN_SCRIPT")"
+    aplicar_capa_compatibilidad
+    printf "%s\n" "${WLR_NO_HARDWARE_CURSORS:-hardware}"'
+}
+comprobar_cursor() {
+  local nombre="$1" obtenido="$2" esperado="$3"
+  if [ "${obtenido}" = "${esperado}" ]; then
+    printf 'OK    %-42s %s\n' "${nombre}" "${obtenido}"
+  else
+    printf 'FALLO %-42s %s, esperado %s\n' "${nombre}" "${obtenido}" "${esperado}"
+    fallos=$((fallos + 1))
+  fi
+}
+comprobar_cursor 'VM: cursor por hardware (una flecha)' "$(cursor_tras_capa 1)" hardware
+comprobar_cursor 'VM: quita WLR_NO_HARDWARE_CURSORS heredado' "$(cursor_tras_capa 1 1)" hardware
+comprobar_cursor 'sin VM (compat): cursor por software' "$(cursor_tras_capa 0)" 1
+
 echo "---"
 if [ "${fallos}" -eq 0 ]; then
-  echo 'comprobar-arranque-grafico: 7 comprobaciones, 0 FALLO'
+  echo 'comprobar-arranque-grafico: 10 comprobaciones, 0 FALLO'
   exit 0
 fi
 echo "comprobar-arranque-grafico: ${fallos} FALLO"

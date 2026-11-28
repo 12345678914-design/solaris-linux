@@ -5,6 +5,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QThread>
+#include <QMap>
+#include <QSet>
 
 class InstallWorker;
 
@@ -33,7 +35,18 @@ class InstallerBackend : public QObject
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
     Q_PROPERTY(bool manualPartitioning READ manualPartitioning WRITE setManualPartitioning NOTIFY manualPartitioningChanged)
-    Q_PROPERTY(QVariantList manualPartitions READ manualPartitions NOTIFY manualPartitionsChanged)
+    // Particionado manual sobre la tabla REAL del disco (Particionado.cpp):
+    // filas de particiones, huecos libres y particiones nuevas pendientes.
+    Q_PROPERTY(QVariantList tablaManual READ tablaManual NOTIFY tablaManualChanged)
+    Q_PROPERTY(QStringList cambiosPendientes READ cambiosPendientes NOTIFY tablaManualChanged)
+    Q_PROPERTY(QStringList resumenManual READ resumenManual NOTIFY tablaManualChanged)
+    Q_PROPERTY(QString tipoTablaManual READ tipoTablaManual NOTIFY tablaManualChanged)
+    // "borrar" (todo el disco), "junto" (en el hueco libre, al lado de Windows u
+    // otro sistema) o "manual"
+    Q_PROPERTY(QString modoDisco READ modoDisco WRITE setModoDisco NOTIFY modoDiscoChanged)
+    // Cifrado del disco (LUKS2): la contrasena se pide al encender el equipo
+    Q_PROPERTY(bool cifrar READ cifrar WRITE setCifrar NOTIFY cifrarChanged)
+    Q_PROPERTY(QVariantMap discoElegido READ discoElegido NOTIFY selectedDiskChanged)
 
 public:
     explicit InstallerBackend(QObject *parent = nullptr);
@@ -66,15 +79,27 @@ public:
     bool manualPartitioning() const { return m_manualPartitioning; }
     void setManualPartitioning(bool manual);
 
-    QVariantList manualPartitions() const { return m_manualPartitions; }
-    Q_INVOKABLE void addManualPartition(const QString &mountPoint, int sizeMb, const QString &fsType);
-    Q_INVOKABLE void updateManualPartition(int index, const QString &mountPoint, int sizeMb, const QString &fsType);
-    Q_INVOKABLE void removeManualPartition(int index);
-    Q_INVOKABLE void resetDefaultPartitions();
+    QVariantList tablaManual() const { return m_tabla; }
+    QStringList cambiosPendientes() const;
+    QStringList resumenManual() const;
+    QString tipoTablaManual() const { return m_tablaNueva ? (m_isUefi ? QStringLiteral("gpt") : QStringLiteral("msdos")) : m_tipoTabla; }
+    Q_INVOKABLE void leerTablaManual();
+    // Cambia ya la distribucion del teclado del live (para probarla en el campo)
+    Q_INVOKABLE void probarDistribucion(const QString &xkb);
+    // Solo información (no toca el disco): punto de montaje, formatear y formato.
+    Q_INVOKABLE void editarParticion(int fila, const QString &montaje, bool formatear, const QString &fs);
+    // Cambios en la tabla: quedan pendientes hasta aplicarCambios().
+    Q_INVOKABLE void marcarBorrar(int fila, bool borrar);
+    Q_INVOKABLE void crearEnHueco(int fila, int tamanoMb, const QString &montaje, const QString &fs);
+    Q_INVOKABLE void quitarNueva(int fila);
+    Q_INVOKABLE void tablaNueva();
+    Q_INVOKABLE void descartarCambios();
+    Q_INVOKABLE QString aplicarCambios();
     Q_INVOKABLE void openExternalPartitioner();
     Q_INVOKABLE QString validatePartitionPlan() const;
 
     Q_INVOKABLE void refreshDisks();
+    Q_INVOKABLE void setClaveCifrado(const QString &clave);
     Q_INVOKABLE void startInstallation(const QString &fsType,
                                        const QString &fullName,
                                        const QString &userName,
@@ -86,7 +111,15 @@ public:
     Q_INVOKABLE void rebootSystem();
     Q_INVOKABLE void closeInstaller();
 
+    QString modoDisco() const { return m_modoDisco; }
+    void setModoDisco(const QString &modo);
+    bool cifrar() const { return m_cifrar; }
+    void setCifrar(bool cifrar);
+    QVariantMap discoElegido() const;
+
 signals:
+    void modoDiscoChanged();
+    void cifrarChanged();
     void currentStepChanged();
     void disksChanged();
     void selectedDiskIndexChanged();
@@ -98,7 +131,7 @@ signals:
     void installSuccessChanged();
     void errorMessageChanged();
     void manualPartitioningChanged();
-    void manualPartitionsChanged();
+    void tablaManualChanged();
 
 private slots:
     void onWorkerProgress(int percent, const QString &msg);
@@ -122,7 +155,22 @@ private:
     QString m_errorMessage;
 
     bool m_manualPartitioning{false};
-    QVariantList m_manualPartitions;
+    QString m_modoDisco{QStringLiteral("borrar")};
+    bool m_cifrar{false};
+    QString m_claveCifrado;
+    bool m_modoElegido{false};   // la persona ya ha elegido modo: no se cambia solo
+    void modoPorDefecto();
+    // Particionado manual
+    void rehacerTablaManual();
+    QVariantList asignacionesManual() const;
+    QList<QVariantMap> m_partes;              // lo que hay en el disco
+    QMap<QString, QVariantMap> m_asign;       // nodo -> {montaje, formatear, fs}
+    QSet<int> m_borrar;                       // números de partición a borrar
+    QList<QVariantMap> m_nuevas;              // {inicio, fin, montaje, fs}
+    bool m_tablaNueva{false};
+    QString m_tipoTabla;
+    double m_discoMb{0};
+    QVariantList m_tabla;
 
     QThread *m_workerThread{nullptr};
     InstallWorker *m_worker{nullptr};

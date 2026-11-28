@@ -30,7 +30,7 @@ PACMAN_DEPS := \
 	qemu-desktop \
 	edk2-ovmf
 
-.PHONY: all help pacman deps apps apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings build run run-software qemu qemu-vmware screenshot iso clean
+.PHONY: all help pacman deps apps repo-inti publicar-inti clave-inti apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-bienvenida apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan build run run-software qemu qemu-gl qemu-vmware screenshot iso clean
 
 all: apps
 
@@ -58,7 +58,9 @@ pacman:
 
 deps: pacman
 
-apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-calendar apps/titan-clock apps/titan-video
+apps: apps/titan-shell apps/titan-finder apps/titan-fotos apps/titan-musica apps/titan-terminal apps/titan-cli apps/titan-desktop apps/titan-panel apps/titan-acerca apps/titan-settings apps/titan-calc apps/titan-monitor apps/titan-bienvenida apps/titan-calendar apps/titan-clock apps/titan-video apps/titan-greeter apps/titan-polkit apps/titan-installer apps/wayfire-titan
+	@# Ver scripts/fijar-isa-baseline.py: en CachyOS v4 todo sale marcado "necesita v4"
+	@python3 -I scripts/fijar-isa-baseline.py $$(find iso/titan/airootfs/usr/local/bin iso/titan/airootfs/usr/lib/titan iso/titan/airootfs/usr/lib/wayfire -type f -exec sh -c 'head -c4 "$$1" | grep -q ELF && echo "$$1"' _ {} \; 2>/dev/null)
 
 apps/titan-shell:
 	@echo "Compilando titan-shell..."
@@ -93,6 +95,7 @@ apps/titan-cli:
 apps/titan-desktop:
 	@echo "Compilando titan-desktop..."
 	mkdir -p $(APPS)/titan-desktop/build && cd $(APPS)/titan-desktop/build && qmake6 .. && make -j$(shell nproc)
+	cp -f $(APPS)/titan-desktop/build/titan-desktop $(APPS)/titan-desktop/titan-desktop
 	install -m 0755 $(APPS)/titan-desktop/build/titan-desktop iso/titan/airootfs/usr/local/bin/
 
 apps/titan-panel:
@@ -103,7 +106,13 @@ apps/titan-panel:
 apps/titan-acerca:
 	@echo "Compilando titan-acerca..."
 	mkdir -p $(APPS)/titan-acerca/build && cd $(APPS)/titan-acerca/build && qmake6 .. && make -j$(shell nproc)
+	cp -f $(APPS)/titan-acerca/build/titan-acerca $(APPS)/titan-acerca/titan-acerca
 	install -m 0755 $(APPS)/titan-acerca/build/titan-acerca iso/titan/airootfs/usr/local/bin/
+
+apps/titan-installer:
+	@echo "Compilando titan-installer..."
+	cd $(APPS)/titan-installer && qmake6 titan-installer.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-installer/titan-installer iso/titan/airootfs/usr/local/bin/
 
 apps/titan-settings:
 	@echo "Compilando titan-settings..."
@@ -114,6 +123,16 @@ apps/titan-calc:
 	@echo "Compilando titan-calc..."
 	cd $(APPS)/titan-calc && qmake6 titan-calc.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-calc/titan-calc iso/titan/airootfs/usr/local/bin/
+
+apps/titan-monitor:
+	@echo "Compilando titan-monitor..."
+	cd $(APPS)/titan-monitor && qmake6 titan-monitor.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-monitor/titan-monitor iso/titan/airootfs/usr/local/bin/
+
+apps/titan-bienvenida:
+	@echo "Compilando titan-bienvenida..."
+	cd $(APPS)/titan-bienvenida && qmake6 titan-bienvenida.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-bienvenida/titan-bienvenida iso/titan/airootfs/usr/local/bin/
 
 apps/titan-calendar:
 	@echo "Compilando titan-calendar..."
@@ -130,6 +149,25 @@ apps/titan-video:
 	cd $(APPS)/titan-video && qmake6 titan-video.pro && make -j$(shell nproc)
 	install -m 0755 $(APPS)/titan-video/titan-video iso/titan/airootfs/usr/local/bin/
 
+# Pantalla de inicio de sesion (greetd) y servicio de usuarios y grupos
+apps/titan-greeter:
+	@echo "Compilando titan-greeter..."
+	cd $(APPS)/titan-greeter && qmake6 titan-greeter.pro && make -j$(shell nproc)
+	cd $(APPS)/titan-greeter/helper && qmake6 titan-usuarios-helper.pro && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-greeter/titan-greeter iso/titan/airootfs/usr/local/bin/
+	install -m 0755 $(APPS)/titan-greeter/helper/titan-usuarios-helper iso/titan/airootfs/usr/local/bin/
+
+# Ventana de contrasena de administrador (agente de polkit)
+apps/titan-polkit:
+	@echo "Compilando titan-polkit..."
+	mkdir -p $(APPS)/titan-polkit/build && cd $(APPS)/titan-polkit/build && qmake6 .. && make -j$(shell nproc)
+	install -m 0755 $(APPS)/titan-polkit/build/titan-polkit iso/titan/airootfs/usr/local/bin/
+
+# Plugins de Wayfire propios (titan-wobbly-guard: sin gelatina al redimensionar)
+apps/wayfire-titan:
+	@echo "Compilando plugins de Wayfire..."
+	./scripts/build-wayfire-plugins.sh
+
 build: apps
 
 run:
@@ -144,6 +182,10 @@ qemu:
 	@echo "Lanzando ISO con QEMU..."
 	./scripts/run-qemu.sh
 
+qemu-gl:
+	@echo "Lanzando ISO con GPU virtual 3D (virgl): sesión inmersiva con Wayfire..."
+	TITAN_QEMU_GL=1 ./scripts/run-qemu.sh
+
 qemu-vmware:
 	@echo "Lanzando ISO con configuración VMware compatible..."
 	TITAN_QEMU_SOFTWARE=1 ./scripts/run-qemu.sh
@@ -151,6 +193,16 @@ qemu-vmware:
 screenshot:
 	@echo "Lanzando QEMU y tomando captura de pantalla en out/capturas/..."
 	./scripts/run-qemu.sh --screenshot
+
+# Repositorio [inti]: paquetes de lo que hace Inti (ver scripts/construir-repo-inti.sh)
+clave-inti:
+	./scripts/crear-clave-inti.sh
+
+repo-inti:
+	./scripts/construir-repo-inti.sh
+
+publicar-inti:
+	./scripts/construir-repo-inti.sh --publicar
 
 iso:
 	@echo "Reconstruyendo ISO con titan-shell..."
@@ -171,6 +223,16 @@ clean:
 	@find $(APPS)/titan-musica -name 'titan-musica' -type f -executable -delete
 	@find $(APPS)/titan-terminal -name 'titan-terminal' -type f -executable -delete
 	@find $(APPS)/titan-settings -name 'titan-settings' -type f -executable -delete
+	@find $(APPS)/titan-calc -name 'titan-calc' -type f -executable -delete
+	@find $(APPS)/titan-monitor -name 'titan-monitor' -type f -executable -delete
+	@find $(APPS)/titan-bienvenida -name 'titan-bienvenida' -type f -executable -delete
+	@find $(APPS)/titan-calendar -name 'titan-calendar' -type f -executable -delete
+	@find $(APPS)/titan-clock -name 'titan-clock' -type f -executable -delete
+	@find $(APPS)/titan-video -name 'titan-video' -type f -executable -delete
+	@find $(APPS)/titan-installer -name 'titan-installer' -type f -executable -delete
+	@rm -rf $(APPS)/titan-polkit/build
+	@find $(APPS)/titan-desktop -maxdepth 1 -name 'titan-desktop' -type f -executable -delete
+	@find $(APPS)/titan-acerca -maxdepth 1 -name 'titan-acerca' -type f -executable -delete
 	@rm -rf $(APPS)/titan-desktop/build $(APPS)/titan-panel/build $(APPS)/titan-acerca/build
 	@cargo clean --manifest-path $(APPS)/titan-cli/Cargo.toml 2>/dev/null || true
 	@echo "Limpio."

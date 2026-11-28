@@ -1,0 +1,52 @@
+#!/bin/sh
+# Inti OS - instalar un idioma en el sistema (Ajustes > General > Idioma).
+#
+# Cambiar el idioma de la propia cuenta no necesita administrador (Ajustes
+# escribe ~/.config/locale.conf). Solo hace falta este programa, y la
+# contraseña, cuando el idioma aún no está preparado en el sistema
+# (locale-gen). Por seguridad no ejecuta nada que venga de fuera: solo acepta
+# un idioma que exista tal cual en /usr/share/i18n/SUPPORTED.
+#
+#   titan-idioma instalado es_ES.UTF-8   sí | no      (sin root)
+#   titan-idioma instalar es_ES.UTF-8                 (root; Ajustes, con pkexec)
+set -u
+export LC_ALL=C
+soportados=/usr/share/i18n/SUPPORTED
+gen="${TITAN_LOCALE_GEN:-/etc/locale.gen}"
+
+codigo=${2:-}
+# Solo letras, números y _ . @ -: nada que una shell pueda interpretar
+case "$codigo" in
+    ''|*[!A-Za-z0-9_.@-]*) echo "Idioma no válido" >&2; exit 2 ;;
+esac
+
+# Línea de SUPPORTED para el código ("es_ES.UTF-8 UTF-8", "quz_PE UTF-8")
+entrada=""
+for e in "$codigo UTF-8" "${codigo%.UTF-8} UTF-8"; do
+    if grep -qFx "$e" "$soportados" 2>/dev/null; then entrada=$e; break; fi
+done
+[ -n "$entrada" ] || { echo "Idioma no disponible: $codigo" >&2; exit 2; }
+
+instalado() {
+    # locale -a escribe "es_ES.utf8"; quz_PE sale sin juego de caracteres
+    nombre=${entrada% UTF-8}
+    normal=$(printf '%s' "${nombre%.UTF-8}" | sed 's/$/.utf8/')
+    locale -a 2>/dev/null | grep -qFx -e "$normal" -e "$nombre"
+}
+
+case "${1:-}" in
+    instalado)
+        if instalado; then echo si; else echo no; fi ;;
+    instalar)
+        [ "$(id -u)" -eq 0 ] || { echo "Hace falta ser administrador" >&2; exit 1; }
+        instalado && exit 0
+        # Descomentar la línea en locale.gen o añadirla
+        if grep -qE "^#[[:space:]]*$(printf '%s' "$entrada" | sed 's/[.]/[.]/g')[[:space:]]*$" "$gen"; then
+            sed -i "s|^#[[:space:]]*\($(printf '%s' "$entrada" | sed 's/[.]/[.]/g')\)[[:space:]]*$|\1|" "$gen"
+        elif ! grep -qFx "$entrada" "$gen"; then
+            printf '%s\n' "$entrada" >> "$gen"
+        fi
+        locale-gen ;;
+    *)
+        echo "uso: titan-idioma instalado|instalar CODIGO" >&2; exit 2 ;;
+esac

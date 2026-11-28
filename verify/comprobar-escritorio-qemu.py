@@ -415,7 +415,7 @@ def main() -> int:
 
         ok, salida = ser.run(
             "grep -q 'sin layer-shell' /tmp/titan-panel.log "
-            "/tmp/titan-desktop.log 2>/dev/null "
+            "/run/user/*/titan-desktop.log 2>/dev/null "
             "&& echo encontrado || echo limpio")
         anotar("layer-shell activo", ok and "limpio" in salida,
                salida.strip()[:120] or "sin salida")
@@ -430,7 +430,7 @@ def main() -> int:
                ok and "LABWC_PID=" in salida,
                salida.strip()[:120] or "no hereda LABWC_PID")
 
-        ok, salida = ser.run("cat /tmp/titan-desktop.log 2>/dev/null")
+        ok, salida = ser.run("cat /run/user/*/titan-desktop.log 2>/dev/null")
         metricas["log_escritorio"] = salida.strip()[:1000]
         anotar("log del escritorio", True,
                "vacio" if not salida.strip() else salida.strip()[:120])

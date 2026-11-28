@@ -16,7 +16,11 @@ Window {
     property bool sidebarCollapsed: false
     property int expandedSidebarWidth: 205
     property int collapsedSidebarWidth: 54
-    property real sidebarWidth: sidebarCollapsed ? collapsedSidebarWidth : expandedSidebarWidth
+    // Con la ventana más estrecha que esto la barra lateral se pliega sola
+    // (0 = nunca; solo para apps cuya barra sabe estar plegada)
+    property int anchoPlegarBarra: 0
+    readonly property bool barraPlegadaSola: anchoPlegarBarra > 0 && width < anchoPlegarBarra
+    property real sidebarWidth: (sidebarCollapsed || barraPlegadaSola) ? collapsedSidebarWidth : expandedSidebarWidth
     property bool showSidebar: true
     property real effectiveSidebarWidth: showSidebar ? sidebarWidth : 0
     Behavior on effectiveSidebarWidth { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -44,6 +48,7 @@ Window {
     property bool showTitle: true
 
     function glass(c, a) {
+        if (titanTheme.opaco) a = 1   // ventanas opacas: sin transparencia por zonas
         if (!c) return Qt.rgba(0.1, 0.1, 0.1, a !== undefined ? a : 0.5)
         var col = Qt.color(c)
         return Qt.rgba(col.r, col.g, col.b, a !== undefined ? a : col.a)
@@ -53,8 +58,11 @@ Window {
 
     width: 960
     height: 620
-    minimumWidth: 680
-    minimumHeight: 440
+    // Pequeño a propósito: la ventana tiene que caber en media pantalla
+    // (Win+flecha, arrastrar al borde) y en el mosaico, también en pantallas
+    // de 1280 px. Cada app se adapta cuando es estrecha.
+    minimumWidth: 420
+    minimumHeight: 320
     visible: true
     flags: Qt.FramelessWindowHint | Qt.Window
     color: "transparent"
@@ -62,7 +70,35 @@ Window {
     property bool isDragging: false
     property bool isMinimizing: false
 
-    TitanTheme { id: titanTheme }
+    TitanTheme {
+        id: titanTheme
+        effects: windowContainer.GraphicsInfo.api !== GraphicsInfo.Software
+    }
+
+    // Paleta de los controles estándar (estilo Basic) según el tema: sin esto,
+    // ComboBox, TextField, etc. salen con la paleta clara por defecto de Qt
+    // aunque el tema sea oscuro, o con colores fijos que no se leen en el claro.
+    palette.window: titanTheme.isDark ? "#000000" : "#f5f5f7"
+    palette.windowText: titanTheme.contentTextPrimary
+    palette.base: titanTheme.isDark ? "#111113" : "#ffffff"
+    palette.alternateBase: titanTheme.isDark ? "#18181b" : "#f2f2f5"
+    palette.text: titanTheme.contentTextPrimary
+    palette.placeholderText: titanTheme.contentTextSecondary
+    palette.button: titanTheme.isDark ? "#232326" : "#ffffff"
+    palette.buttonText: titanTheme.contentTextPrimary
+    palette.highlight: titanTheme.accent
+    palette.highlightedText: "#ffffff"
+    palette.light: titanTheme.isDark ? "#4a4b52" : "#ffffff"
+    palette.midlight: titanTheme.isDark ? "#3a3b41" : "#e8e8ed"
+    palette.mid: titanTheme.isDark ? "#55565c" : "#c7c7cc"
+    palette.dark: titanTheme.isDark ? "#101114" : "#a1a1a6"
+    palette.shadow: "#000000"
+    palette.toolTipBase: titanTheme.isDark ? "#18181b" : "#ffffff"
+    palette.toolTipText: titanTheme.contentTextPrimary
+
+    // Barra lateral flotante (estilo Tahoe): una tarjeta separada del borde.
+    readonly property int sidebarInset: 7
+    readonly property real sidebarCardRadius: Math.max(titanTheme.controlRadius, titanTheme.windowRadius - sidebarInset + 2)
 
     Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
     Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -140,11 +176,12 @@ Window {
             originY: (typeof Screen !== "undefined" && typeof Screen.virtualY !== "undefined") ? (rootWindow.y - Screen.virtualY) : 0
             sceneWidth: (typeof Screen !== "undefined" && Screen.width > 0) ? Screen.width : 1920
             sceneHeight: (typeof Screen !== "undefined" && Screen.height > 0) ? Screen.height : 1080
+            effects: titanTheme.effects && !titanTheme.opaco
             showBorder: false
             showHighlight: false
         }
 
-        // ---------- 1. BARRA SUPERIOR (título + semáforos) ----------
+        // ---------- 1. BARRA SUPERIOR (título + botones de ventana) ----------
         Rectangle {
             id: headerPanel
             anchors.top: parent.top
@@ -198,26 +235,6 @@ Window {
                 onDoubleClicked: rootWindow.toggleMaximize()
             }
 
-            // Zona de sidebar dentro de la barra (donde van los semáforos): mismo vidrio
-            Rectangle {
-                visible: rootWindow.effectiveSidebarWidth > 0
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: rootWindow.effectiveSidebarWidth
-                topLeftRadius: rootWindow.cornerRadius
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, rootWindow.sidebarGlass) }
-                    GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, rootWindow.sidebarGlass) }
-                }
-                Rectangle {
-                    anchors.right: parent.right
-                    width: 1
-                    height: parent.height
-                    color: titanTheme.sidebarBorder
-                }
-            }
-
             // Título de la ventana, centrado
             Text {
                 id: titleText
@@ -226,7 +243,8 @@ Window {
                 width: Math.min(implicitWidth, parent.width - 260)
                 text: rootWindow.title
                 color: titanTheme.headerText
-                font.pixelSize: 13
+                font.family: titanTheme.fontFamily
+                font.pixelSize: titanTheme.fontBody
                 font.weight: Font.Medium
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
@@ -234,58 +252,15 @@ Window {
                 Behavior on opacity { NumberAnimation { duration: 150 } }
             }
 
-            // Semáforos macOS (grises cuando la ventana no tiene el foco)
-            Row {
-                id: trafficLightsRow
-                x: 18
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
-                z: 20
-
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: rootWindow.active ? "#ff5f57" : "#5c5c60"
-                    border.color: rootWindow.active ? "#e0443e" : "#4a4a4e"
-                    border.width: 0.5
-                    scale: closeMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: closeContainerAnim.start() }
-                }
-
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: rootWindow.active ? "#febc2e" : "#5c5c60"
-                    border.color: rootWindow.active ? "#dea123" : "#4a4a4e"
-                    border.width: 0.5
-                    scale: minMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    MouseArea {
-                        id: minMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: { rootWindow.isMinimizing = true; minimizeContainerAnim.start() }
-                    }
-                }
-
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: rootWindow.active ? "#28c840" : "#5c5c60"
-                    border.color: rootWindow.active ? "#1aab29" : "#4a4a4e"
-                    border.width: 0.5
-                    scale: maxMouse.containsMouse ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 100 } }
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    MouseArea { id: maxMouse; anchors.fill: parent; hoverEnabled: true; onClicked: rootWindow.toggleMaximize() }
-                }
-            }
-
             // Contenido propio de la barra (toolbar)
             Item {
                 id: headerSlot
                 anchors.left: parent.left
-                anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14) : (trafficLightsRow.x + trafficLightsRow.width + 16)
+                anchors.leftMargin: rootWindow.effectiveSidebarWidth > 0 ? (rootWindow.effectiveSidebarWidth + 14)
+                                    : botonesVentana.derecha ? 16 : (botonesVentana.x + botonesVentana.width + 16)
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                // Con los botones a la derecha, la barra propia de la app termina antes.
+                anchors.rightMargin: botonesVentana.derecha ? (parent.width - botonesVentana.x + 10) : 14
                 height: parent.height
                 anchors.verticalCenter: parent.verticalCenter
                 Behavior on anchors.leftMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -300,29 +275,14 @@ Window {
             anchors.right: parent.right
             anchors.bottom: rootWindow.showStatusBar ? statusBarPanel.top : parent.bottom
 
-            Rectangle {
+            // Hueco que reserva la barra lateral; la tarjeta visible es sidebarCard.
+            Item {
                 id: sidebarPanel
                 visible: rootWindow.effectiveSidebarWidth > 0
                 width: rootWindow.effectiveSidebarWidth
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
-                clip: true
-                bottomLeftRadius: rootWindow.showStatusBar ? 0 : rootWindow.cornerRadius
-
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, rootWindow.sidebarGlass) }
-                    GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, rootWindow.sidebarGlass) }
-                }
-
-                Rectangle {
-                    anchors.right: parent.right
-                    width: 1
-                    height: parent.height
-                    color: titanTheme.sidebarBorder
-                }
-
-                Item { id: sidebarSlot; anchors.fill: parent }
             }
 
             Rectangle {
@@ -337,6 +297,87 @@ Window {
 
                 Item { id: contentSlot; anchors.fill: parent }
             }
+        }
+
+        // ---------- 2b. BARRA LATERAL FLOTANTE ----------
+        // Cubre también la zona de la cabecera (los semáforos quedan dentro, como
+        // en Tahoe). El contenido de la app empieza debajo de la cabecera, igual
+        // que antes, para no mover lo que ya dibujan las apps.
+        Rectangle {
+            id: sidebarCard
+            visible: rootWindow.effectiveSidebarWidth > 0
+            z: 15
+            x: rootWindow.sidebarInset
+            y: rootWindow.sidebarInset
+            width: Math.max(0, rootWindow.effectiveSidebarWidth - rootWindow.sidebarInset)
+            height: (rootWindow.showStatusBar ? statusBarPanel.y : parent.height) - y - rootWindow.sidebarInset
+            radius: rootWindow.sidebarCardRadius
+            clip: true
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: rootWindow.glass(titanTheme.sidebarTop, Math.min(0.92, rootWindow.sidebarGlass + 0.2)) }
+                GradientStop { position: 1.0; color: rootWindow.glass(titanTheme.sidebarBottom, Math.min(0.92, rootWindow.sidebarGlass + 0.2)) }
+            }
+            border.color: titanTheme.sidebarBorder
+            border.width: 1
+
+            // Luz en el borde superior de la tarjeta
+            Rectangle {
+                anchors.top: parent.top
+                anchors.topMargin: 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width - parent.radius * 2
+                height: 1
+                color: titanTheme.specularGlow
+                opacity: titanTheme.isDark ? 0.5 : 0.9
+            }
+
+            // La tarjeta tapa la cabecera en su zona: ahí también se arrastra la ventana.
+            MouseArea {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: headerPanel.height - rootWindow.sidebarInset
+                onPressed: rootWindow.startSystemMove()
+                onDoubleClicked: rootWindow.toggleMaximize()
+            }
+
+            Item {
+                id: sidebarSlot
+                anchors.fill: parent
+                anchors.topMargin: headerPanel.height - rootWindow.sidebarInset
+            }
+        }
+
+        // Botones de la ventana (_ □ X). El estilo se elige en Ajustes >
+        // Ventanas: cada uno es un fichero aparte (botones/Botones*.qml) y
+        // solo se carga el elegido; al cambiarlo, el Loader destruye el
+        // anterior y crea el nuevo, sin gastar memoria en los demás.
+        Loader {
+            id: botonesVentana
+            source: titanTheme.ficheroBotones
+            z: 30
+            readonly property bool derecha: item ? item.derecha : false
+            readonly property bool todoElAlto: item ? item.height >= headerPanel.height : false
+            readonly property real margen: item ? item.margen : 18
+            // Con anclas (no x): leer el ancho del botón en x hacía un bucle.
+            anchors.left: derecha ? undefined : parent.left
+            anchors.right: derecha ? parent.right : undefined
+            anchors.leftMargin: margen
+            anchors.rightMargin: margen
+            y: todoElAlto ? 0 : Math.round((headerPanel.height - height) / 2)
+            onLoaded: {
+                item.tema = titanTheme
+                item.activa = Qt.binding(function() { return rootWindow.active })
+                item.altoBarra = Qt.binding(function() { return headerPanel.height })
+                item.radioEsquina = Qt.binding(function() { return rootWindow.cornerRadius })
+            }
+        }
+        Connections {
+            target: botonesVentana.item
+            ignoreUnknownSignals: true
+            function onCerrar() { closeContainerAnim.start() }
+            function onMinimizar() { rootWindow.isMinimizing = true; minimizeContainerAnim.start() }
+            function onMaximizar() { rootWindow.toggleMaximize() }
         }
 
         // ---------- 3. BARRA DE ESTADO ----------
@@ -375,12 +416,14 @@ Window {
             z: 25
         }
 
-        // Borde exterior redondeado, por encima de todo
+        // Borde exterior con el color de acento de Ajustes (más suave si la
+        // ventana no está activa), por encima de todo. Sin borde al maximizar.
         Rectangle {
             anchors.fill: parent
             radius: rootWindow.cornerRadius
             color: "transparent"
-            border.color: titanTheme.glassBorder
+            visible: rootWindow.visibility !== Window.Maximized && rootWindow.visibility !== Window.FullScreen
+            border.color: rootWindow.active ? titanTheme.accent : Qt.rgba(titanTheme.accent.r, titanTheme.accent.g, titanTheme.accent.b, 0.45)
             border.width: 1
             z: 100
         }

@@ -1,0 +1,64 @@
+#!/bin/sh
+# Inti OS - Win+P "Proyectar", como en Windows: qué hacer con una segunda
+# pantalla o un proyector. Lo llama el panel de titan-shell (Win+P).
+#
+# Uso: titan-proyectar solo-esta | duplicar | extender | solo-segunda
+#      titan-proyectar estado     (imprime cuántas pantallas hay y el modo)
+#
+# La pantalla del portátil (eDP/LVDS/DSI) es "esta"; si no hay, la primera.
+# Wayfire no copia una pantalla en otra: "Duplicar" pone las dos en el mismo
+# sitio y ajusta la escala de la segunda para que se vea lo mismo.
+set -u
+modo="${1:-}"
+json=$(wlr-randr --json 2>/dev/null) || { echo "sin-wayland"; exit 1; }
+
+nombres=$(printf '%s' "$json" | jq -r '.[].name')
+total=$(printf '%s\n' "$nombres" | grep -c .)
+interna=$(printf '%s\n' "$nombres" | grep -E '^(eDP|LVDS|DSI)' | head -n 1)
+[ -n "$interna" ] || interna=$(printf '%s\n' "$nombres" | head -n 1)
+externa=$(printf '%s\n' "$nombres" | grep -vx "$interna" | head -n 1)
+
+# Ancho en píxeles del modo actual (o el preferido si está apagada)
+ancho() { printf '%s' "$json" | jq -r --arg n "$1" '.[] | select(.name == $n) | ((.modes | map(select(.current)) | .[0]) // (.modes | map(select(.preferred)) | .[0]) // .modes[0]) | .width'; }
+escala() { printf '%s' "$json" | jq -r --arg n "$1" '.[] | select(.name == $n) | .scale'; }
+modo_de() { printf '%s' "$json" | jq -r --arg n "$1" '.[] | select(.name == $n) | ((.modes | map(select(.preferred)) | .[0]) // .modes[0]) | "\(.width)x\(.height)@\(.refresh)Hz"'; }
+activa() { printf '%s' "$json" | jq -r --arg n "$1" '.[] | select(.name == $n) | .enabled'; }
+
+if [ "$modo" = estado ]; then
+    actual=""
+    if [ -n "$externa" ]; then
+        ei=$(activa "$interna"); ee=$(activa "$externa")
+        if [ "$ei" = true ] && [ "$ee" != true ]; then actual=solo-esta
+        elif [ "$ei" != true ] && [ "$ee" = true ]; then actual=solo-segunda
+        else
+            pi=$(printf '%s' "$json" | jq -r --arg n "$interna" '.[] | select(.name == $n) | "\(.position.x),\(.position.y)"')
+            pe=$(printf '%s' "$json" | jq -r --arg n "$externa" '.[] | select(.name == $n) | "\(.position.x),\(.position.y)"')
+            [ "$pi" = "$pe" ] && actual=duplicar || actual=extender
+        fi
+    fi
+    echo "$total ${actual:-solo-esta}"
+    exit 0
+fi
+
+if [ -z "$externa" ]; then
+    command -v notify-send >/dev/null && notify-send -a Inti -i video-display "Solo hay una pantalla" "Conecta un monitor, una tele o un proyector y vuelve a pulsar Win+P."
+    exit 2
+fi
+
+ai=$(ancho "$interna"); si=$(escala "$interna")
+logico=$(awk -v a="$ai" -v s="$si" 'BEGIN { if (s <= 0) s = 1; printf "%d", a / s }')
+case "$modo" in
+    solo-esta)
+        exec wlr-randr --output "$interna" --on --output "$externa" --off ;;
+    solo-segunda)
+        exec wlr-randr --output "$externa" --on --mode "$(modo_de "$externa")" --pos 0,0 --output "$interna" --off ;;
+    extender)
+        exec wlr-randr --output "$interna" --on --pos 0,0 \
+                       --output "$externa" --on --mode "$(modo_de "$externa")" --scale 1 --pos "$logico,0" ;;
+    duplicar)
+        m=$(modo_de "$externa"); ae=${m%%x*}
+        se=$(awk -v a="$ae" -v l="$logico" 'BEGIN { s = a / l; if (s < 0.5) s = 0.5; if (s > 4) s = 4; printf "%.3f", s }')
+        exec wlr-randr --output "$interna" --on --pos 0,0 --output "$externa" --on --mode "$m" --scale "$se" --pos 0,0 ;;
+    *)
+        echo "uso: titan-proyectar solo-esta|duplicar|extender|solo-segunda|estado" >&2; exit 2 ;;
+esac

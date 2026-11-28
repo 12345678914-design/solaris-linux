@@ -1,4 +1,4 @@
-QT += quick quickcontrols2 gui
+QT += quick quickcontrols2 gui network
 CONFIG += c++17 warn_on
 TEMPLATE = app
 TARGET = titan-calc

@@ -1,0 +1,13 @@
+[Unit]
+Description=Inti OS: gestion de usuarios y grupos (socket)
+
+[Socket]
+ListenStream=/run/titan-usuarios.sock
+Accept=yes
+# Cualquiera puede preguntar; el servicio exige la contrasena de un
+# administrador (grupo wheel) en cada peticion.
+SocketMode=0666
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

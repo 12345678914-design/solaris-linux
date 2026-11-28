@@ -16,6 +16,8 @@ TitanWindow {
     minimumHeight: 480
     maximumHeight: 480
     sidebarWidth: 0
+    showSidebar: false
+    showStatusBar: false
 
     Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
@@ -122,83 +124,98 @@ TitanWindow {
                 }
             }
 
-            // Teclado
+            // Teclado: filas explícitas (un Grid daba al "0" doble ancho a toda
+            // su columna y empujaba la de operadores fuera de la ventana)
             Row {
+                id: teclado
                 width: parent.width
                 height: parent.height - 92
                 spacing: 10
 
-                // Panel Científico (opcional)
-                Grid {
+                readonly property int sep: 8
+                readonly property real bH: Math.floor((height - sep * 4) / 5)
+
+                // Panel científico (3 columnas)
+                Column {
+                    id: sciPanel
                     visible: calcWindow.isSci
-                    columns: 3
-                    spacing: 8
-                    width: 200
-                    height: parent.height
+                    width: visible ? 200 : 0
+                    spacing: teclado.sep
+                    readonly property real bW: Math.floor((width - teclado.sep * 2) / 3)
 
-                    readonly property real bW: Math.floor((width - 16) / 3)
-                    readonly property real bH: Math.floor((height - 32) / 5)
-
-                    CalcButton { text: "sin"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.trigSin() }
-                    CalcButton { text: "cos"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.trigCos() }
-                    CalcButton { text: "tan"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.trigTan() }
-
-                    CalcButton { text: "x²"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.sqrOp() }
-                    CalcButton { text: "√x"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.sqrtOp() }
-                    CalcButton { text: "xʸ"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.inputOperator("^") }
-
-                    CalcButton { text: "1/x"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.invOp() }
-                    CalcButton { text: "ln"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.lnOp() }
-                    CalcButton { text: "log"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.log10Op() }
-
-                    CalcButton { text: "π"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.constPi() }
-                    CalcButton { text: "e"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.constE() }
-                    CalcButton { text: "MC"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.memoryClear() }
-
-                    CalcButton { text: "MR"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.memoryRecall() }
-                    CalcButton { text: "M+"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.memoryAdd() }
-                    CalcButton { text: "M−"; width: parent.bW; height: parent.bH; type: "sci"; onClicked: if (calcBackend) calcBackend.memorySubtract() }
+                    Repeater {
+                        model: [
+                            [["sin", "trigSin"], ["cos", "trigCos"], ["tan", "trigTan"]],
+                            [["x²", "sqrOp"], ["√x", "sqrtOp"], ["xʸ", "^"]],
+                            [["1/x", "invOp"], ["ln", "lnOp"], ["log", "log10Op"]],
+                            [["π", "constPi"], ["e", "constE"], ["MC", "memoryClear"]],
+                            [["MR", "memoryRecall"], ["M+", "memoryAdd"], ["M−", "memorySubtract"]]
+                        ]
+                        delegate: Row {
+                            required property var modelData
+                            spacing: teclado.sep
+                            Repeater {
+                                model: parent.modelData
+                                delegate: CalcButton {
+                                    required property var modelData
+                                    text: modelData[0]
+                                    type: "sci"
+                                    width: sciPanel.bW
+                                    height: teclado.bH
+                                    onClicked: {
+                                        if (!calcBackend) return
+                                        if (modelData[1] === "^") calcBackend.inputOperator("^")
+                                        else calcBackend[modelData[1]]()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                // Panel Estándar
-                Grid {
-                    id: stdGrid
-                    columns: 4
-                    spacing: 8
-                    width: parent.width - (calcWindow.isSci ? 210 : 0)
-                    height: parent.height
+                // Panel estándar (4 columnas)
+                Column {
+                    id: stdPanel
+                    width: parent.width - (calcWindow.isSci ? sciPanel.width + teclado.spacing : 0)
+                    spacing: teclado.sep
+                    readonly property real bW: Math.floor((width - teclado.sep * 3) / 4)
 
-                    readonly property real bW: Math.floor((width - 24) / 4)
-                    readonly property real bH: Math.floor((height - 32) / 5)
-
-                    // Fila 1
-                    CalcButton { text: calcWindow.dispText !== "0" ? "C" : "AC"; width: stdGrid.bW; height: stdGrid.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.clear() }
-                    CalcButton { text: "±"; width: stdGrid.bW; height: stdGrid.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.toggleSign() }
-                    CalcButton { text: "%"; width: stdGrid.bW; height: stdGrid.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.percent() }
-                    CalcButton { text: "÷"; width: stdGrid.bW; height: stdGrid.bH; type: "op"; onClicked: if (calcBackend) calcBackend.inputOperator("÷") }
-
-                    // Fila 2
-                    CalcButton { text: "7"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: if (calcBackend) calcBackend.inputDigit("7") }
-                    CalcButton { text: "8"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: if (calcBackend) calcBackend.inputDigit("8") }
-                    CalcButton { text: "9"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: if (calcBackend) calcBackend.inputDigit("9") }
-                    CalcButton { text: "×"; width: stdGrid.bW; height: stdGrid.bH; type: "op"; onClicked: if (calcBackend) calcBackend.inputOperator("×") }
-
-                    // Fila 3
-                    CalcButton { text: "4"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("4") }
-                    CalcButton { text: "5"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("5") }
-                    CalcButton { text: "6"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("6") }
-                    CalcButton { text: "−"; width: stdGrid.bW; height: stdGrid.bH; type: "op"; onClicked: calcBackend.inputOperator("−") }
-
-                    // Fila 4
-                    CalcButton { text: "1"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("1") }
-                    CalcButton { text: "2"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("2") }
-                    CalcButton { text: "3"; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDigit("3") }
-                    CalcButton { text: "+"; width: stdGrid.bW; height: stdGrid.bH; type: "op"; onClicked: calcBackend.inputOperator("+") }
-
-                    // Fila 5
-                    CalcButton { text: "0"; width: stdGrid.bW * 2 + 8; height: stdGrid.bH; type: "num"; isWide: true; onClicked: calcBackend.inputDigit("0") }
-                    CalcButton { text: "."; width: stdGrid.bW; height: stdGrid.bH; type: "num"; onClicked: calcBackend.inputDot() }
-                    CalcButton { text: "="; width: stdGrid.bW; height: stdGrid.bH; type: "op"; onClicked: calcBackend.calculate() }
+                    Row {
+                        spacing: teclado.sep
+                        CalcButton { text: calcWindow.dispText !== "0" ? "C" : "AC"; width: stdPanel.bW; height: teclado.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.clear() }
+                        CalcButton { text: "±"; width: stdPanel.bW; height: teclado.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.toggleSign() }
+                        CalcButton { text: "%"; width: stdPanel.bW; height: teclado.bH; type: "fn"; onClicked: if (calcBackend) calcBackend.percent() }
+                        CalcButton { text: "÷"; width: stdPanel.bW; height: teclado.bH; type: "op"; onClicked: if (calcBackend) calcBackend.inputOperator("÷") }
+                    }
+                    Repeater {
+                        model: [["7", "8", "9", "×"], ["4", "5", "6", "−"], ["1", "2", "3", "+"]]
+                        delegate: Row {
+                            required property var modelData
+                            spacing: teclado.sep
+                            Repeater {
+                                model: parent.modelData
+                                delegate: CalcButton {
+                                    required property var modelData
+                                    required property int index
+                                    text: modelData
+                                    type: index === 3 ? "op" : "num"
+                                    width: stdPanel.bW
+                                    height: teclado.bH
+                                    onClicked: {
+                                        if (!calcBackend) return
+                                        if (index === 3) calcBackend.inputOperator(modelData)
+                                        else calcBackend.inputDigit(modelData)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row {
+                        spacing: teclado.sep
+                        CalcButton { text: "0"; width: stdPanel.bW * 2 + teclado.sep; height: teclado.bH; type: "num"; isWide: true; onClicked: if (calcBackend) calcBackend.inputDigit("0") }
+                        CalcButton { text: "."; width: stdPanel.bW; height: teclado.bH; type: "num"; onClicked: if (calcBackend) calcBackend.inputDot() }
+                        CalcButton { text: "="; width: stdPanel.bW; height: teclado.bH; type: "op"; onClicked: if (calcBackend) calcBackend.calculate() }
+                    }
                 }
             }
         }
@@ -213,18 +230,18 @@ TitanWindow {
         signal clicked()
 
         radius: 10
+        // Base: blanco translúcido en oscuro, gris sobre blanco en claro
+        readonly property color base: theme.isDark ? Qt.rgba(1, 1, 1, 1) : Qt.rgba(0, 0, 0, 1)
+        readonly property real nivel: type === "fn" ? (theme.isDark ? 0.22 : 0.11)
+                                    : type === "sci" ? (theme.isDark ? 0.10 : 0.05)
+                                    : (theme.isDark ? 0.13 : 0.06)
         color: {
-            if (type === "op") {
+            if (type === "op")
                 return btnMouse.pressed ? "#d67e00" : (btnMouse.containsMouse ? "#ffaa2b" : "#ff9f0a")
-            } else if (type === "fn") {
-                return btnMouse.pressed ? Qt.rgba(1, 1, 1, 0.45) : (btnMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(1, 1, 1, 0.22))
-            } else if (type === "sci") {
-                return btnMouse.pressed ? Qt.rgba(1, 1, 1, 0.25) : (btnMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10))
-            } else {
-                return btnMouse.pressed ? Qt.rgba(1, 1, 1, 0.28) : (btnMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.12))
-            }
+            var n = nivel + (btnMouse.pressed ? 0.12 : (btnMouse.containsMouse ? 0.06 : 0))
+            return Qt.rgba(base.r, base.g, base.b, n)
         }
-        border.color: theme.glassBorder
+        border.color: theme.isDark ? theme.glassBorder : Qt.rgba(0, 0, 0, 0.06)
         border.width: 1
 
         scale: btnMouse.pressed ? 0.96 : 1.0

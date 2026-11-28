@@ -15,7 +15,7 @@ punta, sin tocar el teclado de nadie:
      instalado nada.
 
 Uso:
-  ./scripts/titan-instala.sh --iso out/solaris-linux-1.8-x86_64.iso
+  ./scripts/titan-instala.sh --iso out/inti-os-1.8-x86_64.iso
   ./scripts/titan-instala.sh --iso ... --bios      # arranque por BIOS
   ./scripts/titan-instala.sh --iso ... --solo-instalar   # no prueba arrancar
 
@@ -26,7 +26,6 @@ serie queda en un fichero de log, asi que si algo falla esta el porque ahi.
 
 import argparse
 import base64
-import gzip
 import importlib.util
 import json
 import os
@@ -47,13 +46,6 @@ OVMF_VARS = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 # ignora en git, porque es parte de la prueba y no un apano.
 RESPUESTAS = os.path.join(DISTRO, "verify", "respuestas-instalacion.txt")
 
-# Lo que se comprueba de la pantalla GRAFICA del instalador. Va DENTRO del live
-# y no en la comprobacion del host (verify/comprobar-instalador.sh, seccion 6p)
-# porque lo unico que la del host no puede ver es si los PAQUETES de la ISO
-# sirven para pintar una ventana: ahi se mira el mismo fichero, pero con el
-# gtk4, el libadwaita y el cage que instala el perfil, que son otros.
-GUI_EN_VIVO = os.path.join(DISTRO, "verify", "comprobar-gui-en-vivo.sh")
-PREFIJO_GUI = "GRAFICO/"
 
 
 def respuestas() -> dict[str, str]:
@@ -141,71 +133,6 @@ def subir_texto(ser, destino: str, texto: str) -> None:
     ok, salida = ser.run(f"base64 -d {tmp} > {destino} && wc -l < {destino}")
     if not ok:
         raise SystemExit(f"no se ha podido subir {destino}: {salida}")
-
-
-def subir_texto_gz(ser, destino: str, texto: str) -> None:
-    """Como 'subir_texto', pero comprimido.
-
-    El script de la pantalla grafica son 11994 bytes, que en base64 son 15992 y
-    a 150 caracteres por linea son 107 viajes a la consola serie (y cada uno
-    tiene su eco). Medido: con 'gzip' antes de 'base64' son 43 viajes, menos de
-    la mitad. Se deja 'subir_texto' como estaba para el fichero de respuestas,
-    que es de otro tamano y no lo necesita, y porque las comprobaciones del
-    driver (comprobar-driver.py) miran las ordenes que salen a la consola.
-    """
-    crudo = gzip.compress(texto.encode(), 9)
-    b64 = base64.b64encode(crudo).decode()
-    tmp = destino + ".b64"
-    ser.run(f"rm -f {tmp} {destino}")
-    for i in range(0, len(b64), 150):
-        ser.run(f"echo {b64[i:i + 150]} >> {tmp}")
-    ok, salida = ser.run(f"base64 -d {tmp} | gzip -dc > {destino} && "
-                         f"wc -l < {destino}")
-    if not ok:
-        raise SystemExit(f"no se ha podido subir {destino}: {salida}")
-
-
-def anota_gui(inf, salida: str) -> None:
-    """Pasa al informe las lineas 'GRAFICO/<nombre>=<OK|MAL> <detalle>'.
-
-    El script del live imprime una linea por comprobacion, una de resumen, y las
-    que se llaman '<nombre>-info', que NO son comprobaciones: son hechos de la
-    maquina (si hay '/dev/dri', que paquetes hay) y no tienen nada que pasar ni
-    fallar. Anotarlas como comprobacion daria un verde que no se puede poner en
-    rojo nunca, que es justo lo que un comprobador no puede ser, asi que salen
-    como NOTA por la pantalla y no entran en el informe.
-
-    El resumen tampoco es una comprobacion (es la cuenta de las demas), asi que
-    se salta. Y si no sale ni una linea, se anota un fallo: un script que no se
-    ha ejecutado dejaria la fase en verde sin haber mirado nada. El formato es
-    'GRAFICO/<nombre>=<OK|MAL> <detalle>'; en las '-info' lo que va detras del
-    '=' es el texto entero, porque no hay veredicto que mirar.
-    """
-    vistas = 0
-    for linea in salida.splitlines():
-        linea = linea.strip()
-        if not linea.startswith(PREFIJO_GUI) or "=" not in linea:
-            continue
-        nombre, _, valor = linea[len(PREFIJO_GUI):].partition("=")
-        if nombre == "RESUMEN":
-            continue
-        veredicto, _, detalle = valor.partition(" ")
-        if nombre.endswith("-info"):
-            # Aqui 'valor' es texto entero, no un veredicto con un detalle: lo
-            # que va detras del '=' ES el texto. Partirlo en dos se comia la
-            # primera palabra (medido: 'no hay /dev/dri' salia 'hay /dev/dri').
-            print(f"    nota  {nombre}: {valor.strip()}", flush=True)
-            continue
-        vistas += 1
-        inf.anota("gui", nombre, veredicto.startswith("OK"),
-                  detalle.strip()[:100])
-    if not vistas:
-        # Sin esto, un script que no se ha ejecutado (o cuya salida se ha
-        # comido la consola) dejaria la fase en verde sin haber mirado nada.
-        inf.anota("gui", "las comprobaciones de la pantalla grafica se han "
-                         "ejecutado", False,
-                  "el script del live no ha impreso ninguna linea "
-                  f"GRAFICO/: {salida.strip()[:100]!r}")
 
 
 def entrar(ser, usuario: str, clave: str, tmo: int = 300) -> tuple[bool, str]:
@@ -992,11 +919,8 @@ def main() -> int:
         # la consola devuelve cosas de mas (restos del prompt, un eco a medias)
         # y comparar la salida ENTERA hace que la comprobacion falle por ruido y
         # no por lo que quiere mirar. Lo que importa es que la orden diga 9.
-        # Se cuentan las '.sh' y no los ficheros: el frontal grafico tambien
-        # vive ahi, y con el '__pycache__' de una prueba importandolo (fallo
-        # 43) el recuento de ficheros daba 11 y el informe salia en rojo sin
-        # que faltara nada de verdad. El frontal se comprueba por su nombre, que
-        # es mas explicito que sumarlo a la cuenta.
+        # Se cuentan las '.sh' y no los ficheros: con un '__pycache__' o un
+        # fichero de mas el recuento daria otra cosa sin que faltara nada.
         #
         # Y SIN GLOB, que es lo que se ha medido: la orden va a una shell que NO
         # es root (la del live, la de 'isai'), y el glob lo expande esa shell,
@@ -1007,10 +931,6 @@ def main() -> int:
         ok, sal = ser.run("sudo ls /root/instalador | grep -c '\\.sh$'")
         inf.anota("live", "el instalador esta en el live (sus 9 librerias)",
                   ok and re.search(r"(?m)^9$", sal) is not None, sal.strip()[:20])
-        ok, sal = ser.run("sudo test -f /root/instalador/ventana-gui.py "
-                          "&& echo SI-FRONTAL")
-        inf.anota("live", "el frontal grafico esta en el live",
-                  ok and "SI-FRONTAL" in sal)
         ok, sal = ser.run("sudo test -f /root/install.sh && echo SI-INSTALL")
         inf.anota("live", "install.sh esta en el live", ok and "SI-INSTALL" in sal)
         # Con 'sudo': sin el, el propio passwd dice que no puede ver la cuenta de
@@ -1022,21 +942,6 @@ def main() -> int:
         ok, sal = ser.run("sudo -n true && echo SUDO-OK")
         inf.anota("live", "el usuario puede usar sudo sin contrasena",
                   ok and "SUDO-OK" in sal)
-
-        # --- fase 2b: la pantalla grafica, DENTRO del live ----------------
-        # Esto no se puede hacer desde el host: que el perfil haya instalado la
-        # pila, que el permiso del frontal haya llegado a la ISO, y que el
-        # frontal pinte de verdad con los paquetes de la ISO solo se comprueba
-        # con los paquetes de la ISO. El script va comprimido porque son doce
-        # kilobytes de texto y la consola serie va a 150 caracteres por viaje.
-        print("==> fase 2b: la pantalla grafica, dentro del live", flush=True)
-        with open(GUI_EN_VIVO, encoding="utf-8") as f:
-            subir_texto_gz(ser, "/var/tmp/comprobar-gui-en-vivo.sh", f.read())
-        ok, sal = ser.run("sudo bash /var/tmp/comprobar-gui-en-vivo.sh",
-                          timeout=300)
-        anota_gui(inf, sal)
-        ser.run("sudo rm -f /var/tmp/comprobar-gui-en-vivo.sh "
-                "/var/tmp/comprobar-gui-en-vivo.sh.b64")
 
         # --- fase 3: instalar ------------------------------------------------
         print("==> fase 3: instalar (esto tarda: descarga el sistema entero)", flush=True)

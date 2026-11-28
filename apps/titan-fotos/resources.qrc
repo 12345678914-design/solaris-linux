@@ -1,9 +1,19 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Fotos.qml</file>
+        <file>qml/Visor.qml</file>
+        <file>qml/Editor.qml</file>
+        <file>qml/BotonM.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>
+        <file alias="qml/botones/BotonesActual.qml">../titan-theme/qml/botones/BotonesActual.qml</file>
+        <file alias="qml/botones/BotonesWindows.qml">../titan-theme/qml/botones/BotonesWindows.qml</file>
+        <file alias="qml/botones/BotonesCirculos.qml">../titan-theme/qml/botones/BotonesCirculos.qml</file>
+        <file alias="qml/botones/BotonesAcento.qml">../titan-theme/qml/botones/BotonesAcento.qml</file>
+        <file alias="qml/botones/BotonesCapsula.qml">../titan-theme/qml/botones/BotonesCapsula.qml</file>
+        <file alias="qml/botones/BotonesContorno.qml">../titan-theme/qml/botones/BotonesContorno.qml</file>
+        <file alias="qml/botones/BotonesColor.qml">../titan-theme/qml/botones/BotonesColor.qml</file>
         <file>icons/pictures.png</file>
         <file>icons/desktop.png</file>
         <file>icons/downloads.png</file>

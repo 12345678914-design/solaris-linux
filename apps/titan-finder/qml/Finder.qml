@@ -4,9 +4,11 @@ import QtQuick.Controls 2.15
 TitanWindow {
     id: finderWindow
 
-    title: "Finder - " + finderBackend.currentPathName
+    title: (finderBackend.enPapelera ? "Papelera" : finderBackend.currentPathName) + " — Explorador de archivos"
     expandedSidebarWidth: 200
     collapsedSidebarWidth: 54
+    // En media pantalla o en el mosaico la barra lateral se queda en iconos
+    anchoPlegarBarra: 720
 
     // Atajos de teclado estilo macOS
     Shortcut {
@@ -33,442 +35,362 @@ TitanWindow {
         sequence: "F5"
         onActivated: finderBackend.refresh()
     }
-    Shortcut {
-        sequence: "Ctrl+T"
-        onActivated: finderBackend.openTerminal()
+    // Pestañas como en Windows 11; la Terminal pasa a Ctrl+Alt+T
+    Shortcut { sequence: "Ctrl+Alt+T"; onActivated: finderBackend.openTerminal() }
+    Shortcut { sequence: "Ctrl+T"; onActivated: finderBackend.nuevaPestana() }
+    Shortcut { sequence: "Ctrl+N"; onActivated: finderBackend.abrirEnVentanaNueva(finderBackend.currentPath) }
+    Shortcut { sequences: ["Ctrl+W", "Ctrl+F4"]; onActivated: finderWindow.cerrarPestana(finderBackend.pestanaActual) }
+    Shortcut { sequences: ["Ctrl+Tab", "Ctrl+PgDown"]; onActivated: finderBackend.irAPestana((finderBackend.pestanaActual + 1) % finderBackend.pestanas.length) }
+    Shortcut { sequences: ["Ctrl+Shift+Tab", "Ctrl+PgUp"]; onActivated: finderBackend.irAPestana((finderBackend.pestanaActual + finderBackend.pestanas.length - 1) % finderBackend.pestanas.length) }
+    function cerrarPestana(i) {
+        if (!finderBackend.cerrarPestana(i)) finderWindow.close()   // era la última
     }
     Shortcut {
         sequence: "Ctrl+Shift+N"
         onActivated: fileList.openNewFolderDialog()
     }
-    Shortcut {
-        sequences: [ StandardKey.Copy ]
-        onActivated: {
-            if (fileList.selectedPath.length > 0) {
-                finderBackend.copyItem(fileList.selectedPath)
-            }
+    Shortcut { sequence: "Ctrl+I"; onActivated: fileList.openProperties(fileList.selectedPath) }
+    Shortcut { sequence: "Alt+P"; onActivated: finderBackend.panelDetalles = !finderBackend.panelDetalles }
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; onActivated: direccion.editar() }
+    Shortcut { sequences: ["Ctrl+F", "Ctrl+E"]; onActivated: searchInput.forceActiveFocus() }
+
+    component BotonNav: Rectangle {
+        id: bn
+        property string icono: ""
+        property bool activo: true
+        property string pista: ""
+        signal pulsado()
+        width: 30; height: 28; radius: 6
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        opacity: activo ? 1 : 0.35
+        color: zn.containsMouse && activo ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.07)) : "transparent"
+        Icono { anchors.centerIn: parent; nombre: bn.icono; color: theme.headerText }
+        MouseArea {
+            id: zn
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: bn.activo
+            cursorShape: bn.activo ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: bn.pulsado()
         }
-    }
-    Shortcut {
-        sequences: [ StandardKey.Paste ]
-        onActivated: {
-            if (finderBackend.hasClipboard) {
-                finderBackend.paste()
-            }
-        }
-    }
-    Shortcut {
-        sequence: "Ctrl+I"
-        onActivated: fileList.openProperties(fileList.selectedPath)
-    }
-    Shortcut {
-        sequence: "Delete"
-        onActivated: {
-            if (fileList.selectedPath.length > 0) {
-                finderBackend.deleteItem(fileList.selectedPath)
-            }
-        }
+        ToolTip.visible: zn.containsMouse && pista !== ""
+        ToolTip.delay: 600
+        ToolTip.text: pista
     }
 
-    // 1. CONTENIDO DE LA BARRA SUPERIOR (TOOLBAR / PANEL NORMAL CON BLUR)
+    // 1. BARRA SUPERIOR: navegación, dirección (ruta en botones) y búsqueda
     headerContentData: Item {
         anchors.fill: parent
 
-        // Izquierda: Botón Sidebar, Navegación y Título de carpeta
         Row {
+            id: navegacion
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: 2
 
-            // Botón para comprimir / expandir la barra lateral
-            Rectangle {
-                width: 28; height: 26; radius: 5
-                anchors.verticalCenter: parent.verticalCenter
-                color: sidebarToggleMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                border.color: theme.glassBorder
-                border.width: 1
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 2
-                    Rectangle {
-                        width: 5; height: 12; radius: 1
-                        color: !finderWindow.sidebarCollapsed ? theme.accent : theme.contentTextSecondary
-                    }
-                    Rectangle {
-                        width: 10; height: 12; radius: 1
-                        color: "transparent"
-                        border.color: !finderWindow.sidebarCollapsed ? theme.accent : theme.contentTextSecondary
-                        border.width: 1
-                    }
-                }
-
-                MouseArea {
-                    id: sidebarToggleMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: finderWindow.sidebarCollapsed = !finderWindow.sidebarCollapsed
-                }
+            BotonNav {
+                icono: "panel"; pista: "Mostrar u ocultar el panel de navegación"
+                onPulsado: finderWindow.sidebarCollapsed = !finderWindow.sidebarCollapsed
             }
-
-            // Botones de Navegación (Atrás, Adelante, Subir)
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-
-                // Botón Atrás
-                Rectangle {
-                    width: 28; height: 26; radius: 5
-                    color: backMouse.containsMouse && finderBackend.canGoBack ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                    opacity: finderBackend.canGoBack ? 1.0 : 0.35
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "‹"
-                        color: theme.headerText
-                        font.pixelSize: 18
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        id: backMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: finderBackend.canGoBack ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: finderBackend.goBack()
-                    }
-                }
-
-                // Botón Adelante
-                Rectangle {
-                    width: 28; height: 26; radius: 5
-                    color: fwdMouse.containsMouse && finderBackend.canGoForward ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                    opacity: finderBackend.canGoForward ? 1.0 : 0.35
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "›"
-                        color: theme.headerText
-                        font.pixelSize: 18
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        id: fwdMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: finderBackend.canGoForward ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: finderBackend.goForward()
-                    }
-                }
-
-                // Botón Subir nivel
-                Rectangle {
-                    width: 28; height: 26; radius: 5
-                    color: upMouse.containsMouse && finderBackend.canGoUp ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                    opacity: finderBackend.canGoUp ? 1.0 : 0.35
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "▲"
-                        color: theme.headerText
-                        font.pixelSize: 10
-                    }
-
-                    MouseArea {
-                        id: upMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: finderBackend.canGoUp ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: finderBackend.goUp()
-                    }
-                }
-            }
-
-            // Título de la carpeta activa
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: finderBackend.currentPathName
-                color: theme.headerText
-                font.pixelSize: 13
-                font.bold: true
-                elide: Text.ElideRight
-                width: Math.min(160, implicitWidth)
-            }
+            Item { width: 6; height: 1 }
+            BotonNav { icono: "atras"; activo: finderBackend.canGoBack; pista: "Atrás (Alt+←)"; onPulsado: finderBackend.goBack() }
+            BotonNav { icono: "adelante"; activo: finderBackend.canGoForward; pista: "Adelante (Alt+→)"; onPulsado: finderBackend.goForward() }
+            BotonNav { icono: "arriba"; activo: finderBackend.canGoUp; pista: "Subir un nivel"; onPulsado: finderBackend.goUp() }
+            BotonNav { icono: "recargar"; pista: "Actualizar (F5)"; onPulsado: finderBackend.refresh() }
         }
 
-        // Centro: Barra de búsqueda Spotlight con soporte completo de modo oscuro/claro
+        // Dirección: la ruta en botones; con un clic en el hueco se escribe
         Rectangle {
-            anchors.centerIn: parent
-            width: Math.max(180, Math.min(260, parent.width - 440))
-            height: 28
+            id: direccion
+            anchors.left: navegacion.right
+            anchors.leftMargin: 10
+            anchors.right: buscador.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            height: 30
             radius: 7
-            color: theme.isDark ? "#24252a" : "#ffffff"
-            border.color: searchInput.activeFocus ? theme.accent : theme.glassBorder
-            border.width: searchInput.activeFocus ? 1.5 : 1
+            color: theme.isDark ? "#1c1c1f" : "#ffffff"
+            border.color: campoRuta.activeFocus ? theme.accent : theme.glassBorder
+            border.width: campoRuta.activeFocus ? 1.5 : 1
+            property bool escribiendo: false
+            function editar() {
+                campoRuta.text = finderBackend.currentPath
+                escribiendo = true
+                campoRuta.forceActiveFocus()
+                campoRuta.selectAll()
+            }
 
-            Behavior on border.color { ColorAnimation { duration: 140 } }
-
-            Row {
+            MouseArea {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 6
-
-                Item {
-                    width: 14; height: 14
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Canvas {
-                        id: searchIcon
-                        anchors.fill: parent
-                        onPaint: {
-                            var ctx = getContext("2d");
-                            ctx.reset();
-                            ctx.strokeStyle = searchInput.activeFocus ? theme.accent : theme.contentTextSecondary;
-                            ctx.lineWidth = 1.6;
-                            ctx.lineCap = "round";
-
-                            ctx.beginPath();
-                            ctx.arc(5.5, 5.5, 4.0, 0, Math.PI * 2);
-                            ctx.stroke();
-
-                            ctx.beginPath();
-                            ctx.moveTo(8.5, 8.5);
-                            ctx.lineTo(12.5, 12.5);
-                            ctx.stroke();
+                cursorShape: Qt.IBeamCursor
+                onClicked: direccion.editar()
+            }
+            Icono {
+                id: icDir
+                x: 10
+                anchors.verticalCenter: parent.verticalCenter
+                nombre: "casa"
+                color: theme.contentTextSecondary
+            }
+            Flickable {
+                id: migas
+                visible: !direccion.escribiendo
+                anchors.left: icDir.right
+                anchors.leftMargin: 4
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                height: parent.height
+                contentWidth: filaMigas.width
+                clip: true
+                interactive: false
+                // Si la ruta no cabe se ve el final (la carpeta actual)
+                contentX: Math.max(0, contentWidth - width)
+                Row {
+                    id: filaMigas
+                    height: parent.height
+                    Repeater {
+                        model: finderBackend.enPapelera ? [{ name: "Papelera", path: finderBackend.currentPath }] : finderBackend.pathSegments
+                        delegate: Row {
+                            required property var modelData
+                            required property int index
+                            height: filaMigas.height
+                            Text {
+                                visible: index > 0
+                                text: "›"
+                                color: theme.contentTextSecondary
+                                font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                leftPadding: 1; rightPadding: 1
+                            }
+                            Rectangle {
+                                height: 22; radius: 5
+                                width: miga.implicitWidth + 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: zMiga.containsMouse ? theme.itemHover : "transparent"
+                                Text {
+                                    id: miga
+                                    anchors.centerIn: parent
+                                    text: modelData.name
+                                    color: theme.contentTextPrimary
+                                    font.pixelSize: 12
+                                    font.weight: index === finderBackend.pathSegments.length - 1 ? Font.DemiBold : Font.Normal
+                                }
+                                MouseArea {
+                                    id: zMiga
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: finderBackend.goTo(modelData.path)
+                                }
+                            }
                         }
-                        Connections {
-                            target: searchInput
-                            function onActiveFocusChanged() { searchIcon.requestPaint(); }
-                        }
-                    }
-                }
-
-                TextField {
-                    id: searchInput
-                    width: parent.width - 38
-                    anchors.verticalCenter: parent.verticalCenter
-                    placeholderText: "Buscar..."
-                    font.pixelSize: 11
-                    color: theme.contentTextPrimary
-                    background: null
-                    placeholderTextColor: theme.contentTextSecondary
-                    text: finderBackend.searchQuery
-                    onTextChanged: finderBackend.searchQuery = text
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: searchInput.text.length > 0
-                    text: "✕"
-                    color: theme.contentTextSecondary
-                    font.pixelSize: 10
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: searchInput.text = ""
                     }
                 }
             }
+            TextField {
+                id: campoRuta
+                visible: direccion.escribiendo
+                anchors.left: icDir.right
+                anchors.leftMargin: 4
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                font.pixelSize: 12
+                color: theme.contentTextPrimary
+                background: null
+                selectByMouse: true
+                onAccepted: { finderBackend.goTo(text.trim()); direccion.escribiendo = false; fileList.forceActiveFocus() }
+                onActiveFocusChanged: if (!activeFocus) direccion.escribiendo = false
+                Keys.onEscapePressed: { direccion.escribiendo = false; fileList.forceActiveFocus() }
+            }
         }
 
-        // Derecha: Botones de acciones
-        Row {
+        // Búsqueda en la carpeta abierta
+        Rectangle {
+            id: buscador
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
+            width: Math.max(150, Math.min(250, parent.width * 0.28))
+            height: 30
+            radius: 7
+            color: theme.isDark ? "#1c1c1f" : "#ffffff"
+            border.color: searchInput.activeFocus ? theme.accent : theme.glassBorder
+            border.width: searchInput.activeFocus ? 1.5 : 1
+            Behavior on border.color { ColorAnimation { duration: 140 } }
 
-            // Botón Nueva Carpeta (+)
-            Rectangle {
+            Icono {
+                id: icLupa
+                x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 30; height: 26; radius: 5
-                color: newFolderMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                border.color: theme.glassBorder
-                border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "+"
-                    color: theme.headerText
-                    font.pixelSize: 16
-                    font.bold: true
-                }
-
-                MouseArea {
-                    id: newFolderMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: fileList.openNewFolderDialog()
-                }
+                nombre: "lupa"
+                color: searchInput.activeFocus ? theme.accent : theme.contentTextSecondary
             }
-
-            // Botón Eliminar elemento seleccionado (Papelera)
-            Rectangle {
+            TextField {
+                id: searchInput
+                anchors.left: icLupa.right
+                anchors.leftMargin: 4
+                anchors.right: borrarBusqueda.left
                 anchors.verticalCenter: parent.verticalCenter
-                width: 30; height: 26; radius: 5
-                color: deleteToolbarMouse.containsMouse && fileList.selectedPath.length > 0
-                       ? Qt.rgba(0.9, 0.2, 0.2, 0.25)
-                       : (theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04))
-                border.color: theme.glassBorder
-                border.width: 1
-                opacity: fileList.selectedPath.length > 0 ? 1.0 : 0.4
-
-                Image {
-                    source: "qrc:/icons/trash.png"
-                    anchors.centerIn: parent
-                    width: 15; height: 15
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                }
-
-                MouseArea {
-                    id: deleteToolbarMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: fileList.selectedPath.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: {
-                        if (fileList.selectedPath.length > 0) {
-                            finderBackend.deleteItem(fileList.selectedPath)
-                        }
-                    }
-                }
+                placeholderText: "Buscar en " + (finderBackend.enPapelera ? "Papelera" : finderBackend.currentPathName)
+                font.pixelSize: 12
+                color: theme.contentTextPrimary
+                background: null
+                placeholderTextColor: theme.contentTextSecondary
+                text: finderBackend.searchQuery
+                onTextChanged: finderBackend.searchQuery = text
+                Keys.onEscapePressed: { text = ""; fileList.forceActiveFocus() }
+                Keys.onDownPressed: { fileList.forceActiveFocus(); fileList.irA(0, false) }
             }
-
-            // Botón Abrir Terminal (>_)
-            Rectangle {
+            Text {
+                id: borrarBusqueda
+                anchors.right: parent.right
+                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 30; height: 26; radius: 5
-                color: termMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                border.color: theme.glassBorder
-                border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: ">_"
-                    color: theme.accent
-                    font.pixelSize: 11
-                    font.bold: true
-                }
-
+                width: searchInput.text.length > 0 ? implicitWidth : 0
+                visible: searchInput.text.length > 0
+                text: "✕"
+                color: theme.contentTextSecondary
+                font.pixelSize: 11
                 MouseArea {
-                    id: termMouse
                     anchors.fill: parent
-                    hoverEnabled: true
+                    anchors.margins: -6
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: finderBackend.openTerminal()
-                }
-            }
-
-            // Botón Archivos Ocultos (.*)
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 30; height: 26; radius: 5
-                color: finderBackend.showHiddenFiles ? theme.accent :
-                       hiddenMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                border.color: finderBackend.showHiddenFiles ? theme.accent : theme.glassBorder
-                border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: ".*"
-                    color: finderBackend.showHiddenFiles ? "#ffffff" : theme.headerText
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                MouseArea {
-                    id: hiddenMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: finderBackend.showHiddenFiles = !finderBackend.showHiddenFiles
+                    onClicked: searchInput.text = ""
                 }
             }
         }
     }
 
-    // 2. SIDEBAR TRANSLÚCIDO
+    // 2. PANEL DE NAVEGACIÓN (acceso rápido, este equipo, dispositivos)
     sidebarContentData: Sidebar {
         anchors.fill: parent
+        lista: fileList
     }
 
-    // 3. CONTENIDO CENTRAL SÓLIDO BLANCO
-    FileList {
-        id: fileList
+    // 3. CONTENIDO: barra de comandos, archivos y panel de detalles
+    Item {
         anchors.fill: parent
+
+        // Pestañas: arrastrarlas para ordenarlas, a otra ventana del Explorador
+        // para juntarlas, o fuera de la ventana para separarlas (como Windows)
+        Pestanas {
+            id: pestanas
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            alCerrar: function (i) { finderWindow.cerrarPestana(i) }
+            alQuedarseSin: function () { finderWindow.close() }
+        }
+
+        BarraComandos {
+            id: comandos
+            anchors.top: pestanas.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            lista: fileList
+            z: 2
+        }
+
+        FileList {
+            id: fileList
+            anchors.top: comandos.bottom
+            anchors.left: parent.left
+            anchors.right: detalles.visible ? detalles.left : parent.right
+            anchors.bottom: parent.bottom
+        }
+
+        PanelDetalles {
+            id: detalles
+            visible: finderBackend.panelDetalles && parent.width > 620
+            anchors.top: comandos.bottom
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            width: Math.min(290, Math.max(230, parent.width * 0.3))
+            lista: fileList
+        }
     }
 
-    // 4. BARRA DE ESTADO INFERIOR
+    // 4. BARRA DE ESTADO: elementos, selección y espacio libre
     statusBarContentData: Item {
         anchors.fill: parent
         anchors.leftMargin: 12
         anchors.rightMargin: 12
 
-        // Segmentos interactivos de la ruta
-        Row {
+        Text {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
-            width: parent.width - 240
-
-            Repeater {
-                model: finderBackend.pathSegments
-                delegate: Row {
-                    spacing: 4
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                        text: modelData.name
-                        color: segMouse.containsMouse ? theme.accent : theme.contentTextSecondary
-                        font.pixelSize: 10
-                        font.weight: index === finderBackend.pathSegments.length - 1 ? Font.Bold : Font.Normal
-
-                        MouseArea {
-                            id: segMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: finderBackend.goTo(modelData.path)
-                        }
-                    }
-
-                    Text {
-                        visible: index < finderBackend.pathSegments.length - 1
-                        text: "›"
-                        color: Qt.rgba(0, 0, 0, 0.25)
-                        font.pixelSize: 10
-                    }
-                }
-            }
+            text: (finderBackend.buscando ? "Buscando en las subcarpetas…      " : "")
+                  + finderBackend.totalItemsText
+                  + (fileList.nSel > 0 ? "      " + fileList.nSel + (fileList.nSel === 1 ? " elemento seleccionado" : " elementos seleccionados") : "")
+            color: theme.contentTextSecondary
+            font.pixelSize: 11
         }
-
-        Item { width: 10; height: 1 }
-
-        // Cantidad de elementos y espacio libre
         Row {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             spacing: 12
-
-            Text {
-                text: finderBackend.totalItemsText
-                color: theme.contentTextSecondary
-                font.pixelSize: 10
+            BotonNav {
+                width: 24; height: 20
+                icono: "iconos"; pista: "Iconos grandes"
+                color: finderBackend.viewMode === "grid" ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.25) : "transparent"
+                onPulsado: finderBackend.viewMode = "grid"
             }
-
-            Text {
-                text: "•"
-                color: Qt.rgba(0, 0, 0, 0.25)
-                font.pixelSize: 10
+            BotonNav {
+                width: 24; height: 20
+                icono: "lista"; pista: "Lista con detalles"
+                color: finderBackend.viewMode === "list" ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.25) : "transparent"
+                onPulsado: finderBackend.viewMode = "list"
             }
-
             Text {
+                visible: !finderBackend.enRecientes
+                anchors.verticalCenter: parent.verticalCenter
                 text: finderBackend.freeSpaceText
                 color: theme.contentTextSecondary
-                font.pixelSize: 10
+                font.pixelSize: 11
             }
         }
     }
+
+    // Pestañas soltadas en esta ventana (de otra ventana o de la misma)
+    DropArea {
+        id: soltarPestana
+        // Toda la ventana (barra lateral, título y barra de estado incluidas)
+        parent: finderWindow.contentItem
+        anchors.fill: parent
+        z: 1000
+        keys: ["application/x-inti-pestana"]
+        function enTira(x, y) {
+            const p = pestanas.mapFromItem(soltarPestana, x, y)
+            return p.y >= 0 && p.y < pestanas.height && p.x >= 0 && p.x < pestanas.width ? pestanas.indiceEn(p.x) : -1
+        }
+        onPositionChanged: pestanas.destino = enTira(drag.x, drag.y)
+        onExited: pestanas.destino = -1
+        onDropped: (drop) => {
+            const sitio = enTira(drop.x, drop.y)
+            pestanas.destino = -1
+            if (pestanas.origen >= 0) {
+                // De esta misma ventana: cambiar el orden
+                pestanas.soltadaAqui = true
+                if (sitio >= 0) finderBackend.moverPestana(pestanas.origen, sitio > pestanas.origen ? sitio - 1 : sitio)
+                drop.accept(Qt.CopyAction)
+                return
+            }
+            if (finderBackend.recibirPestana(drop.getDataAsString("application/x-inti-pestana"), sitio))
+                drop.accept(Qt.MoveAction)
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: soltarPestana.containsDrag && pestanas.origen < 0
+            color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.08)
+            border.color: theme.accent
+            border.width: 2
+            radius: 6
+            Text {
+                anchors.centerIn: parent
+                text: "Suelta para juntar la pestaña con esta ventana"
+                color: theme.accent
+                font.pixelSize: 14; font.bold: true
+            }
+        }
+    }
+
 }

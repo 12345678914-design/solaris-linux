@@ -6,24 +6,9 @@
 # (log, errores, preguntas, y el sitio donde se guardan las respuestas que
 # el usuario va eligiendo).
 #
-# El instalador tiene DOS pantallas y UN motor. La de texto (dialog, ncurses)
-# es la de siempre y funciona en cualquier equipo: sin tarjeta grafica, en una
-# VM sin display, desde el puerto serie, y se puede verificar sin pantalla (que
-# es como lo comprueban las comprobaciones automaticas). La grafica (GTK4 con
-# libadwaita) se pide con 'install.sh --grafico' y solo se usa si hay pantalla;
-# si la ventana grafica no se abre, se cae al texto sin perder nada.
-#
-# El motor es el mismo en los dos casos y no se escribe dos veces: las dos
-# pantallas reciben los mismos argumentos y contestan con el mismo contrato.
-# La frontera es 'ventana()', mas abajo, que es lo unico que llama a 'dialog' o
-# a 'ventana-gui.py'.
-
-# El frontal grafico, al lado de esta libreria. El sitio se saca de
-# 'BASH_SOURCE' y no de una ruta fija porque el comprobador carga este fichero
-# desde donde sea, y una ruta fija haria que la ventana grafica se buscara en un
-# sitio que depende de donde se haya instalado.
-GUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-GUI_VENTANA="${GUI_DIR}/ventana-gui.py"
+# Las preguntas se hacen con 'dialog' (ncurses), que funciona en cualquier
+# equipo: sin tarjeta grafica, en una VM sin display y desde el puerto serie.
+# El instalador grafico es otro programa, 'titan-installer' (Qt 6).
 # ---------------------------------------------------------------------------
 
 # Idioma de los mensajes del instalador. Sin esto, dialog (ncurses) saca
@@ -193,40 +178,10 @@ leer_respuestas() {
 # error, y ese juego de descriptores manda la salida de error al sitio donde se
 # recoge el valor, dejando la terminal para el dibujo. Comprobado con las dos
 # cajas: --inputbox devuelve el texto tecleado tal cual, sin un solo escape.
-# Las dos pantallas del instalador, y como se elige una.
-#
-#   ventana() -> GTK4 con libadwaita (instalador/ventana-gui.py) cuando
-#                TITAN_GUI=1 y hay pantalla, y 'dialog' (ncurses) si no.
-#                El grafico se pide con 'install.sh --grafico'.
-#   ventana() -> 'dialog' cuando TITAN_GUI no esta puesto, que es el modo de
-#                texto: lo que se usa desde un terminal, desde una consola sin
-#                graficos, y en las comprobaciones automaticas.
-#
-# Las dos reciben la MISMA lista de argumentos y contestan con el MISMO
-# contrato (respuesta por la salida de error, codigo 0 aceptada, 1 cancelada,
-# 2 'esta ventana no se ha podido abrir'). Un tercer codigo, el 2, es lo
-# unico que esta funcion traduce: cae al modo de texto. Sin el, un frontal
-# grafico que no arranca haria que el motor creyera que el usuario ha
-# cancelado, y el instalador seguiria entero con todos los valores por defecto
-# sin decir ni una palabra (por eso ventana-gui.py no deja que un error al
-# pintar se convierta en un cancelado: lo cuenta como fallo y lo dice).
-#
-# Y al caer al modo de texto, el grafico no puede haber escrito nada en el
-# descriptor por el que el motor lee la respuesta. Por eso el diagnostico de
-# ventana-gui.py va a la salida estandar (que el motor saca por pantalla) y
-# GTK no puede escribir un solo aviso en la salida de error.
+# ventana() es lo unico que llama a 'dialog'. Las preguntas pasan por aqui y no
+# por 'dialog' directamente para que las comprobaciones puedan poner un
+# 'dialog' de mentira delante y ver el vector de argumentos exacto.
 ventana() {
-  if [[ "${TITAN_GUI:-0}" == "1" ]] && [[ -x "${GUI_VENTANA}" ]]; then
-    local rc=0
-    "${GUI_VENTANA}" "$@" || rc=$?
-    # Cualquier codigo menos de 2 es una respuesta de verdad del usuario (0
-    # aceptada, 1 cancelada) y se propaga tal cual. Solo el 2 es un fallo de
-    # este frontal, y ahi se abre la ventana de texto.
-    if [[ "${rc}" -ne 2 ]]; then
-      return "${rc}"
-    fi
-    aviso "la ventana grafica no se ha podido abrir; se sigue en modo de texto"
-  fi
   dialog "$@" || return $?
 }
 

@@ -1,6 +1,7 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <RCC>
     <qresource prefix="/">
+        <file>datos/emojis.json</file>
         <file>qml/Shell.qml</file>
         <file>qml/TopBar.qml</file>
         <file>qml/GlassPanel.qml</file>
@@ -11,15 +12,29 @@
         <file>qml/WallpaperPicker.qml</file>
         <file>qml/ControlCenter.qml</file>
         <file>qml/NotificationCenter.qml</file>
+        <file>qml/Calendario.qml</file>
         <file>qml/DynamicIsland.qml</file>
+        <file>qml/Caratula.qml</file>
+        <file>qml/BotonMedio.qml</file>
+        <file>qml/AvisosBloqueo.qml</file>
+        <file>qml/CambiadorVentanas.qml</file>
+        <file>qml/PanelSistema.qml</file>
         <file>qml/WorkspacesView.qml</file>
         <file>qml/BootSplash.qml</file>
         <file>qml/LockScreen.qml</file>
         <file>qml/WindowDecorations.qml</file>
         <file>qml/TrafficLights.qml</file>
         <file>qml/ContextMenu.qml</file>
+        <file alias="qml/PanelUsuarios.qml">../titan-greeter/qml/PanelUsuarios.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file>icons/solaris-logo.png</file>
+        <file>icons/simbolos/apagar.svg</file>
+        <file>icons/simbolos/candado.svg</file>
+        <file>icons/simbolos/flecha.svg</file>
+        <file>icons/simbolos/reiniciar.svg</file>
+        <file>icons/simbolos/reposo.svg</file>
+        <file>icons/simbolos/usuario.svg</file>
+        <file>icons/simbolos/usuarios.svg</file>
         <file>icons/finder.png</file>
         <file>icons/launchpad.png</file>
         <file>icons/terminal.png</file>
@@ -55,6 +70,7 @@
         <file>icons/file-video.png</file>
         <file>icons/file-exec.png</file>
         <file>icons/calculator.png</file>
+        <file>icons/monitor.png</file>
         <file>icons/calendar.png</file>
         <file>icons/clock.png</file>
         <file>icons/video.png</file>

@@ -1,0 +1,56 @@
+#!/bin/sh
+# Inti OS - ratón y panel táctil también en labwc (la sesión de respaldo).
+#
+# Ajustes > Ratón y panel táctil guarda todo en la sección [input] de
+# ~/.config/wayfire.ini (Wayfire lo aplica al momento). labwc no lee ese
+# fichero: este programa copia esos valores a <libinput> de
+# ~/.config/labwc/rc.xml y, si labwc está en marcha, le pide recargar.
+# Lo llaman Ajustes al cambiar algo y titan-sesion al entrar.
+set -u
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+wf="$dir/wayfire.ini"
+rc="$dir/labwc/rc.xml"
+[ -f "$rc" ] || exit 0
+
+valor() { # valor clave defecto
+    v=$(awk -F= -v k="$1" '/^\[/{s=($0=="[input]")} s{c=$1; gsub(/[ \t]/,"",c); if(c==k){x=$2; gsub(/[ \t]/,"",x); print x}}' "$wf" 2>/dev/null | tail -n 1)
+    printf '%s' "${v:-$2}"
+}
+sino() { [ "$(valor "$1" "$2")" = true ] && echo yes || echo no; }
+velocidad() { # entre -1 y 1, como libinput
+    v=$(valor "$1" 0)
+    case "$v" in ''|*[!0-9.-]*) v=0 ;; esac
+    printf '%s' "$v"
+}
+
+bloque=$(cat <<EOF
+  <libinput>
+    <!-- Lo escribe titan-raton-labwc desde Ajustes; no se edita a mano -->
+    <device category="non-touch">
+      <pointerSpeed>$(velocidad mouse_cursor_speed)</pointerSpeed>
+      <naturalScroll>$(sino mouse_natural_scroll false)</naturalScroll>
+      <leftHanded>$(sino left_handed_mode false)</leftHanded>
+    </device>
+    <device category="touchpad">
+      <pointerSpeed>$(velocidad touchpad_cursor_speed)</pointerSpeed>
+      <naturalScroll>$(sino natural_scroll true)</naturalScroll>
+      <tap>$(sino tap_to_click true)</tap>
+      <disableWhileTyping>$(sino disable_touchpad_while_typing true)</disableWhileTyping>
+      <leftHanded>$(sino left_handed_mode false)</leftHanded>
+    </device>
+  </libinput>
+EOF
+)
+
+# Quita el <libinput> que hubiera y pone el nuevo antes de </labwc_config>
+awk -v bloque="$bloque" '
+    /<libinput>/ { dentro = 1 }
+    dentro { if (/<\/libinput>/) dentro = 0; next }
+    /<\/labwc_config>/ { print bloque }
+    { print }
+' "$rc" > "$rc.nuevo" && mv "$rc.nuevo" "$rc"
+
+if [ "${XDG_CURRENT_DESKTOP:-}" = "Titan:labwc" ] && command -v labwc >/dev/null 2>&1; then
+    labwc --reconfigure 2>/dev/null || true
+fi
+exit 0

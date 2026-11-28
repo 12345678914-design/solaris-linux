@@ -1,0 +1,11 @@
+/* Inti OS - botones de ventana: Circulos grises. GTK 3. */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 22px; min-height: 22px; margin: 0 3px; padding: 0;
+  border: none; border-radius: 100%; background-image: none; box-shadow: none;
+  background-color: alpha(currentColor, 0.10); -gtk-icon-shadow: none; -gtk-icon-transform: scale(0.8);
+  transition: background-color 100ms ease-out;
+}
+headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover { background-color: alpha(currentColor, 0.17); }
+headerbar button.titlebutton:active, .titlebar button.titlebutton:active { background-color: alpha(currentColor, 0.25); }
+headerbar:backdrop button.titlebutton, .titlebar:backdrop button.titlebutton { color: alpha(currentColor, 0.5); }

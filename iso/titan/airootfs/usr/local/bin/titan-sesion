@@ -1,0 +1,162 @@
+#!/bin/sh
+# Inti OS - arranque de la sesion grafica (comun a labwc y Wayfire).
+# Lo llaman ~/.config/labwc/autostart y la seccion [autostart] de wayfire.ini.
+export PATH="/usr/local/bin:$PATH"
+
+# Registros de ESTA cuenta. Antes iban a /tmp/titan-*.log, comunes a todas:
+# con dos personas dentro (Cambiar de usuario), la segunda no podia
+# escribirlos (son de la primera) y ni el escritorio ni el Dock arrancaban.
+registros="${XDG_RUNTIME_DIR:-/tmp/titan-$(id -u)}"
+mkdir -p "$registros" 2>/dev/null
+
+# Entorno de la sesion para D-Bus y systemd ANTES de arrancar nada: si el
+# portal de apariencia (xdg-desktop-portal) se activaba sin XDG_CURRENT_DESKTOP
+# no encontraba titan-portals.conf y no avisaba del cambio claro/oscuro
+# (Firefox solo cambiaba al reiniciarlo). Si ya estaba en marcha, se reinicia.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP \
+    XDG_SESSION_TYPE XDG_SESSION_DESKTOP 2>/dev/null ||
+    dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE 2>/dev/null
+systemctl --user try-restart xdg-desktop-portal-gtk.service xdg-desktop-portal.service >/dev/null 2>&1 &
+
+# 0.0 Poner al dia el wayfire.ini de cuentas creadas con versiones anteriores
+#     (una sola vez por cuenta; solo toca estas lineas):
+#     - sin cambio de escritorio al dejar una ventana en el borde (al acoplarla
+#       a media pantalla mandaba la ventana al escritorio de al lado)
+#     - Win+Mayus+numero mueve la ventana a ese escritorio; grabar pasa a Win+Alt+R
+wf="${XDG_CONFIG_HOME:-$HOME/.config}/wayfire.ini"
+hecho="${XDG_CONFIG_HOME:-$HOME/.config}/titan/migracion-escritorios-1"
+if [ -f "$wf" ] && [ ! -e "$hecho" ]; then
+    sed -i -e 's/^workspace_switch_after = 600$/workspace_switch_after = -1/' \
+           -e 's/^binding_captura_mac = <super> <shift> KEY_3$/binding_captura_mac = none/' \
+           -e 's/^binding_captura_area_mac = <super> <shift> KEY_4$/binding_captura_area_mac = none/' \
+           -e 's/^binding_grabar = <super> <shift> KEY_5$/binding_grabar = <super> <alt> KEY_R/' \
+           -e 's/^binding_grabar_area = <super> <shift> KEY_6$/binding_grabar_area = <super> <alt> <shift> KEY_R/' "$wf"
+    if ! grep -q '^binding_mover_1 ' "$wf" && grep -q '^command_grabar_area ' "$wf"; then
+        lineas=""
+        for n in 1 2 3 4 5 6 7 8; do
+            lineas="${lineas}binding_mover_$n = <super> <shift> KEY_$n\\ncommand_mover_$n = titan-shell --tecla mover-$n\\n"
+        done
+        sed -i "/^command_grabar_area /a\\
+$(printf '%b' "$lineas" | sed 's/$/\\/' | sed '$ s/\\$//')" "$wf"
+    fi
+    mkdir -p "$(dirname "$hecho")" && : > "$hecho"
+fi
+
+# 0. Servidor de audio PipeWire y WirePlumber (Hardware real y emulado)
+if command -v pipewire >/dev/null 2>&1; then
+    pgrep -u "$(id -u)" -x pipewire >/dev/null 2>&1 || pipewire &
+    sleep 0.3
+    pgrep -u "$(id -u)" -x pipewire-pulse >/dev/null 2>&1 || pipewire-pulse &
+    sleep 0.3
+    pgrep -u "$(id -u)" -x wireplumber >/dev/null 2>&1 || wireplumber &
+fi
+
+# Desmutear y calibrar volumen en hardware real ALSA y PipeWire
+(sleep 2 && /usr/local/bin/titan-audio-setup) &
+
+# 0.1 Driver de sincronización de batería en QEMU
+if [ -x /usr/local/bin/titan-battery-sync ]; then
+    /usr/local/bin/titan-battery-sync &
+fi
+
+# 0.2 Desbloquear radio Wi-Fi en el arranque si existe hardware inalámbrico
+(sleep 1 && rfkill unblock wifi 2>/dev/null && nmcli radio wifi on 2>/dev/null) &
+
+# 0.3 Ventana de contrasena de administrador (agente de polkit). Sin agente,
+#     GNOME Software, las impresoras o los discos no pueden pedir permiso.
+if [ -x /usr/local/bin/titan-polkit ]; then
+    pgrep -u "$(id -u)" -x titan-polkit >/dev/null 2>&1 || /usr/local/bin/titan-polkit >"$registros/titan-polkit.log" 2>&1 &
+fi
+
+# 0.3 Equipo ligero (Celeron, poca memoria...): la primera vez se decide
+#     solo; despues manda Ajustes > Batería y energía. Antes que el Dock.
+[ -x /usr/local/bin/titan-rendimiento ] && /usr/local/bin/titan-rendimiento inicio >/dev/null 2>&1
+
+# 0.4 Inactividad: bloquear, apagar pantallas y suspender (swayidle). Los
+#     tiempos se cambian en Ajustes > Bloquear pantalla.
+if [ -x /usr/local/bin/titan-inactividad ]; then
+    /usr/local/bin/titan-inactividad &
+fi
+
+# 0.5 Pantallas (resolucion, escala, giro) y luz nocturna guardadas en Ajustes,
+#     y el color de acento para GTK, kitty y la pantalla de bloqueo.
+[ -x /usr/local/bin/titan-pantallas ] && /usr/local/bin/titan-pantallas >"$registros/titan-pantallas.log" 2>&1 &
+[ -x /usr/local/bin/titan-luz-nocturna ] && ( sleep 2; /usr/local/bin/titan-luz-nocturna ) >/dev/null 2>&1 &
+[ -x /usr/local/bin/titan-acento ] && /usr/local/bin/titan-acento >/dev/null 2>&1 &
+# Raton y panel tactil de Ajustes tambien en labwc (Wayfire los lee solo)
+[ -x /usr/local/bin/titan-raton-labwc ] && /usr/local/bin/titan-raton-labwc >/dev/null 2>&1 &
+# Escritorio remoto (VNC), si se dejo activado en Ajustes > Compartir
+[ -x /usr/local/bin/titan-escritorio-remoto ] && ( sleep 3; /usr/local/bin/titan-escritorio-remoto inicio ) >/dev/null 2>&1 &
+
+# 1. Fondo de pantalla (capa LayerBackground) con autorecuperacion
+lanzar_titan_desktop() {
+    if [ -x /usr/local/bin/titan-desktop ] || command -v titan-desktop >/dev/null 2>&1; then
+        /usr/local/bin/titan-desktop --escritorio >"$registros/titan-desktop.log" 2>&1
+        local ret=$?
+        if [ $ret -ne 0 ]; then
+            echo "Aviso: titan-desktop salio con codigo $ret. Reintentando con backend software..." >> "$registros/titan-desktop.log"
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-desktop --escritorio >>"$registros/titan-desktop.log" 2>&1
+        fi
+    fi
+}
+(lanzar_titan_desktop) &
+
+# 2. Inti OS Shell (TopBar, Dock flotante, Iconos y Launchpad) con autorecuperacion
+lanzar_titan_shell() {
+    if [ -x /usr/local/bin/titan-shell ] || command -v titan-shell >/dev/null 2>&1; then
+        /usr/local/bin/titan-shell >"$registros/titan-shell.log" 2>&1
+        local ret=$?
+        if [ $ret -ne 0 ]; then
+            echo "Aviso: titan-shell salio con codigo $ret. Reintentando con backend software..." >> "$registros/titan-shell.log"
+            env -u __GLX_VENDOR_LIBRARY_NAME -u GBM_BACKEND QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 /usr/local/bin/titan-shell >>"$registros/titan-shell.log" 2>&1
+        fi
+    fi
+}
+(lanzar_titan_shell) &
+
+# 3. Exportar variables de entorno en segundo plano para terminales y servicios
+(
+    sleep 1
+    mkdir -p /tmp/.X11-unix 2>/dev/null || true
+    chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+    if [ -n "$DISPLAY" ]; then
+        echo "$DISPLAY" > /tmp/.titan-display
+        chmod 0666 /tmp/.titan-display 2>/dev/null || true
+    fi
+    # --systemd: los servicios de usuario (portales para compartir pantalla,
+    # llavero, aviso de actualizaciones) tambien necesitan WAYLAND_DISPLAY y
+    # XDG_CURRENT_DESKTOP; sin esto Meet o OBS no ven la pantalla.
+    dbus-update-activation-environment --systemd --all 2>/dev/null ||
+        dbus-update-activation-environment --all 2>/dev/null || true
+
+    # Programas de /etc/xdg/autostart y ~/.config/autostart, como en GNOME o
+    # KDE (systemd-xdg-autostart-generator respeta OnlyShowIn y Hidden).
+    systemctl --user start xdg-desktop-autostart.target 2>/dev/null || true
+
+    # Carpetas Documentos, Descargas, Imagenes... en el idioma del sistema.
+    command -v xdg-user-dirs-update >/dev/null 2>&1 && xdg-user-dirs-update 2>/dev/null
+
+    # Metodos de entrada (chino, japones, coreano...): Ajustes > Teclado.
+    if grep -qs '^ACTIVO=1' "$HOME/.config/titan/entrada.conf" && command -v fcitx5 >/dev/null 2>&1; then
+        pgrep -u "$(id -u)" -x fcitx5 >/dev/null || fcitx5 -d --replace >/dev/null 2>&1
+    fi
+
+    # Lector de pantalla: Ajustes > Accesibilidad (o Super+Alt+S).
+    if grep -qs '^LECTOR=1' "$HOME/.config/titan/accesibilidad.conf" && command -v orca >/dev/null 2>&1; then
+        pgrep -u "$(id -u)" -x orca >/dev/null || (orca --replace >/dev/null 2>&1 &)
+    fi
+    # Teclado en pantalla: Ajustes > Accesibilidad.
+    if grep -qs '^TECLADO=1' "$HOME/.config/titan/accesibilidad.conf" && [ -x /usr/local/bin/titan-teclado ]; then
+        pgrep -u "$(id -u)" -x titan-teclado >/dev/null || (/usr/local/bin/titan-teclado >/dev/null 2>&1 &)
+    fi
+
+    # Portapapeles compartido con el anfitrion en una VM (QEMU qemu-vdagent,
+    # virt-manager/SPICE). El agente es de X11: va por Xwayland, y el
+    # compositor pasa el portapapeles entre X11 y Wayland. spice-vdagentd
+    # (sistema) lo arranca udev al aparecer el puerto com.redhat.spice.0.
+    if [ -e /dev/virtio-ports/com.redhat.spice.0 ] && [ -n "$DISPLAY" ] \
+       && command -v spice-vdagent >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -x spice-vdagent >/dev/null; then
+        GDK_BACKEND=x11 spice-vdagent >"$registros/spice-vdagent.log" 2>&1 || true
+    fi
+) &
+

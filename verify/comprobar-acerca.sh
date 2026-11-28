@@ -35,8 +35,8 @@ done
 QT_QPA_PLATFORM=offscreen "${ACERCA}" --captura "${TMP}/acerca.png" \
   >/dev/null 2>&1
 [[ -s "${TMP}/acerca.png" ]] && file "${TMP}/acerca.png" \
-  | grep -q '560 x 520' \
-  && ok "la ventana Acerca se pinta a 560x520" \
+  | grep -q '560 x 560' \
+  && ok "la ventana Acerca se pinta a 560x560" \
   || mal "no se pudo pintar la ventana Acerca"
 
 PANEL="${TITAN_PANEL:-${DISTRO}/apps/titan-panel/build/titan-panel}"

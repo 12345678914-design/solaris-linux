@@ -1,0 +1,46 @@
+#!/bin/sh
+# Inti OS - puntos de restauracion.
+#
+# Con la raiz en btrfs, el instalador deja snapper configurado: snap-pac hace
+# una instantanea antes y otra despues de cada pacman, el temporizador hace
+# una por hora (se guardan pocas) y grub-btrfs las pone en el menu de arranque
+# ("Instantaneas de Inti OS") para poder arrancar una si una actualizacion
+# rompe algo. Con ext4 no hay instantaneas: se usa Timeshift (copias rsync).
+#
+#   titan-instantaneas tipo                  btrfs | ext4-timeshift | ninguno
+#   titan-instantaneas lista                 numero|fecha|descripcion (sin root:
+#                                            el grupo wheel puede leerlas)
+#   titan-instantaneas crear "descripcion"   (root, pkexec)
+#   titan-instantaneas borrar NUMERO         (root, pkexec)
+
+case "${1:-tipo}" in
+    tipo)
+        if [ -f /etc/snapper/configs/root ]; then
+            echo btrfs
+        elif command -v timeshift >/dev/null 2>&1; then
+            echo ext4-timeshift
+        else
+            echo ninguno
+        fi
+        ;;
+    lista)
+        [ -f /etc/snapper/configs/root ] || exit 0
+        snapper --no-headers --machine-readable csv -c root list \
+            --columns number,date,description 2>/dev/null |
+            awk -F, '$1 != "0" {print $1 "|" $2 "|" $3}'
+        ;;
+    crear)
+        [ -f /etc/snapper/configs/root ] || exit 1
+        snapper -c root create --cleanup-algorithm number \
+            --description "${2:-Punto de restauración manual}"
+        ;;
+    borrar)
+        [ -f /etc/snapper/configs/root ] || exit 1
+        case "${2:-}" in ''|*[!0-9]*) exit 2 ;; esac
+        snapper -c root delete "$2"
+        ;;
+    *)
+        echo "uso: titan-instantaneas tipo|lista|crear|borrar" >&2
+        exit 2
+        ;;
+esac

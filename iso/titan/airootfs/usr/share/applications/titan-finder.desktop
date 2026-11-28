@@ -1,14 +1,17 @@
 [Desktop Entry]
 Type=Application
-Name=Finder
-Name[es]=Finder
-GenericName=Gestor de Archivos
-GenericName[es]=Gestor de Archivos
-Comment=Explora archivos, carpetas y discos en Titan Linux
-Comment[es]=Explora archivos, carpetas y discos en Titan Linux
-Exec=titan-finder
+Name=Explorador de archivos
+Name[es]=Explorador de archivos
+Name[en]=File Explorer
+GenericName=Gestor de archivos
+GenericName[es]=Gestor de archivos
+Comment=Explora archivos, carpetas y discos en Inti OS
+Comment[es]=Explora archivos, carpetas y discos en Inti OS
+Exec=titan-finder %f
 Icon=/usr/share/titan/icons/finder.png
 Terminal=false
 StartupWMClass=titan-finder
 Categories=System;FileManager;Qt;
+Keywords=finder;archivos;carpetas;explorador;files;
 
+MimeType=inode/directory;

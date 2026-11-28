@@ -132,7 +132,7 @@ DatosEquipo leerDatosEquipo()
 {
     DatosEquipo datos;
     datos.os = QStringLiteral("Inti OS");
-    datos.version = QStringLiteral("1.0 (Edición Escritorio)");
+    datos.version = QStringLiteral("1.8 · Fácil, rápido y privado");
     datos.kernel = QSysInfo::kernelType() + QStringLiteral(" ") + QSysInfo::kernelVersion();
     datos.equipo = QSysInfo::machineHostName();
     if (datos.equipo.isEmpty()) {
@@ -140,7 +140,7 @@ DatosEquipo leerDatosEquipo()
     }
     datos.usuario = QString::fromLocal8Bit(qgetenv("USER"));
     if (datos.usuario.isEmpty()) {
-        datos.usuario = QStringLiteral("solaris");
+        datos.usuario = QStringLiteral("inti");
     }
     datos.procesador = leerProcesador();
     datos.gpu = leerGpu();
@@ -216,7 +216,7 @@ AcercaVentana::AcercaVentana(QWidget *padre)
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
-    setFixedSize(560, 520);
+    setFixedSize(560, 560);
     setWindowIcon(QIcon(obtenerLogoSolaris(64)));
     construir(leerDatosEquipo());
 
@@ -270,7 +270,7 @@ void AcercaVentana::construir(const DatosEquipo &datos)
 
     auto *icono = new QLabel(this);
     icono->setAlignment(Qt::AlignCenter);
-    icono->setPixmap(obtenerLogoSolaris(80));
+    icono->setPixmap(obtenerLogoSolaris(120));
     raiz->addWidget(icono);
 
     auto *equipo = new QLabel(QStringLiteral("Inti OS"), this);

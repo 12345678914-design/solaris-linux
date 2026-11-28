@@ -1,0 +1,77 @@
+#!/bin/sh
+# Inti OS - que hacer cuando no se toca el equipo (swayidle).
+#
+# Tiempos en minutos en ~/.config/titan/inactividad.conf (0 = nunca); los
+# cambia Ajustes > Bloquear pantalla y Ajustes > Bateria:
+#   BLOQUEAR=5              bloquear la sesion
+#   APAGAR_PANTALLA=10      apagar las pantallas (vuelven al mover el raton)
+#   SUSPENDER_BATERIA=15    suspender si va con bateria
+#   SUSPENDER_CORRIENTE=30  suspender si esta enchufado
+#
+# Ademas bloquea antes de suspender (tapa del portatil, menu) y cuando logind
+# lo pide (loginctl lock-session). Los videos y las llamadas a pantalla
+# completa lo impiden por el protocolo idle-inhibit.
+#
+#   titan-inactividad              arranca (o reinicia) swayidle
+#   titan-inactividad --suspender  suspende si toca por el tipo de alimentacion
+#                                  (lo llama swayidle; uso interno)
+
+conf="$HOME/.config/titan/inactividad.conf"
+BLOQUEAR=5
+APAGAR_PANTALLA=10
+SUSPENDER_BATERIA=15
+SUSPENDER_CORRIENTE=30
+# shellcheck disable=SC1090
+[ -r "$conf" ] && . "$conf"
+
+con_corriente() {
+    for ps in /sys/class/power_supply/*; do
+        [ -r "$ps/type" ] || continue
+        case "$(cat "$ps/type")" in
+            Mains|USB) [ "$(cat "$ps/online" 2>/dev/null)" = 1 ] && return 0 ;;
+        esac
+    done
+    # Sin bateria es un sobremesa: siempre "enchufado".
+    ls /sys/class/power_supply/BAT* >/dev/null 2>&1 || return 0
+    return 1
+}
+
+if [ "${1:-}" = "--suspender" ]; then
+    # $2 = "bateria" o "corriente": solo suspende si coincide con lo que hay.
+    if con_corriente; then actual=corriente; else actual=bateria; fi
+    [ "$actual" = "${2:-}" ] && systemctl suspend
+    exit 0
+fi
+
+command -v swayidle >/dev/null 2>&1 || exit 0
+pkill -u "$(id -u)" -x swayidle 2>/dev/null
+
+seg() { echo $(( ${1:-0} * 60 )); }
+set --
+live=0
+[ -d /run/archiso ] && live=1
+vm=0
+systemd-detect-virt -q 2>/dev/null && vm=1
+
+if [ "$live" = 0 ] && [ "${BLOQUEAR:-0}" -gt 0 ]; then
+    set -- "$@" timeout "$(seg "$BLOQUEAR")" 'titan-bloquear'
+fi
+if [ "${APAGAR_PANTALLA:-0}" -gt 0 ] && command -v wlopm >/dev/null 2>&1; then
+    set -- "$@" timeout "$(seg "$APAGAR_PANTALLA")" "wlopm --off '*'" resume "wlopm --on '*'"
+fi
+# Ni en el live ni en una maquina virtual se suspende solo: en QEMU dejaria
+# la VM parada a mitad de una prueba.
+if [ "$live" = 0 ] && [ "$vm" = 0 ]; then
+    [ "${SUSPENDER_BATERIA:-0}" -gt 0 ] &&
+        set -- "$@" timeout "$(seg "$SUSPENDER_BATERIA")" 'titan-inactividad --suspender bateria'
+    [ "${SUSPENDER_CORRIENTE:-0}" -gt 0 ] &&
+        set -- "$@" timeout "$(seg "$SUSPENDER_CORRIENTE")" 'titan-inactividad --suspender corriente'
+fi
+if [ "$live" = 0 ]; then
+    set -- "$@" before-sleep 'titan-bloquear --esperar' lock 'titan-bloquear' \
+                unlock 'pkill -USR1 -u "$(id -u)" -x gtklock'
+fi
+
+[ $# -eq 0 ] && exit 0
+# -w: espera a que el bloqueo este puesto antes de dejar suspender.
+exec swayidle -w "$@" >/dev/null 2>&1

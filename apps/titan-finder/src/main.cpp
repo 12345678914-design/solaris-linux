@@ -1,4 +1,6 @@
+#include "TitanTinte.h"
 #include "FinderBackend.h"
+#include "Red.h"
 #include "ThemeManager.h"
 
 #include <QGuiApplication>
@@ -32,13 +34,15 @@ int main(int argc, char *argv[])
     FinderBackend finderBackend;
     for (int i = 1; i < argc; ++i) {
         QString arg = QString::fromLocal8Bit(argv[i]);
-        if (!arg.startsWith(QLatin1Char('-')) && QDir(arg).exists()) {
+        // Carpeta local, o de red: \\\\PC\\Carpeta, smb://...
+        if (!arg.startsWith(QLatin1Char('-')) && (QDir(arg).exists() || !Red::normalizar(arg).isEmpty())) {
             finderBackend.goTo(arg);
             break;
         }
     }
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("tinte"), new TitanTinte); // carpetas con el acento
     engine.rootContext()->setContextProperty(QStringLiteral("finderBackend"), &finderBackend);
     engine.rootContext()->setContextProperty(QStringLiteral("titanThemeManager"), ThemeManager::instance());
 

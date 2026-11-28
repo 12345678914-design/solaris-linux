@@ -18,6 +18,13 @@ Item {
     property color borderColor: Qt.rgba(1, 1, 1, 0.35)
     property color highlightColor: Qt.rgba(1, 1, 1, 0.5)
 
+    // Borde "Liquid Glass": en vez de un trazo uniforme, la luz entra por arriba,
+    // casi desaparece en los lados y rebota débil abajo. Necesita shaders
+    // (MultiEffect): con effects=false (backend por software) se usa el borde simple.
+    property bool effects: true
+    property bool liquid: true
+    readonly property bool _liquidRim: effects && liquid && showBorder
+
     // ---------- Fondo ----------
     property string wallpaper: ""          // ruta o URL del fondo actual (sin pre-desenfocar)
     property size blurSize: Qt.size(48, 27) // más grande = menos borroso (prueba 64×36 si ves bloques)
@@ -30,7 +37,9 @@ Item {
     property real sceneWidth: 0
     property real sceneHeight: 0
 
-    readonly property bool active: wallpaper !== ""
+    // Sin efectos (backend por software) no se puede recortar el fondo con
+    // esquinas redondeadas: el panel se queda en el tinte plano.
+    readonly property bool active: wallpaper !== "" && effects
 
     // ---------- Fondo con fundido al cambiar ----------
     property bool _flip: false
@@ -124,17 +133,56 @@ Item {
         layer.enabled: true
     }
 
-    // Borde fino
+    // Borde fino (sin efectos, o con liquid=false)
     Rectangle {
         anchors.fill: parent
         radius: gp.radius
         color: "transparent"
-        visible: gp.showBorder
+        visible: gp.showBorder && !gp._liquidRim
         border.color: gp.borderColor
         border.width: 1
     }
 
-    // Reflejo especular superior
+    // Borde especular Liquid Glass: un degradado recortado a un anillo de 1 px
+    // (máscara invertida con el hueco interior). Es una capa estática: solo se
+    // vuelve a dibujar si cambia el tamaño.
+    Item {
+        anchors.fill: parent
+        visible: gp._liquidRim
+        layer.enabled: gp._liquidRim
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskInverted: true
+            maskSource: rimHole
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1.0
+        }
+        Rectangle {
+            anchors.fill: parent
+            radius: gp.radius
+            gradient: Gradient {
+                GradientStop { position: 0.0;  color: Qt.rgba(1, 1, 1, gp.dark ? 0.42 : 0.85) }
+                GradientStop { position: 0.18; color: Qt.rgba(1, 1, 1, gp.dark ? 0.14 : 0.40) }
+                GradientStop { position: 0.55; color: Qt.rgba(1, 1, 1, gp.dark ? 0.05 : 0.18) }
+                GradientStop { position: 1.0;  color: Qt.rgba(1, 1, 1, gp.dark ? 0.20 : 0.45) }
+            }
+        }
+    }
+    // Hueco del anillo: mismo tamaño que el panel (MultiEffect escala la máscara
+    // al tamaño de la fuente), con el rectángulo interior 1 px más pequeño.
+    Item {
+        id: rimHole
+        anchors.fill: parent
+        visible: false
+        layer.enabled: gp._liquidRim
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: Math.max(0, gp.radius - 1)
+        }
+    }
+
+    // Reflejo especular superior (solo sin el borde Liquid Glass, que ya lo lleva)
     Rectangle {
         anchors.top: parent.top
         anchors.topMargin: 1
@@ -142,7 +190,7 @@ Item {
         width: Math.max(0, parent.width - gp.radius * 1.6)
         height: 1
         radius: 1
-        visible: gp.showHighlight
+        visible: gp.showHighlight && !gp._liquidRim
         color: gp.highlightColor
     }
 }

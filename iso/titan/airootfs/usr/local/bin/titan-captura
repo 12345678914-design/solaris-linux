@@ -1,0 +1,34 @@
+#!/bin/sh
+# Inti OS - capturas de pantalla (grim + slurp).
+#
+#   titan-captura pantalla   toda la pantalla      Impr Pant, Super+Shift+3
+#   titan-captura area       zona que se marca     Shift+Impr Pant, Super+Shift+4, Super+Shift+S
+#
+# La imagen se guarda en Imagenes/Capturas de pantalla, se copia al
+# portapapeles (Ctrl+V la pega en cualquier app) y avisa con una notificacion.
+# Esc mientras se marca la zona cancela sin hacer nada.
+
+modo="${1:-pantalla}"
+command -v grim >/dev/null 2>&1 || { notify-send -a "Captura de pantalla" "Falta grim" 2>/dev/null; exit 1; }
+
+imagenes="$(xdg-user-dir PICTURES 2>/dev/null)"
+[ -n "$imagenes" ] && [ "$imagenes" != "$HOME" ] || imagenes="$HOME/Imágenes"
+dir="$imagenes/Capturas de pantalla"
+mkdir -p "$dir"
+fichero="$dir/Captura de pantalla $(date '+%Y-%m-%d a las %H.%M.%S').png"
+
+case "$modo" in
+    area)
+        zona="$(slurp -d -b 10121a66 -c ffffffcc -s 0a84ff22 -w 2 2>/dev/null)" || exit 0
+        [ -n "$zona" ] || exit 0
+        grim -g "$zona" "$fichero" || exit 1
+        ;;
+    pantalla|*)
+        grim "$fichero" || exit 1
+        ;;
+esac
+
+command -v wl-copy >/dev/null 2>&1 && wl-copy --type image/png < "$fichero"
+notify-send -a "Captura de pantalla" -i "$fichero" \
+    "Captura guardada" "$(basename "$fichero") · copiada al portapapeles" 2>/dev/null
+exit 0

@@ -1,0 +1,6 @@
+[Unit]
+Description=Inti OS: comprobar si hay actualizaciones
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/titan-actualizaciones

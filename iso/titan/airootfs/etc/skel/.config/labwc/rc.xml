@@ -2,18 +2,18 @@
 <labwc_config>
   <theme>
     <name>Titan-macOS</name>
-    <cornerRadius>10</cornerRadius>
+    <cornerRadius>16</cornerRadius>
     <titlebar>
       <!-- Layout macOS: Cerrar, Minimizar, Maximizar a la izquierda; nada a la derecha -->
       <layout>close,iconify,max:</layout>
     </titlebar>
     <font place="ActiveWindow">
-      <name>DejaVu Sans</name>
+      <name>Inter</name>
       <size>10</size>
       <weight>bold</weight>
     </font>
     <font place="InactiveWindow">
-      <name>DejaVu Sans</name>
+      <name>Inter</name>
       <size>10</size>
       <weight>normal</weight>
     </font>
@@ -31,7 +31,8 @@
     <windowRule identifier="titan-settings" serverDecoration="no" />
     <windowRule identifier="titan-shell" serverDecoration="no" />
     <windowRule identifier="titan-desktop" serverDecoration="no" />
-    <windowRule title="*Finder*" serverDecoration="no" />
+    <windowRule title="*Explorador de archivos*" serverDecoration="no" />
+    <windowRule identifier="titan-monitor" serverDecoration="no" />
     <windowRule title="*Fotos*" serverDecoration="no" />
     <windowRule title="*Música*" serverDecoration="no" />
     <windowRule title="*Terminal*" serverDecoration="no" />
@@ -147,6 +148,15 @@
     <keybind key="W-6"><action name="GoToDesktop" to="6" /></keybind>
     <keybind key="W-7"><action name="GoToDesktop" to="7" /></keybind>
     <keybind key="W-8"><action name="GoToDesktop" to="8" /></keybind>
+    <!-- Win+Mayús+número: la ventana al escritorio N, sin seguirla -->
+    <keybind key="W-S-1"><action name="SendToDesktop" to="1" follow="no" /></keybind>
+    <keybind key="W-S-2"><action name="SendToDesktop" to="2" follow="no" /></keybind>
+    <keybind key="W-S-3"><action name="SendToDesktop" to="3" follow="no" /></keybind>
+    <keybind key="W-S-4"><action name="SendToDesktop" to="4" follow="no" /></keybind>
+    <keybind key="W-S-5"><action name="SendToDesktop" to="5" follow="no" /></keybind>
+    <keybind key="W-S-6"><action name="SendToDesktop" to="6" follow="no" /></keybind>
+    <keybind key="W-S-7"><action name="SendToDesktop" to="7" follow="no" /></keybind>
+    <keybind key="W-S-8"><action name="SendToDesktop" to="8" follow="no" /></keybind>
     <keybind key="W-Up"><action name="Execute" command="titan-shell --toggle-workspaces" /></keybind>
     
     <!-- Tecla Mod / Super suelta (al pulsar y soltar): abre el menú de inicio / Launchpad -->
@@ -191,7 +201,20 @@
       <action name="Execute" command="titan-shell --toggle-theme"/>
     </keybind>
     
-    <!-- Super/Mod + E: Finder -->
+    <!-- Como Windows: Ctrl+Alt+Supr, Win+I (Ajustes), Win+V (portapapeles),
+         Win+. (emojis), Win+F1 (atajos). Alt+F4 ya viene con <default/>. -->
+    <keybind key="C-A-Delete"><action name="Execute" command="titan-shell --tecla seguridad"/></keybind>
+    <keybind key="W-i"><action name="Execute" command="titan-shell --tecla ajustes"/></keybind>
+    <keybind key="W-v"><action name="Execute" command="titan-shell --tecla portapapeles"/></keybind>
+    <keybind key="W-period"><action name="Execute" command="titan-shell --tecla emojis"/></keybind>
+    <keybind key="W-F1"><action name="Execute" command="titan-shell --tecla atajos"/></keybind>
+    <keybind key="W-x"><action name="Execute" command="titan-shell --tecla herramientas"/></keybind>
+    <keybind key="W-p"><action name="Execute" command="titan-shell --tecla proyectar"/></keybind>
+    <!-- Ctrl+Mayús+Esc: Monitor de recursos (como el Administrador de tareas de Windows) -->
+    <keybind key="C-S-Escape">
+      <action name="Execute" command="titan-monitor"/>
+    </keybind>
+    <!-- Super/Mod + E: Explorador de archivos -->
     <keybind key="W-e">
       <action name="Execute" command="titan-finder"/>
     </keybind>
@@ -216,11 +239,48 @@
     
     <!-- Super/Cmd + L: Bloquear pantalla (Lock Screen) -->
     <keybind key="W-l">
-      <action name="Execute" command="titan-shell --lock"/>
+      <action name="Execute" command="titan-bloquear"/>
     </keybind>
     <keybind key="W-L">
-      <action name="Execute" command="titan-shell --lock"/>
+      <action name="Execute" command="titan-bloquear"/>
     </keybind>
+
+    <!-- Capturas de pantalla (titan-captura): Impr Pant y Super+Shift+S -->
+    <keybind key="Print"><action name="Execute" command="titan-captura pantalla"/></keybind>
+    <keybind key="S-Print"><action name="Execute" command="titan-captura area"/></keybind>
+    <keybind key="W-S-s"><action name="Execute" command="titan-captura area"/></keybind>
+    <keybind key="W-S-S"><action name="Execute" command="titan-captura area"/></keybind>
+    <!-- Grabar la pantalla (titan-grabar): el mismo atajo para parar y guardar -->
+    <keybind key="W-A-r"><action name="Execute" command="titan-grabar"/></keybind>
+    <keybind key="W-A-S-r"><action name="Execute" command="titan-grabar area"/></keybind>
+
+    <!-- Lector de pantalla (Orca), como en GNOME -->
+    <keybind key="W-A-s"><action name="Execute" command="titan-lector"/></keybind>
+
+    <!-- Teclas especiales (volumen, brillo, multimedia...): titan-shell -tecla
+         las hace y muestra el nivel en la Isla Dinamica -->
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="titan-shell --tecla volumen-subir"/></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="titan-shell --tecla volumen-bajar"/></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="titan-shell --tecla silenciar"/></keybind>
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="titan-shell --tecla micro-silenciar"/></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="titan-shell --tecla brillo-subir"/></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="titan-shell --tecla brillo-bajar"/></keybind>
+    <keybind key="XF86KbdBrightnessUp"><action name="Execute" command="titan-shell --tecla teclado-subir"/></keybind>
+    <keybind key="XF86KbdBrightnessDown"><action name="Execute" command="titan-shell --tecla teclado-bajar"/></keybind>
+    <keybind key="XF86KbdLightOnOff"><action name="Execute" command="titan-shell --tecla teclado-alternar"/></keybind>
+    <keybind key="XF86AudioPlay"><action name="Execute" command="titan-shell --tecla reproducir"/></keybind>
+    <keybind key="XF86AudioPause"><action name="Execute" command="titan-shell --tecla pausa"/></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="titan-shell --tecla siguiente"/></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="titan-shell --tecla anterior"/></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="titan-shell --tecla parar"/></keybind>
+    <keybind key="XF86Calculator"><action name="Execute" command="titan-shell --tecla calculadora"/></keybind>
+    <keybind key="XF86WWW"><action name="Execute" command="titan-shell --tecla navegador"/></keybind>
+    <keybind key="XF86Mail"><action name="Execute" command="titan-shell --tecla correo"/></keybind>
+    <keybind key="XF86Tools"><action name="Execute" command="titan-shell --tecla ajustes"/></keybind>
+    <keybind key="XF86Search"><action name="Execute" command="titan-shell --tecla buscar"/></keybind>
+    <keybind key="XF86ScreenSaver"><action name="Execute" command="titan-shell --tecla bloquear"/></keybind>
+    <keybind key="XF86Display"><action name="Execute" command="titan-shell --tecla pantallas"/></keybind>
+    <keybind key="W-d"><action name="Execute" command="titan-shell --tecla escritorio"/></keybind>
     
     <!-- Alt + Tab: Cambiar entre ventanas abiertas con estilo Liquid Glass -->
     <keybind key="A-Tab">

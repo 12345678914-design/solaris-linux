@@ -1,0 +1,4 @@
+#!/bin/sh
+# Inti OS - abre el manual de usuario (HTML local, sin Internet) en el
+# navegador. Lo usan el menú de inicio, la Bienvenida y Win+F1.
+exec xdg-open /usr/share/doc/inti/manual.html

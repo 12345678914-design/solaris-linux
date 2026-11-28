@@ -1,0 +1,68 @@
+#!/bin/sh
+# Inti OS - aviso cuando una app se cierra sola (como Apport en Ubuntu o
+# ABRT en Fedora). systemd-coredump apunta cada cierre inesperado en el
+# diario del usuario; aquí se escucha y se muestra una notificación con el
+# nombre de la app y dos botones: "Volver a abrir" y "Ver detalles" (abre un
+# informe en el editor de texto, para enviarlo a quien hizo la app).
+# Lo arranca el servicio de usuario titan-avisos-fallos.service.
+set -u
+yo=$(id -u)
+ultimo=""; cuando=0
+
+# buscar_app programa: deja en $app el nombre visible y en $desktop su
+# .desktop (para volver a abrirla). Sin $(...): las variables se perderían.
+buscar_app() {
+    prog=$(basename "$1")
+    app=$prog
+    desktop=""
+    for d in "$HOME/.local/share/applications" /var/lib/flatpak/exports/share/applications /usr/share/applications; do
+        f=$(grep -lsE "^Exec=([^ ]*/)?$prog( |$)" "$d"/*.desktop 2>/dev/null | head -n 1)
+        if [ -n "$f" ]; then
+            desktop=$f
+            n=$(sed -n 's/^Name\[es\]=//p' "$f" | head -n 1)
+            [ -n "$n" ] || n=$(sed -n 's/^Name=//p' "$f" | head -n 1)
+            [ -n "$n" ] && app=$n
+            return
+        fi
+    done
+}
+
+# Informe legible del fallo, en un fichero de texto
+informe() { # informe app pid -> ruta
+    dir="${XDG_STATE_HOME:-$HOME/.local/state}/titan/fallos"
+    mkdir -p "$dir"
+    f="$dir/$(date +%Y-%m-%d_%H%M%S)-$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_').txt"
+    {
+        echo "Informe de un cierre inesperado - Inti OS"
+        echo "App: $1"
+        echo "Fecha: $(date '+%d/%m/%Y %H:%M')"
+        echo
+        echo "Si se repite, puedes enviar este texto a quien hizo la app."
+        echo "------------------------------------------------------------"
+        coredumpctl info --no-pager "$2" 2>&1 | head -n 200
+    } > "$f"
+    printf '%s' "$f"
+}
+
+avisar() { # avisar app pid desktop (en segundo plano: espera al botón)
+    accion=$(timeout 600 notify-send -a "Inti OS" -i dialog-warning --wait \
+        -A reabrir="Volver a abrir" -A detalles="Ver detalles" \
+        "«$1» se cerró inesperadamente" \
+        "Puedes volver a abrirla. Si vuelve a pasar, «Ver detalles» guarda un informe del fallo." 2>/dev/null)
+    case "$accion" in
+        reabrir) [ -n "$3" ] && gtk-launch "$(basename "$3" .desktop)" >/dev/null 2>&1 ;;
+        detalles) xdg-open "$(informe "$1" "$2")" >/dev/null 2>&1 ;;
+    esac
+}
+
+journalctl --user -f -n 0 -o json MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1 |
+jq -r --unbuffered '[.COREDUMP_UID // "", .COREDUMP_PID // "", .COREDUMP_EXE // .COREDUMP_COMM // ""] | @tsv' |
+while IFS="$(printf '\t')" read -r uid pid exe; do
+    [ "$uid" = "$yo" ] && [ -n "$exe" ] || continue
+    ahora=$(date +%s)
+    # La misma app varias veces seguidas: un solo aviso por minuto
+    if [ "$exe" = "$ultimo" ] && [ $((ahora - cuando)) -lt 60 ]; then continue; fi
+    ultimo=$exe; cuando=$ahora
+    buscar_app "$exe"
+    avisar "$app" "$pid" "$desktop" &
+done

@@ -1,0 +1,15 @@
+# Inti OS: nouveau para NVIDIA anteriores a GTX 16 / RTX 20 (ver el script).
+[Unit]
+Description=Inti OS: driver libre para tarjetas NVIDIA antiguas
+DefaultDependencies=no
+After=systemd-udev-trigger.service systemd-modules-load.service
+Before=sysinit.target greetd.service getty@tty1.service display-manager.service
+ConditionPathExists=/usr/lib/titan/titan-grafica-nvidia
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/titan/titan-grafica-nvidia
+TimeoutStartSec=20
+
+[Install]
+WantedBy=sysinit.target

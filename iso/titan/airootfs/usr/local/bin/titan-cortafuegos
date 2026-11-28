@@ -1,0 +1,55 @@
+#!/bin/sh
+# Inti OS - cortafuegos (ufw).
+#
+# Politica de serie, la misma idea que Fedora Workstation: todo lo que entra
+# se rechaza salvo lo que el escritorio necesita; todo lo que sale se permite.
+#   abierto: SSH (22/tcp) y mDNS (5353/udp: impresoras y equipos de la red).
+#   Nada mas: lo que una app necesite se abre con 'sudo ufw allow ...'.
+#
+#   titan-cortafuegos estado     activo | inactivo  (no necesita root)
+#   titan-cortafuegos activar    (root; Ajustes lo pide con pkexec)
+#   titan-cortafuegos desactivar (root)
+#   titan-cortafuegos inicial    primera vez (titan-cortafuegos.service)
+#   titan-cortafuegos vnc abrir|cerrar   escritorio remoto (5900/tcp; Ajustes)
+
+marca=/var/lib/titan/cortafuegos-inicial
+
+politica() {
+    ufw --force reset >/dev/null
+    ufw default deny incoming >/dev/null
+    ufw default allow outgoing >/dev/null
+    ufw allow 22/tcp comment 'SSH' >/dev/null
+    ufw allow 5353/udp comment 'mDNS: impresoras y equipos de la red' >/dev/null
+    ufw logging low >/dev/null
+}
+
+case "${1:-estado}" in
+    estado)
+        if grep -qs '^ENABLED=yes' /etc/ufw/ufw.conf; then echo activo; else echo inactivo; fi
+        ;;
+    activar)
+        [ -f "$marca" ] || politica
+        ufw --force enable
+        mkdir -p /var/lib/titan && : > "$marca"
+        ;;
+    desactivar)
+        ufw disable
+        ;;
+    inicial)
+        [ -f "$marca" ] && exit 0
+        politica
+        ufw --force enable
+        mkdir -p /var/lib/titan && : > "$marca"
+        ;;
+    vnc)
+        case "${2:-}" in
+            abrir) ufw allow 5900/tcp comment 'Escritorio remoto (VNC)' >/dev/null ;;
+            cerrar) ufw delete allow 5900/tcp >/dev/null 2>&1 || true ;;
+            *) echo "uso: titan-cortafuegos vnc abrir|cerrar" >&2; exit 2 ;;
+        esac
+        ;;
+    *)
+        echo "uso: titan-cortafuegos estado|activar|desactivar|vnc abrir|cerrar" >&2
+        exit 2
+        ;;
+esac

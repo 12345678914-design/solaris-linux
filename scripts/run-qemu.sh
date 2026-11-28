@@ -12,6 +12,8 @@
 #   ./scripts/run-qemu.sh --test-usb      # crea y conecta un pendrive virtual de prueba
 #   ./scripts/run-qemu.sh --resolution 1366x768  # fuerza la pantalla
 #   ./scripts/run-qemu.sh --serial-log r.log   # guarda la consola serie en r.log
+#   TITAN_QEMU_GL=1 ./scripts/run-qemu.sh      # GPU virtual con 3D (virgl): la ISO
+#                                          # arranca la sesion inmersiva (Wayfire)
 #                                          # (funciona con y sin ventana)
 #
 # La pantalla se detecta en el host (niri, wlr-randr, xrandr o DRM). No se
@@ -99,7 +101,7 @@ command -v qemu-system-x86_64 >/dev/null || { red "Falta qemu-system-x86_64"; ex
 
 if (( ! boot_installed )); then
   shopt -s nullglob
-  isos=("${OUT_DIR}"/solaris-linux-*.iso)
+  isos=("${OUT_DIR}"/inti-os-*.iso)
   shopt -u nullglob
   (( ${#isos[@]} )) || { red "No hay ninguna ISO en ${OUT_DIR}. Antes: scripts/build-iso.sh"; exit 1; }
   iso="$(ls -t "${isos[@]}" | head -n1)"
@@ -134,10 +136,17 @@ if [[ -n "${screenshot}" ]]; then
     --resolution "${ancho}x${alto}"
 fi
 
+# TITAN_QEMU_GL=1: GPU virtual con 3D (virgl) para la sesion Wayfire.
+if [[ "${TITAN_QEMU_GL:-0}" == "1" ]]; then
+  gpu_qemu="virtio-vga-gl,xres=${ancho},yres=${alto}"
+else
+  gpu_qemu="virtio-vga,xres=${ancho},yres=${alto}"
+fi
+
 args=(
   -m "${memory}M"
   -smp "${cpus}"
-  -device "virtio-vga,xres=${ancho},yres=${alto}"
+  -device "${gpu_qemu}"
 )
 
 if (( ! boot_installed )); then
@@ -157,7 +166,9 @@ if (( no_ethernet )); then
 else
   # VirtIO network adapter con romfile="" para desactivar iPXE/PXE
   args+=(
-    -netdev "user,id=net0"
+    # SSH al invitado desde el anfitrion: ssh -p 2222 usuario@localhost
+    # (solo en 127.0.0.1; dentro hace falta openssh y sshd en marcha).
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${TITAN_QEMU_SSH:-2222}-:22"
     -device "virtio-net-pci,netdev=net0,romfile="
   )
   info "red: VirtIO activa (PXE boot ROM desactivada)"
@@ -188,6 +199,10 @@ bat_host_cap="$(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | head -n1
 bat_host_stat="$(cat /sys/class/power_supply/BAT*/status 2>/dev/null | head -n1 || true)"
 ac_host_on="$(cat /sys/class/power_supply/A*/online 2>/dev/null | head -n1 || echo 0)"
 
+# Puerto serie virtual unico (vser0) para los canales con el invitado
+# (bateria y portapapeles). Tiene que ir antes que sus puertos.
+args+=(-device virtio-serial-pci,id=vser0)
+
 has_battery_sync=0
 bat_sock="${RUN_DIR}/titan-battery.sock"
 
@@ -198,8 +213,7 @@ if [[ -n "${bat_host_cap}" ]]; then
   args+=(
     -fw_cfg "name=opt/titan/battery,string=${bat_host_cap}|${bat_host_stat}|${ac_host_on}"
     -chardev "socket,id=batsock,path=${bat_sock},server=on,wait=off"
-    -device "virtio-serial"
-    -device "virtserialport,chardev=batsock,name=titan.battery"
+    -device "virtserialport,bus=vser0.0,chardev=batsock,name=titan.battery"
   )
 fi
 
@@ -277,8 +291,24 @@ if (( ! no_disk )); then
   fi
 fi
 
+# Portapapeles compartido: QEMU hace de agente SPICE (qemu-vdagent) y la
+# ventana GTK lo conecta con el portapapeles del anfitrion. En el invitado,
+# spice-vdagentd arranca solo al ver el puerto y titan-sesion lanza el agente.
+# TITAN_QEMU_PORTAPAPELES=0 lo desactiva.
+if [[ "${TITAN_QEMU_PORTAPAPELES:-1}" == "1" ]]; then
+  args+=(
+    -chardev "qemu-vdagent,id=vdagent,clipboard=on,mouse=off"
+    -device "virtserialport,bus=vser0.0,chardev=vdagent,name=com.redhat.spice.0"
+  )
+  info "portapapeles compartido con el anfitrion (spice-vdagent)"
+fi
+
 # Soporte de dispositivos USB (físico del host o pendrive virtual de prueba)
-has_xhci=0
+# El controlador va siempre: la tableta USB da un puntero absoluto, asi el
+# raton del invitado va exactamente donde el del anfitrion (sin capturarlo) y,
+# con el cursor por hardware del invitado, QEMU muestra una sola flecha.
+args+=(-device qemu-xhci,id=xhci -device usb-tablet,bus=xhci.0)
+has_xhci=1
 
 if [[ -n "$usb_host" ]]; then
   if [[ "$usb_host" == "auto" ]]; then

@@ -57,6 +57,7 @@ Rectangle {
 
         // 1. FILA DE CONECTIVIDAD (WI-FI Y BLUETOOTH)
         Row {
+            visible: { prefs.version; return prefs.b("Centro/conectividad") }
             width: parent.width
             spacing: 10
 
@@ -244,6 +245,7 @@ Rectangle {
 
         // 2. FILA DE AHORRO DE BATERÍA Y MODO CLARO / OSCURO
         Row {
+            visible: { prefs.version; return prefs.b("Centro/energia") }
             width: parent.width
             spacing: 10
 
@@ -391,8 +393,81 @@ Rectangle {
             }
         }
 
+        // 2b. NO MOLESTAR (Concentración): silencia avisos y sonidos
+        Rectangle {
+            id: noMolestarCard
+            readonly property bool manual: { prefs.version; return prefs.b("Notificaciones/noMolestar") }
+            readonly property bool activo: { prefs.version; return prefs.noMolestarActivo() }
+            readonly property bool programado: { prefs.version; return prefs.b("Concentracion/programado") }
+            visible: { prefs.version; return prefs.b("Centro/noMolestar") }
+            width: parent.width
+            height: 52
+            radius: 13
+            color: activo ? Qt.rgba(0.69, 0.32, 0.87, 0.24) : titanTheme.contentCardBg
+            border.color: activo ? "#af52de" : titanTheme.contentCardBorder
+            border.width: 1
+            Behavior on color { ColorAnimation { duration: 140 } }
+
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+
+                Rectangle {
+                    width: 28; height: 28; radius: 14
+                    color: noMolestarCard.activo ? "#af52de" : (titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.10))
+                    anchors.verticalCenter: parent.verticalCenter
+                    Canvas {
+                        width: 16; height: 16
+                        anchors.centerIn: parent
+                        property bool on: noMolestarCard.activo
+                        onOnChanged: requestPaint()
+                        onPaint: {
+                            var ctx = getContext("2d");
+                            ctx.reset();
+                            ctx.fillStyle = on ? "#ffffff" : titanTheme.contentTextPrimary;
+                            ctx.beginPath();
+                            ctx.arc(8, 8, 6.5, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.globalCompositeOperation = "destination-out";
+                            ctx.beginPath();
+                            ctx.arc(11, 5.5, 5.5, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+                    Text {
+                        text: "No molestar"
+                        color: titanTheme.contentTextPrimary
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                    Text {
+                        text: noMolestarCard.manual ? "Activado: los avisos se guardan sin sonar"
+                              : (noMolestarCard.activo ? "Activado por horario hasta las " + prefs.s("Concentracion/hasta")
+                              : (noMolestarCard.programado ? "Programado de " + prefs.s("Concentracion/desde") + " a " + prefs.s("Concentracion/hasta")
+                              : "Desactivado"))
+                        color: titanTheme.contentTextSecondary
+                        font.pixelSize: 10
+                    }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: shellBackend.setNoMolestar(!noMolestarCard.manual)
+            }
+        }
+
         // 3. DESLIZADOR DE PANTALLA / BRILLO ESTILO macOS
         Rectangle {
+            visible: { prefs.version; return prefs.b("Centro/brillo") }
             width: parent.width
             height: 48
             radius: 14
@@ -467,6 +542,7 @@ Rectangle {
 
         // 4. DESLIZADOR DE VOLUMEN / SONIDO ESTILO macOS
         Rectangle {
+            visible: { prefs.version; return prefs.b("Centro/sonido") }
             width: parent.width
             height: 48
             radius: 14
@@ -599,7 +675,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: shellBackend.setControlCenterPage(0)
+                        onClicked: shellBackend.controlCenterPage = 0
                     }
                 }
 
@@ -956,7 +1032,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: shellBackend.setControlCenterPage(0)
+                        onClicked: shellBackend.controlCenterPage = 0
                     }
                 }
 

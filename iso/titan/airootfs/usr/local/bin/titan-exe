@@ -1,0 +1,62 @@
+#!/bin/sh
+# Inti OS - programas de Windows (.exe / .msi) con doble clic.
+#
+# Con Wine instalado se abren directamente (los .msi con su instalador).
+# Sin Wine se pregunta (con el aspecto de Inti):
+#   Instalar Wine y abrir  -> pkexec titan-componente instalar wine: sale la
+#                             ventana "Por tu seguridad..." con la contraseña
+#                             de administrador (nunca root escondido)
+#   Buscar en la App Store -> muchas veces hay versión para Linux, y va mejor
+#   Cancelar
+# Cada cuenta tiene su propia "unidad C:" en ~/.wine (Wine la crea solo).
+#
+# Uso: titan-exe FICHERO.exe     (lo que lanza el doble clic)
+set -u
+pregunta=/usr/share/titan/exe/Pregunta.qml
+f="${1:-}"
+
+avisar() { command -v notify-send >/dev/null 2>&1 && notify-send -a "Inti" -i "${3:-application-x-ms-dos-executable}" "$1" "$2"; }
+
+[ -n "$f" ] && [ -f "$f" ] || { avisar "No se encontró el programa" "${f:-(sin archivo)}" dialog-error; exit 1; }
+case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+fichero=$(basename "$f")
+
+abrir() {
+    avisar "Abriendo $fichero" "Los programas de Windows tardan un poco la primera vez."
+    cd "$(dirname "$f")" || exit 1
+    case "$fichero" in
+        *.[Mm][Ss][Ii]) exec wine msiexec /i "$f" ;;
+        *) exec wine start /unix "$f" ;;
+    esac
+}
+
+command -v wine >/dev/null 2>&1 && abrir
+
+# Nombre para buscar en la tienda: "Setup_MiPrograma-2.1_x64.exe" -> "MiPrograma"
+nombre=$(printf '%s' "$fichero" | sed -E 's/\.(exe|msi)$//I; s/(^|[-_ ])(setup|install(er)?|instalador)([-_ ]|$)/ /Ig;
+    s/[-_ ]?(v?[0-9][0-9.]*.*|x64|x86|win(32|64)?|amd64)$//I; s/[-_]/ /g; s/^ +| +$//g')
+[ -n "$nombre" ] || nombre="$fichero"
+
+vivo=false; [ -d /run/archiso ] && vivo=true
+tema="${XDG_CONFIG_HOME:-$HOME/.config}/titan/theme.conf"
+oscuro=$(sed -n 's/^isDark=//p' "$tema" 2>/dev/null | tail -n 1)
+acento=$(sed -n 's/^accent=//p' "$tema" 2>/dev/null | tail -n 1 | tr -d '"')
+printf '%s' "$acento" | grep -Eq '^#[0-9a-fA-F]{6}$' || acento="#0071e3"
+qml=$(command -v qml6 || echo /usr/lib/qt6/bin/qml)
+QT_QUICK_CONTROLS_STYLE=Basic "$qml" "$pregunta" -- "$fichero" "${oscuro:-false}" "$acento" "$vivo" >/dev/null 2>&1
+respuesta=$?
+
+case "$respuesta" in
+    12) exec /usr/local/bin/plasma-discover --search "$nombre" ;;
+    10) ;;
+    *) exit 0 ;;
+esac
+
+avisar "Instalando Wine" "Descargando lo necesario para abrir programas de Windows. Puede tardar unos minutos." system-software-install
+error=$(pkexec /usr/local/bin/titan-componente instalar wine 2>&1 >/dev/null)
+codigo=$?
+case "$codigo" in
+    0) avisar "Wine instalado" "Ya puedes abrir programas de Windows con doble clic." system-software-install; abrir ;;
+    126|127) exit 0 ;;   # se cerró la ventana de la contraseña
+    *) avisar "No se pudo instalar Wine" "${error:-Comprueba la conexión a Internet y vuelve a intentarlo.}" dialog-error; exit 1 ;;
+esac

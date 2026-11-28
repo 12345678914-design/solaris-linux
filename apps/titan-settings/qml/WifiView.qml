@@ -1,366 +1,201 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+// Ajustes > Wi-Fi: redes cercanas y redes conocidas (con su contraseña
+// guardada en NetworkManager: no se vuelve a pedir).
+import QtQuick
 
-ScrollView {
-    id: wifiView
-    contentWidth: width
-    clip: true
+PaginaAjustes {
+    id: vista
+    titulo: "Wi-Fi"
+    descripcion: "Al conectarte a una red, su contraseña queda guardada y el equipo se vuelve a conectar solo."
+    mensaje: conexiones.mensaje
+    onMensajeCerrado: conexiones.limpiarMensaje()
 
-    TitanTheme { id: theme }
+    TitanTheme { id: tema }
 
-    property string selectedSsid: ""
-    property string passwordInput: ""
+    property string pidiendo: ""          // red a la que se le está pidiendo contraseña
+    property string claveVisible: ""      // uuid cuya contraseña se ve
+    property string claveTexto: ""
+    property bool formOculta: false
 
-    Column {
-        width: parent.width - 48
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 20
-        topPadding: 16
-        bottomPadding: 32
+    Component.onCompleted: { conexiones.leerWifi(); conexiones.escanear() }
+    Timer { running: conexiones.wifiActivo; repeat: true; interval: 20000; onTriggered: conexiones.escanear() }
 
-        // 1. ENCABEZADO
-        Row {
-            width: parent.width
-            spacing: 12
+    Connections {
+        target: conexiones
+        function onClaveLeida(uuid, clave) { vista.claveVisible = uuid; vista.claveTexto = clave }
+    }
 
-            Text {
-                text: "Wi-Fi"
-                color: theme.contentTextPrimary
-                font.pixelSize: 18
-                font.bold: true
-                anchors.verticalCenter: parent.verticalCenter
+    function elegirRed(red) {
+        if (red.conectada) return
+        // Conocida o abierta: directamente. Nueva con seguridad: pedir contraseña.
+        if (red.conocida || red.seguridad === "") { vista.pidiendo = ""; conexiones.conectar(red.ssid, "") }
+        else vista.pidiendo = red.ssid
+    }
+
+    component Senal: Canvas {
+        property int nivel: 100
+        property color colorOn: tema.contentTextPrimary
+        width: 18; height: 14
+        onNivelChanged: requestPaint()
+        onColorOnChanged: requestPaint()
+        onPaint: {
+            var ctx = getContext("2d"); ctx.reset()
+            var barras = nivel > 75 ? 3 : nivel > 45 ? 2 : nivel > 20 ? 1 : 0
+            for (var i = 0; i < 3; ++i) {
+                ctx.strokeStyle = i < barras ? colorOn : Qt.rgba(colorOn.r, colorOn.g, colorOn.b, 0.25)
+                ctx.lineWidth = 1.8; ctx.lineCap = "round"
+                ctx.beginPath()
+                ctx.arc(9, 13, 3 + i * 4, Math.PI * 1.25, Math.PI * 1.75)
+                ctx.stroke()
             }
+            ctx.fillStyle = colorOn
+            ctx.beginPath(); ctx.arc(9, 12.5, 1.4, 0, Math.PI * 2); ctx.fill()
+        }
+    }
 
-            Item { width: 10 }
-
-            Rectangle {
-                width: 80
-                height: 26
-                radius: 6
-                color: scanMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.08)
-                border.color: theme.contentCardBorder
-
-                Text {
-                    anchors.centerIn: parent
-                    text: settingsBackend.wifiScanning ? "Buscando…" : "Buscar"
-                    color: theme.contentTextPrimary
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: scanMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    enabled: !settingsBackend.wifiScanning && settingsBackend.wifiEnabled
-                    onClicked: settingsBackend.scanWifi()
-                }
+    Grupo {
+        Fila {
+            titulo: "Wi-Fi"
+            detalle: !conexiones.hayWifi ? "No se encuentra ninguna tarjeta Wi-Fi"
+                     : conexiones.redActual !== "" ? "Conectado a " + conexiones.redActual
+                     : conexiones.wifiActivo ? "Sin conectar" : "Apagado"
+            separador: false
+            Interruptor {
+                anchors.verticalCenter: parent.verticalCenter
+                habilitado: conexiones.hayWifi
+                activo: conexiones.wifiActivo
+                onAlternado: (v) => conexiones.setWifi(v)
             }
         }
+    }
 
-        // 2. INTERRUPTOR PRINCIPAL
-        Rectangle {
-            width: parent.width
-            height: 60
-            radius: 10
-            color: theme.contentCardBg
-            border.color: theme.contentCardBorder
-            border.width: 1
-
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 12
-
-                Rectangle {
-                    width: 32
-                    height: 32
-                    radius: 7
-                    color: "#007aff"
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "📶"
-                        font.pixelSize: 14
+    Grupo {
+        visible: conexiones.wifiActivo
+        etiqueta: conexiones.escaneando ? "Redes cercanas · buscando…" : "Redes cercanas"
+        nota: conexiones.redes.length === 0 && !conexiones.escaneando ? "No se ve ninguna red." : ""
+        Repeater {
+            model: conexiones.redes
+            delegate: Column {
+                id: red
+                required property var modelData
+                required property int index
+                width: parent ? parent.width : 400
+                Fila {
+                    titulo: red.modelData.ssid
+                    detalle: (red.modelData.conectada ? "Conectada" : conexiones.conectando === red.modelData.ssid ? "Conectando…"
+                              : red.modelData.conocida ? "Conocida · contraseña guardada" : "")
+                             + (red.modelData.seguridad !== "" ? (red.modelData.conectada || red.modelData.conocida || conexiones.conectando === red.modelData.ssid ? " · " : "") + "🔒 " + red.modelData.seguridad : "")
+                    separador: red.index < conexiones.redes.length - 1 || vista.pidiendo === red.modelData.ssid
+                    Senal { anchors.verticalCenter: parent.verticalCenter; nivel: red.modelData.senal; colorOn: red.modelData.conectada ? tema.accent : tema.contentTextPrimary }
+                    Boton {
+                        visible: !red.modelData.conectada
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: conexiones.conectando === red.modelData.ssid ? "Conectando…" : "Conectar"
+                        habilitado: conexiones.conectando === ""
+                        onPulsado: vista.elegirRed(red.modelData)
+                    }
+                    Boton {
+                        visible: red.modelData.conectada
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: "Desconectar"
+                        onPulsado: conexiones.desconectar()
                     }
                 }
-
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-
-                    Text {
-                        text: "Wi-Fi"
-                        color: theme.contentTextPrimary
-                        font.pixelSize: 13
-                        font.bold: true
+                Fila {
+                    visible: vista.pidiendo === red.modelData.ssid
+                    titulo: "Contraseña de " + red.modelData.ssid
+                    detalle: "Se guardará para la próxima vez"
+                    separador: red.index < conexiones.redes.length - 1
+                    onVisibleChanged: if (visible) { claveRed.limpiar(); claveRed.enfocar() }
+                    Campo {
+                        id: claveRed
+                        secreto: !verClaveRed.activo
+                        anchors.verticalCenter: parent.verticalCenter
+                        ancho: 180
+                        onAceptado: unir.pulsado()
                     }
-
-                    Text {
-                        text: !settingsBackend.wifiEnabled ? "Desactivado" :
-                              settingsBackend.wifiConnected ? ("Conectado a " + settingsBackend.wifiSsid) : "Buscando redes disponibles…"
-                        color: theme.contentTextSecondary
-                        font.pixelSize: 11
-                    }
-                }
-            }
-
-            Rectangle {
-                id: wifiSwitch
-                anchors.right: parent.right
-                anchors.rightMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                width: 44
-                height: 24
-                radius: 12
-                color: settingsBackend.wifiEnabled ? "#34c759" : (theme.isDark ? "#39393d" : "#e5e5ea")
-                Behavior on color { ColorAnimation { duration: 160 } }
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: settingsBackend.wifiEnabled ? 22 : 2
-                    width: 20
-                    height: 20
-                    radius: 10
-                    color: "#ffffff"
-                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: settingsBackend.wifiEnabled = !settingsBackend.wifiEnabled
-                }
-            }
-        }
-
-        // 3. DIÁLOGO DE CONEXIÓN INLINE SI SELECCIONÓ UNA RED
-        Rectangle {
-            visible: selectedSsid !== "" && settingsBackend.wifiEnabled
-            width: parent.width
-            height: 115
-            radius: 10
-            color: theme.contentCardBg
-            border.color: "#007aff"
-            border.width: 1.5
-
-            Column {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 10
-
-                Text {
-                    text: "Conectar a «" + selectedSsid + "»"
-                    color: theme.contentTextPrimary
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: 10
-
-                    Rectangle {
-                        width: parent.width - 160
-                        height: 32
-                        radius: 6
-                        color: theme.isDark ? Qt.rgba(0, 0, 0, 0.4) : Qt.rgba(1, 1, 1, 0.8)
-                        border.color: pwInput.activeFocus ? "#007aff" : theme.contentCardBorder
-
-                        TextField {
-                            id: pwInput
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            placeholderText: "Contraseña de la red…"
-                            echoMode: TextInput.Password
-                            color: theme.contentTextPrimary
-                            font.pixelSize: 12
-                            background: null
-                            onAccepted: connectBtn.clicked()
-                        }
-                    }
-
-                    Rectangle {
-                        id: connectBtn
-                        width: 70
-                        height: 32
-                        radius: 6
-                        color: "#007aff"
-                        signal clicked()
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Conectar"
-                            color: "#ffffff"
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                settingsBackend.connectWifi(selectedSsid, pwInput.text);
-                                selectedSsid = "";
-                                pwInput.text = "";
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        width: 70
-                        height: 32
-                        radius: 6
-                        color: cancelPwMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.08)
-                        border.color: theme.contentCardBorder
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Cancelar"
-                            color: theme.contentTextPrimary
-                            font.pixelSize: 11
-                        }
-
-                        MouseArea {
-                            id: cancelPwMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: { selectedSsid = ""; pwInput.text = ""; }
-                        }
+                    Interruptor { id: verClaveRed; anchors.verticalCenter: parent.verticalCenter; onAlternado: (v) => activo = v }
+                    Boton {
+                        id: unir
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: "Unirse"
+                        principal: true
+                        habilitado: claveRed.texto.length >= 8
+                        onPulsado: if (habilitado) { conexiones.conectar(red.modelData.ssid, claveRed.texto); vista.pidiendo = ""; claveRed.limpiar() }
                     }
                 }
             }
         }
+    }
 
-        // 4. LISTA DE REDES DETECTADAS
-        Column {
-            visible: settingsBackend.wifiEnabled
-            width: parent.width
-            spacing: 8
+    Row {
+        visible: conexiones.wifiActivo
+        spacing: 8
+        Boton { texto: conexiones.escaneando ? "Buscando…" : "Buscar redes"; habilitado: !conexiones.escaneando; onPulsado: conexiones.escanear() }
+        Boton { texto: "Unirse a otra red…"; onPulsado: vista.formOculta = !vista.formOculta }
+    }
 
-            Text {
-                text: "Redes Conocidas y Disponibles"
-                color: theme.contentTextSecondary
-                font.pixelSize: 12
-                font.bold: true
+    Grupo {
+        visible: vista.formOculta && conexiones.wifiActivo
+        etiqueta: "Red oculta"
+        Fila {
+            titulo: "Nombre de la red (SSID)"
+            Campo { id: ocultaSsid; anchors.verticalCenter: parent.verticalCenter }
+        }
+        Fila {
+            titulo: "Contraseña"
+            detalle: "Déjala vacía si la red es abierta"
+            separador: false
+            Campo { id: ocultaClave; secreto: true; anchors.verticalCenter: parent.verticalCenter }
+            Boton {
+                anchors.verticalCenter: parent.verticalCenter
+                texto: "Unirse"
+                principal: true
+                habilitado: ocultaSsid.texto.length > 0 && (ocultaClave.texto.length === 0 || ocultaClave.texto.length >= 8)
+                onPulsado: { conexiones.unirseOculta(ocultaSsid.texto, ocultaClave.texto); vista.formOculta = false; ocultaClave.limpiar() }
             }
+        }
+    }
 
-            Rectangle {
-                width: parent.width
-                height: Math.max(80, wifiListView.contentHeight + 16)
-                radius: 10
-                color: theme.contentCardBg
-                border.color: theme.contentCardBorder
-                border.width: 1
-
-                ListView {
-                    id: wifiListView
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    spacing: 2
-                    model: settingsBackend.wifiNetworks
-
-                    delegate: Rectangle {
-                        width: wifiListView.width
-                        height: 38
-                        radius: 6
-                        color: modelData.connected ? (theme.isDark ? Qt.rgba(0.0, 0.44, 0.89, 0.3) : Qt.rgba(0.0, 0.44, 0.89, 0.15)) :
-                               netMouse.containsMouse ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 10
-
-                            Text {
-                                text: modelData.signal > 75 ? "📶" : (modelData.signal > 40 ? "🛜" : "⋅)")
-                                font.pixelSize: 13
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
-
-                                Text {
-                                    text: modelData.ssid || "Red Desconocida"
-                                    color: theme.contentTextPrimary
-                                    font.pixelSize: 12
-                                    font.bold: modelData.connected
-                                }
-
-                                Text {
-                                    text: modelData.security && modelData.security !== "Abierta" ? "Seguridad: " + modelData.security : "Red Abierta"
-                                    color: theme.contentTextSecondary
-                                    font.pixelSize: 9
-                                }
-                            }
-                        }
-
-                        Row {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 8
-
-                            Rectangle {
-                                visible: modelData.connected
-                                width: 80
-                                height: 24
-                                radius: 5
-                                color: Qt.rgba(1, 0.2, 0.2, 0.15)
-                                border.color: Qt.rgba(1, 0.2, 0.2, 0.3)
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Desconectar"
-                                    color: "#ff4d4d"
-                                    font.pixelSize: 10
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: settingsBackend.disconnectWifi()
-                                }
-                            }
-
-                            Text {
-                                visible: !modelData.connected && modelData.security && modelData.security !== "Abierta"
-                                text: "🔒"
-                                font.pixelSize: 11
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        MouseArea {
-                            id: netMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (modelData.connected) return;
-                                if (!modelData.security || modelData.security === "Abierta") {
-                                    settingsBackend.connectWifi(modelData.ssid, "");
-                                } else {
-                                    selectedSsid = modelData.ssid;
-                                }
-                            }
+    Grupo {
+        etiqueta: "Redes conocidas"
+        nota: conexiones.conocidas.length === 0 ? "Aún no hay redes guardadas." : "Olvidar una red borra su contraseña guardada."
+        Repeater {
+            model: conexiones.conocidas
+            delegate: Column {
+                id: conocida
+                required property var modelData
+                required property int index
+                width: parent ? parent.width : 400
+                Fila {
+                    titulo: conocida.modelData.ssid + (conocida.modelData.activa ? "  ·  conectada" : "")
+                    detalle: vista.claveVisible === conocida.modelData.uuid ? "Contraseña: " + vista.claveTexto
+                             : (conocida.modelData.ultima > 0 ? "Última vez: " + new Date(conocida.modelData.ultima * 1000).toLocaleDateString(Qt.locale(), "d MMM yyyy") : "")
+                    separador: conocida.index < conexiones.conocidas.length - 1
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Auto"
+                        color: tema.contentTextSecondary
+                        font.pixelSize: 10
+                    }
+                    Interruptor {
+                        anchors.verticalCenter: parent.verticalCenter
+                        activo: conocida.modelData.autoconectar === true
+                        onAlternado: (v) => conexiones.setAutoconectar(conocida.modelData.uuid, v)
+                    }
+                    Boton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: vista.claveVisible === conocida.modelData.uuid ? "Ocultar" : "Ver contraseña"
+                        onPulsado: {
+                            if (vista.claveVisible === conocida.modelData.uuid) { vista.claveVisible = ""; vista.claveTexto = "" }
+                            else conexiones.verClave(conocida.modelData.uuid)
                         }
                     }
-                }
-
-                Text {
-                    visible: settingsBackend.wifiNetworks.length === 0
-                    anchors.centerIn: parent
-                    text: settingsBackend.wifiScanning ? "Buscando redes cercanas…" : "No se encontraron redes Wi-Fi"
-                    color: theme.contentTextSecondary
-                    font.pixelSize: 12
+                    Boton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        texto: "Olvidar"
+                        peligro: true
+                        onPulsado: conexiones.olvidar(conocida.modelData.uuid)
+                    }
                 }
             }
         }

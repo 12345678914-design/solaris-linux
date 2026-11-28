@@ -6,6 +6,8 @@ TitanWindow {
 
     title: "Ajustes del Sistema - " + settingsBackend.currentSection
     sidebarWidth: 230
+    // La barra lateral no se pliega: con menos ancho no cabría el contenido
+    minimumWidth: 600
     showStatusBar: false
 
     TitanTheme { id: theme }
@@ -83,7 +85,7 @@ TitanWindow {
             height: 28
             radius: 6
             color: theme.isDark ? Qt.rgba(0, 0, 0, 0.3) : Qt.rgba(1, 1, 1, 0.6)
-            border.color: searchInput.activeFocus ? "#0071e3" : Qt.rgba(0, 0, 0, 0.12)
+            border.color: searchInput.activeFocus ? theme.accent : Qt.rgba(0, 0, 0, 0.12)
             border.width: searchInput.activeFocus ? 1.5 : 1
 
             Row {
@@ -153,7 +155,7 @@ TitanWindow {
                     width: 36
                     height: 36
                     radius: 18
-                    color: "#0a84ff"
+                    color: theme.accent
 
                     Text {
                         anchors.centerIn: parent
@@ -170,7 +172,7 @@ TitanWindow {
                     spacing: 2
 
                     Text {
-                        text: settingsBackend.systemInfo.user || "isai"
+                        text: settingsBackend.systemInfo.user || ""
                         color: theme.contentTextPrimary
                         font.pixelSize: 12
                         font.bold: true
@@ -231,7 +233,7 @@ TitanWindow {
                 Rectangle {
                     anchors.fill: parent
                     radius: 6
-                    color: isSelected ? "#0071e3" :
+                    color: isSelected ? theme.accent :
                            isHovered ? (theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
 
                     Row {
@@ -295,6 +297,8 @@ TitanWindow {
                 return wifiComponent
             } else if (sec === "Bluetooth" || sec === "bluetooth") {
                 return bluetoothComponent
+            } else if (vistasSistema[sec] !== undefined) {
+                return vistasSistema[sec]
             } else {
                 return dynamicSectionComponent
             }
@@ -306,6 +310,52 @@ TitanWindow {
     Component { id: generalComponent; GeneralView {} }
     Component { id: wifiComponent; WifiView {} }
     Component { id: bluetoothComponent; BluetoothView {} }
+
+    // Secciones con datos reales del sistema (backend Sistema)
+    readonly property var vistasSistema: ({
+        "Batería": energiaComponent,
+        "Bloquear pantalla": bloqueoComponent,
+        "Privacidad y seguridad": seguridadComponent,
+        "Accesibilidad": accesibilidadComponent,
+        "Teclado": tecladoComponent,
+        "Ratón y panel táctil": ratonComponent,
+        "Compartir": compartirComponent,
+        "Impresoras y escáneres": impresorasComponent,
+        "Restaurar sistema": restaurarComponent,
+        "VPN": vpnComponent,
+        "Almacenamiento": almacenamientoComponent,
+        "Pantallas": pantallasComponent,
+        "Sonido": sonidoComponent,
+        "Escritorio y Dock": escritorioDockComponent,
+        "Barra de menús": barraMenusComponent,
+        "Centro de control": centroControlComponent,
+        "Notificaciones": notificacionesComponent,
+        "Concentración": concentracionComponent,
+        "Usuarios y grupos": usuariosComponent,
+        "Ventanas": ventanasComponent,
+        "Aplicaciones predeterminadas": predeterminadasComponent
+    })
+    Component { id: predeterminadasComponent; PredeterminadasView {} }
+    Component { id: ventanasComponent; VentanasView {} }
+    Component { id: pantallasComponent; PantallasView {} }
+    Component { id: sonidoComponent; SonidoView {} }
+    Component { id: escritorioDockComponent; EscritorioDockView {} }
+    Component { id: barraMenusComponent; BarraMenusView {} }
+    Component { id: centroControlComponent; CentroControlView {} }
+    Component { id: notificacionesComponent; NotificacionesView {} }
+    Component { id: concentracionComponent; ConcentracionView {} }
+    Component { id: usuariosComponent; UsuariosView {} }
+    Component { id: energiaComponent; EnergiaView {} }
+    Component { id: bloqueoComponent; BloqueoView {} }
+    Component { id: seguridadComponent; SeguridadView {} }
+    Component { id: accesibilidadComponent; AccesibilidadView {} }
+    Component { id: tecladoComponent; TecladoView {} }
+    Component { id: ratonComponent; RatonView {} }
+    Component { id: compartirComponent; CompartirView {} }
+    Component { id: impresorasComponent; ImpresorasView {} }
+    Component { id: restaurarComponent; RestaurarView {} }
+    Component { id: vpnComponent; VpnView {} }
+    Component { id: almacenamientoComponent; AlmacenamientoView {} }
 
     // Componente dinámico y completo para todas las demás secciones
     Component {
@@ -468,7 +518,7 @@ TitanWindow {
                         // Información secundaria
                         Text {
                             text: settingsBackend.currentSection === "Batería" ? "Salud de batería: 98% (Normal) • Temperatura óptima: 31°C" :
-                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Usuario: " + (settingsBackend.systemInfo.user || "isai") + " • Grupo: wheel (Administrador)" :
+                                  settingsBackend.currentSection === "Usuarios y grupos" ? "Usuario: " + (settingsBackend.systemInfo.user || "") + " • Grupo: wheel (Administrador)" :
                                   settingsBackend.currentSection === "Teclado" ? "Velocidad de repetición: Rápida • Retardo: Corto" :
                                   settingsBackend.currentSection === "Wi-Fi" ? "Dirección IPv4: 192.168.1.105 • Puerta de enlace: 192.168.1.1" :
                                   settingsBackend.currentSection === "Bluetooth" ? "Controlador Intel AX200 • Perfiles soportados: A2DP, AVRCP, HFP" :

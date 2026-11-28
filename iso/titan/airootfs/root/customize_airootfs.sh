@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Solaris Linux 1.8 - personalizacion de la ISO en vivo.
+# Inti OS 1.8 - personalizacion de la ISO en vivo.
 #
 # Lo ejecuta archiso DENTRO del chroot de airootfs, despues de pacstrap.
 # Por eso se puede escribir /usr/lib/os-release y /etc/passwd: aqui ya no hay
@@ -160,9 +160,11 @@ ln -sfn /usr/share/fastfetch/presets/titan.jsonc \
 
 # ------------------------------------------- 2b. escritorio grafico ---------
 #
-# Labwc inicia titan-desktop y titan-shell desde su autostart.
-# El perfil 15-titan-grafico.sh inicia la sesion grafica en tty1.
-log "escritorio: Labwc y titan-shell"
+# El perfil 15-titan-grafico.sh inicia la sesion grafica en tty1: Wayfire si
+# hay GPU con 3D, labwc si no. Las dos lanzan titan-desktop y titan-shell con
+# /usr/local/bin/titan-sesion (labwc desde su autostart, Wayfire desde
+# [autostart] de ~/.config/wayfire.ini).
+log "escritorio: Wayfire/labwc y titan-shell"
 
 for fichero in \
     /usr/local/bin/titan-shell \
@@ -172,6 +174,8 @@ for fichero in \
     /usr/local/bin/titan-panel \
     /usr/local/bin/titan-acerca \
     /usr/local/bin/titan-audio-setup \
+    /usr/local/bin/titan-sesion \
+    /etc/skel/.config/wayfire.ini \
     /usr/share/applications/titan-acerca.desktop \
     /etc/titan/base.conf \
     /etc/profile.d/15-titan-grafico.sh \
@@ -233,9 +237,9 @@ if [[ -d /etc/skel/Escritorio ]]; then
   chown -R titan:titan /home/titan/Escritorio
 fi
 
-# Calamares: aplicar configuración personalizada de Solaris Linux
+# Calamares: aplicar configuración personalizada de Inti OS
 if [[ -d /usr/share/calamares-solaris ]]; then
-  log "calamares: aplicando configuración personalizada de Solaris Linux"
+  log "calamares: aplicando configuración personalizada de Inti OS"
   mkdir -p /etc/calamares
   cp -rf /usr/share/calamares-solaris/* /etc/calamares/
 fi
@@ -276,10 +280,14 @@ if [[ -f /usr/share/applications/org.gnome.clocks.desktop ]]; then
   sed -i 's|^Name=.*|Name=Reloj|g' /usr/share/applications/org.gnome.clocks.desktop
 fi
 
-if [[ -f /usr/share/applications/org.gnome.Software.desktop ]]; then
-  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/apps-folder.png|g' /usr/share/applications/org.gnome.Software.desktop
-  sed -i 's|^Name=.*|Name=App Store|g' /usr/share/applications/org.gnome.Software.desktop
+# La tienda es Discover (KDE), solo para Flatpak y firmware: ver
+# /usr/local/bin/plasma-discover. Se llama "App Store" como antes.
+if [[ -f /usr/share/applications/org.kde.discover.desktop ]]; then
+  sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/apps-folder.png|g' /usr/share/applications/org.kde.discover.desktop
+  sed -i -E 's|^Name(\[[^]]*\])?=.*|Name\1=App Store|g' /usr/share/applications/org.kde.discover.desktop
 fi
+# Sin Snap en Inti OS: que nadie abra enlaces snap:// con Discover
+rm -f /usr/share/applications/org.kde.discover.snap.desktop
 
 if [[ -f /usr/share/applications/io.github.celluloid_player.Celluloid.desktop ]]; then
   sed -i 's|^Icon=.*|Icon=/usr/share/titan/icons/video.png|g' /usr/share/applications/io.github.celluloid_player.Celluloid.desktop
@@ -300,9 +308,9 @@ fi
 if [[ ! -f /usr/local/bin/titan-video || -L /usr/local/bin/titan-video ]]; then
   [[ -x /usr/bin/celluloid ]] && ln -sf /usr/bin/celluloid /usr/local/bin/titan-video || true
 fi
-if [[ -x /usr/bin/gnome-software ]] && [[ ! -f /usr/bin/discover ]]; then
-  ln -sf /usr/bin/gnome-software /usr/local/bin/discover || true
-fi
+# "discover" en la terminal abre la tienda (el ejecutable de KDE se llama
+# plasma-discover; /usr/local/bin/plasma-discover es el envoltorio de Inti OS)
+ln -sf /usr/local/bin/plasma-discover /usr/local/bin/discover
 
 # ----------------------------------------------- Seguridad Antimalware y Permisos
 log "seguridad: permisos de raiz (root) y aislamiento de usuario"
@@ -356,6 +364,85 @@ install -d -m 0750 -o titan -g titan /run/media/titan
 # El MOTD de Arch (paquete 'filesystem') no viene en el perfil: se sustituye.
 rm -f /etc/motd
 
+# Animacion de arranque, apagado y reinicio (en el USB y en el sistema
+# instalado): tema "titan", el sol de Inti y un circulo de puntos que gira como
+# en Windows, en vez de las lineas verdes de systemd. Parte del tema spinner de
+# plymouth; los fotogramas salen de scripts/generar-animacion-arranque.py.
+# Va ANTES del initramfs: el gancho plymouth mete el tema dentro. El
+# instalador anade el gancho y 'splash' al sistema instalado.
+if [[ -d /usr/share/plymouth/themes/spinner ]]; then
+  t=/usr/share/plymouth/themes/titan
+  rm -rf "$t"
+  cp -a /usr/share/plymouth/themes/spinner "$t"
+  rm -f "$t/spinner.plymouth"
+  if [[ -d /usr/share/titan/plymouth ]]; then
+    rm -f "$t"/throbber-*.png
+    cp -f /usr/share/titan/plymouth/*.png "$t/"
+  elif [[ -f /usr/share/titan/solaris-logo.png ]]; then
+    cp -f /usr/share/titan/solaris-logo.png "$t/watermark.png"
+  fi
+  cat > "$t/titan.plymouth" <<'PLY'
+[Plymouth Theme]
+Name=Inti OS
+Description=Arranque de Inti OS: el sol de Inti y un circulo de puntos que gira
+ModuleName=two-step
+
+[two-step]
+Font=Inter 12
+TitleFont=Inter 16
+ImageDir=/usr/share/plymouth/themes/titan
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.62
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.80
+HorizontalAlignment=.5
+VerticalAlignment=.70
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.40
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x10121a
+BackgroundEndColor=0x10121a
+ProgressBarBackgroundColor=0x3a3f4b
+ProgressBarForegroundColor=0xf5b041
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+Title=Apagando
+
+[reboot]
+UseEndAnimation=false
+Title=Reiniciando
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Instalando actualizaciones...
+SubTitle=No apagues el equipo
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el sistema...
+SubTitle=No apagues el equipo
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Actualizando el firmware...
+SubTitle=No apagues el equipo
+PLY
+  install -d -m 0755 /etc/plymouth
+  printf '[Daemon]\nTheme=titan\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
+fi
+
 # ------------------------------------------------- 3. initramfs del kernel propio
 
 # El kernelrelease con sufijo -titanlinux, tal y como lo produce el PKGBUILD
@@ -368,8 +455,10 @@ if [[ -n "$kver" ]]; then
   # instalar el paquete del kernel. Si lo hizo bien (lleva el hook 'archiso'),
   # no hay que rehacerlo: son varios minutos de zstd para nada.
   img="/boot/initramfs-linux-titanlinux.img"
-  if [[ -s "$img" ]] && lsinitcpio "$img" 2>/dev/null | grep -q 'hooks/archiso'; then
-    log "initramfs del kernel propio ya trae el hook archiso; se reutiliza"
+  if [[ -s "$img" ]] && lsinitcpio "$img" 2>/dev/null | grep -q 'hooks/archiso' \
+     && { [[ ! -d /usr/share/plymouth/themes/titan ]] \
+          || lsinitcpio "$img" 2>/dev/null | grep -q 'plymouth/themes/titan/throbber'; }; then
+    log "initramfs del kernel propio ya trae el hook archiso (y la animacion); se reutiliza"
   else
     log "initramfs de archiso para el kernel propio ${kver}"
     mkinitcpio -k "$kver" -p linux-titanlinux
@@ -463,6 +552,14 @@ for unit in NetworkManager systemd-resolved bluetooth; do
   fi
 done
 
+# Suspension con NVIDIA: modprobe.d/nvidia.conf pide
+# NVreg_PreserveVideoMemoryAllocations=1, que exige estos tres servicios (el
+# paquete los trae pero no los habilita). Sin GPU NVIDIA, nvidia-sleep.sh no
+# encuentra /proc/driver/nvidia/suspend y sale sin hacer nada.
+if [[ -e /usr/lib/systemd/system/nvidia-suspend.service ]]; then
+  systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service
+fi
+
 # Habilitar servicios de audio PipeWire y WirePlumber para sesiones de usuario
 install -d -m 0755 /etc/systemd/user/default.target.wants
 install -d -m 0755 /etc/systemd/user/sockets.target.wants
@@ -476,6 +573,91 @@ for u_sock in pipewire.socket pipewire-pulse.socket; do
     ln -sf "/usr/lib/systemd/user/${u_sock}" "/etc/systemd/user/sockets.target.wants/${u_sock}"
   fi
 done
+
+# ------------------------------------- escritorio completo (como Ubuntu/Fedora)
+log "escritorio completo: impresion, energia, cortafuegos, llavero, mDNS"
+
+# Servicios del sistema. Solo los que existan: un paquete que falte no rompe
+# el build. apparmor.service carga los perfiles (si el arranque lleva lsm=
+# con apparmor; si no, no hace nada). systemd-oomd cierra la app que se come
+# la memoria antes de que el equipo se quede congelado, como en Fedora/Ubuntu
+# (reglas en /etc/systemd/system/user@.service.d/10-titan-oomd.conf).
+# Lo que sigue de este comentario:
+# el build, lo detecta verify/comprobar-escritorio-completo.sh.
+# Como Ubuntu/Fedora: hora en punto por NTP (timesyncd), TRIM semanal de los
+# SSD (fstrim.timer) y limpieza semanal de la cache de pacman (paccache.timer).
+# (grub-btrfsd y los temporizadores de snapper no: el live no tiene btrfs; el
+# instalador los activa si el disco va en btrfs.)
+for unidad in cups.socket cups-browsed.service avahi-daemon.service \
+              power-profiles-daemon.service ModemManager.service \
+              ufw.service titan-cortafuegos.service \
+              apparmor.service systemd-oomd.service \
+              switcheroo-control.service \
+              systemd-timesyncd.service fstrim.timer paccache.timer \
+              titan-fecha-actualizaciones.timer titan-grafica-nvidia.service; do
+  if [[ -e "/usr/lib/systemd/system/${unidad}" || -e "/etc/systemd/system/${unidad}" ]]; then
+    systemctl enable "${unidad}"
+  fi
+done
+
+# Servicios de cada usuario: llavero (socket), carpetas Documentos/Descargas...
+# en el idioma del sistema y el aviso de actualizaciones.
+for unidad in gnome-keyring-daemon.socket xdg-user-dirs-update.service \
+              titan-actualizaciones.timer titan-avisos-fallos.service; do
+  if [[ -e "/usr/lib/systemd/user/${unidad}" || -e "/etc/systemd/user/${unidad}" ]]; then
+    systemctl --global enable "${unidad}"
+  fi
+done
+
+# Llavero desbloqueado con la contrasena de entrada (greetd y consola) y que
+# cambie con ella (passwd). 'optional': si falta, se entra igual.
+for pam in greetd login; do
+  f="/etc/pam.d/${pam}"
+  [[ -f "$f" ]] || continue
+  grep -q pam_gnome_keyring "$f" && continue
+  awk '
+    /^auth/    {ultima_auth=NR}
+    /^session/ {ultima_session=NR}
+    {linea[NR]=$0}
+    END {
+      for (i=1; i<=NR; i++) {
+        print linea[i]
+        if (i==ultima_auth)    print "auth       optional     pam_gnome_keyring.so"
+        if (i==ultima_session) print "session    optional     pam_gnome_keyring.so auto_start"
+      }
+    }' "$f" > "$f.titan" && cat "$f.titan" > "$f" && rm -f "$f.titan"
+done
+if [[ -f /etc/pam.d/passwd ]] && ! grep -q pam_gnome_keyring /etc/pam.d/passwd; then
+  echo "password   optional     pam_gnome_keyring.so" >> /etc/pam.d/passwd
+fi
+
+# Impresoras y equipos de la red por su nombre (.local): avahi + nss-mdns. El
+# mDNS lo hace avahi, asi que systemd-resolved no debe competir por el 5353.
+if [[ -f /etc/nsswitch.conf ]] && ! grep -q mdns_minimal /etc/nsswitch.conf; then
+  sed -i -E 's/^(hosts:.*)\bresolve\b/\1mdns_minimal [NOTFOUND=return] resolve/' /etc/nsswitch.conf
+fi
+install -d -m 0755 /etc/systemd/resolved.conf.d
+printf '[Resolve]\nMulticastDNS=no\n' > /etc/systemd/resolved.conf.d/10-titan-mdns.conf
+
+# Administradores (wheel): ver y crear puntos de restauracion sin root.
+install -d -m 0755 /etc/snapper/config-templates
+if [[ -f /usr/share/snapper/config-templates/default ]]; then
+  sed -e 's/^ALLOW_GROUPS=.*/ALLOW_GROUPS="wheel"/' \
+      -e 's/^SYNC_ACL=.*/SYNC_ACL="yes"/' \
+      -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="5"/' \
+      -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
+      -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="0"/' \
+      -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="0"/' \
+      -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
+      -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
+      /usr/share/snapper/config-templates/default > /etc/snapper/config-templates/titan
+fi
+
+# greetd espera a que la animacion termine (si no, se pisan en la pantalla).
+install -d -m 0755 /etc/systemd/system/greetd.service.d
+printf '[Unit]\nAfter=plymouth-quit-wait.service plymouth-quit.service\n' \
+  > /etc/systemd/system/greetd.service.d/10-plymouth.conf
+
 
 # ---------------------------------------------------------- 6. comprobaciones
 
@@ -582,11 +764,17 @@ fi
 # el fallo por nombres baja a aviso en vez de tumbar el build.)
 sync_log=/tmp/titan-pacman-sync.log
 sync_ok=0
-pacman -Sy --noconfirm >"${sync_log}" 2>&1 && sync_ok=1
+# Un corte de red de unos segundos no debe tumbar el build: se reintenta.
+for intento in 1 2 3; do
+  pacman -Sy --noconfirm >"${sync_log}" 2>&1 && { sync_ok=1; break; }
+  (( intento < 3 )) && sleep 5
+done
+# Fallos de DNS (en cualquiera de sus formas: sin servidor, nombre que no se
+# resuelve o resolucion que tarda demasiado) no son culpa del mirrorlist: aviso.
 if (( sync_ok )); then
   log "pacman: repos sincronizados desde la imagen"
-elif grep -qE 'Could not resolve host|Temporary failure in name resolution' "${sync_log}"; then
-  echo "AVISO: no se pudieron sincronizar los repos en el chroot (sin DNS aqui)." >&2
+elif grep -qE 'Could not resolve host|Temporary failure in name resolution|Resolving timed out' "${sync_log}"; then
+  echo "AVISO: no se pudieron sincronizar los repos en el chroot (DNS sin respuesta aqui)." >&2
   echo "       Lo verificara el check 9 de verify-qemu.sh dentro del live." >&2
 else
   echo "ERROR: los repos de la imagen no sincronizan con este mirrorlist:" >&2
@@ -801,4 +989,38 @@ else
   log "titan-repo: sin paquete del kernel; lo instalado usara el de Arch"
 fi
 
+# Paquetes de Inti (build-iso.sh los deja en /root/inti-paquetes): se
+# registran en la base de datos de pacman SIN copiar ficheros, porque ya están
+# en el live y son idénticos. Así lo instalado sabe que son paquetes y recibe
+# las actualizaciones de las apps de Inti desde el repositorio [inti].
+if compgen -G '/root/inti-paquetes/inti-*.pkg.tar.zst' >/dev/null; then
+  if pacman -U --dbonly --noconfirm /root/inti-paquetes/inti-*.pkg.tar.zst >/dev/null 2>&1 ||
+     pacman -U --dbonly --noconfirm -dd /root/inti-paquetes/inti-*.pkg.tar.zst >/dev/null 2>&1; then
+    log "paquetes de Inti registrados: $(pacman -Qq | grep -c '^inti-')"
+  else
+    echo "AVISO: no se pudieron registrar los paquetes de Inti" >&2
+  fi
+  # La clave de Inti: si viene, se instala y se activa el repositorio [inti]
+  if compgen -G '/root/inti-paquetes/clave/inti-keyring-*.pkg.tar.zst' >/dev/null; then
+    pacman-key --init >/dev/null 2>&1 || true
+    if pacman -U --noconfirm /root/inti-paquetes/clave/inti-keyring-*.pkg.tar.zst >/dev/null 2>&1; then
+      sed -i 's/^#\(\[inti\]\)$/\1/; s/^#\(SigLevel = Required DatabaseOptional\)$/\1/; s|^#\(Server = https://github.com/12345678914-design/inti-repo/releases/download/paquetes\)$|\1|' /etc/pacman.conf
+      log "clave de Inti instalada: repositorio [inti] activado"
+    else
+      echo "AVISO: no se pudo instalar inti-keyring; [inti] queda desactivado" >&2
+    fi
+  else
+    log "sin clave de Inti: el repositorio [inti] queda desactivado"
+  fi
+  rm -rf /root/inti-paquetes
+else
+  log "sin paquetes de Inti: lo instalado no podra actualizar las apps de Inti"
+fi
+
 log "OK: ${TITAN_VERSION} lista"
+
+# Liberar montajes virtuales (efivars y sysfs) antes de salir del chroot para
+# evitar bloqueos al desmontar y errores de E/S en los pasos finales de mkarchiso.
+umount -l /sys/firmware/efi/efivars 2>/dev/null || true
+umount -l /sys 2>/dev/null || true
+

@@ -1,0 +1,21 @@
+// Inti OS - "Cambiar de usuario" desde la pantalla de bloqueo.
+// Abrir otra pantalla de inicio no da ningun permiso: para entrar hace falta
+// la contrasena de la otra cuenta, igual que en tty1 (asi lo hacen GNOME y
+// KDE). Por eso no se pide la de administrador. Solo vale para esta unidad y
+// las consolas 8 a 12:
+//   - arrancarla: quien este delante del equipo (sesion local y activa);
+//   - pararla: la propia pantalla de inicio (usuario 'greeter') al volver a
+//     una sesion que ya estaba abierta.
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units")
+        return polkit.Result.NOT_HANDLED;
+    var unidad = action.lookup("unit") || "";
+    var verbo = action.lookup("verb") || "";
+    if (!/^titan-otro-usuario@(8|9|10|11|12)\.service$/.test(unidad))
+        return polkit.Result.NOT_HANDLED;
+    if (verbo === "start" && subject.local && subject.active)
+        return polkit.Result.YES;
+    if (verbo === "stop" && subject.user === "greeter")
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+});

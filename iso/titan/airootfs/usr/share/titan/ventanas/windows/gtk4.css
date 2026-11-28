@@ -1,0 +1,9 @@
+/* Inti OS - botones de ventana: Estilo Windows. GTK 4. */
+windowcontrols { border-spacing: 0; }
+windowcontrols > button { min-width: 40px; min-height: 28px; margin: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; transition: background-color 90ms ease-out; }
+windowcontrols > button > image { background: none; box-shadow: none; padding: 0; -gtk-icon-size: 14px; }
+windowcontrols > button:hover { background-color: alpha(currentColor, 0.09); }
+windowcontrols > button:active { background-color: alpha(currentColor, 0.05); }
+windowcontrols > button.close:hover { background-color: #c42b1c; color: #ffffff; }
+windowcontrols > button.close:active { background-color: #b3261e; color: #ffffff; }
+windowcontrols > button:backdrop { color: alpha(currentColor, 0.45); }

@@ -1,0 +1,14 @@
+<!DOCTYPE RCC>
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Greeter.qml</file>
+        <file>qml/PanelUsuarios.qml</file>
+        <file alias="icons/simbolos/apagar.svg">../titan-shell/icons/simbolos/apagar.svg</file>
+        <file alias="icons/simbolos/candado.svg">../titan-shell/icons/simbolos/candado.svg</file>
+        <file alias="icons/simbolos/flecha.svg">../titan-shell/icons/simbolos/flecha.svg</file>
+        <file alias="icons/simbolos/reiniciar.svg">../titan-shell/icons/simbolos/reiniciar.svg</file>
+        <file alias="icons/simbolos/reposo.svg">../titan-shell/icons/simbolos/reposo.svg</file>
+        <file alias="icons/simbolos/usuario.svg">../titan-shell/icons/simbolos/usuario.svg</file>
+        <file alias="icons/simbolos/usuarios.svg">../titan-shell/icons/simbolos/usuarios.svg</file>
+    </qresource>
+</RCC>

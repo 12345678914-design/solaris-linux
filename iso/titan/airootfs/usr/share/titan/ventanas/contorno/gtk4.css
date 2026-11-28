@@ -1,0 +1,6 @@
+/* Inti OS - botones de ventana: Contorno fino. GTK 4. */
+windowcontrols > button { min-width: 24px; min-height: 24px; margin: 0 2px; padding: 0; background: none; box-shadow: none; }
+windowcontrols > button > image { padding: 4px; border-radius: 100%; background: none; box-shadow: inset 0 0 0 1px alpha(currentColor, 0.45); -gtk-icon-size: 12px; transition: all 100ms ease-out; }
+windowcontrols > button:hover > image { background-color: alpha(@accent_color, 0.15); color: @accent_color; box-shadow: inset 0 0 0 1px @accent_color; }
+windowcontrols > button.close:hover > image { background-color: alpha(#e5484d, 0.15); color: #e5484d; box-shadow: inset 0 0 0 1px #e5484d; }
+windowcontrols > button:backdrop > image { color: alpha(currentColor, 0.45); }

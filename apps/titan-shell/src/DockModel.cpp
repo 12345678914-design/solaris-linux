@@ -1,4 +1,9 @@
+#include "TitanBinary.h"
 #include "DockModel.h"
+#include "ColaApps.h"
+#include "TitanIconoSvg.h"
+#include "TitanDesktopEntry.h"
+#include "TitanIconoApp.h"
 #include "WindowTracker.h"
 #include "ShellBackend.h"
 #include <QProcess>
@@ -176,15 +181,15 @@ void DockModel::initDefaultPinnedApps()
         m_pinnedApps.append(app);
     };
 
-    addPinned(QStringLiteral("titan-finder"), QStringLiteral("Finder"), QStringLiteral("qrc:/icons/finder.png"), QStringLiteral("titan-finder"));
+    addPinned(QStringLiteral("titan-finder"), QStringLiteral("Explorador de archivos"), QStringLiteral("qrc:/icons/finder.png"), QStringLiteral("titan-finder"));
     addPinned(QStringLiteral("firefox"), QStringLiteral("Firefox"), QStringLiteral("qrc:/icons/firefox.png"), QStringLiteral("firefox"));
     addPinned(QStringLiteral("onlyoffice-desktopeditors"), QStringLiteral("ONLYOFFICE"), QStringLiteral("qrc:/icons/onlyoffice.png"), QStringLiteral("onlyoffice-desktopeditors"));
     addPinned(QStringLiteral("titan-fotos"), QStringLiteral("Fotos"), QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("titan-fotos"));
     addPinned(QStringLiteral("titan-musica"), QStringLiteral("Música"), QStringLiteral("qrc:/icons/music-app.png"), QStringLiteral("titan-musica"));
     addPinned(QStringLiteral("titan-terminal"), QStringLiteral("Terminal"), QStringLiteral("qrc:/icons/terminal.png"), QStringLiteral("titan-terminal"));
     addPinned(QStringLiteral("titan-settings"), QStringLiteral("Ajustes"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("titan-settings"));
-    addPinned(QStringLiteral("org.gnome.Software"), QStringLiteral("App Store"), QStringLiteral("file:///usr/share/titan/icons/apps-folder.png"), QStringLiteral("gnome-software"));
-    addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Solaris"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
+    addPinned(QStringLiteral("org.kde.discover"), QStringLiteral("App Store"), QStringLiteral("qrc:/icons/apps-folder.png"), QStringLiteral("plasma-discover"));
+    addPinned(QStringLiteral("titan-acerca"), QStringLiteral("Acerca de Inti OS"), QStringLiteral("qrc:/icons/about.png"), QStringLiteral("titan-acerca"));
     addPinned(QStringLiteral("titan-trash"), QStringLiteral("Papelera"), QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("titan-finder ") + QDir::homePath() + QStringLiteral("/.local/share/Trash/files"));
 }
 
@@ -205,6 +210,20 @@ void DockModel::loadPinnedApps()
                 app[QStringLiteral("name")] = obj.value(QStringLiteral("name")).toString();
                 app[QStringLiteral("icon")] = obj.value(QStringLiteral("icon")).toString();
                 app[QStringLiteral("exec")] = obj.value(QStringLiteral("exec")).toString();
+                // La tienda paso de GNOME Software a Discover (2026-11): un
+                // Dock guardado antes seguiria lanzando gnome-software.
+                if (app[QStringLiteral("appId")].toString() == QStringLiteral("org.gnome.Software")
+                    || app[QStringLiteral("exec")].toString() == QStringLiteral("gnome-software")) {
+                    app[QStringLiteral("appId")] = QStringLiteral("org.kde.discover");
+                    app[QStringLiteral("exec")] = QStringLiteral("plasma-discover");
+                }
+                // La App Store guardada con el icono del disco salia en blanco
+                // con un acento distinto del azul: se pasa al icono interno.
+                if (app[QStringLiteral("appId")].toString() == QStringLiteral("org.kde.discover")) {
+                    const QString ic = app[QStringLiteral("icon")].toString();
+                    if (ic.isEmpty() || ic.contains(QStringLiteral("apps-folder.png")) || !ic.contains(QLatin1Char('/')))
+                        app[QStringLiteral("icon")] = QStringLiteral("qrc:/icons/apps-folder.png");
+                }
                 app[QStringLiteral("running")] = false;
                 app[QStringLiteral("hasWindow")] = false;
                 app[QStringLiteral("active")] = false;
@@ -245,12 +264,68 @@ void DockModel::savePinnedApps()
     }
 }
 
+// Nombre de la app segun su .desktop: <app_id>.desktop o el que tenga
+// StartupWMClass=<app_id>. Se guarda en cache (Alt+Tab lo pide a menudo).
+static QString nombreDesdeDesktop(const QString &appId)
+{
+    const QString ruta = titan::desktopDeAppId(appId);
+    if (ruta.isEmpty())
+        return QString();
+    const auto ini = titan::leerDesktop(ruta);
+    QString n = ini.value(QStringLiteral("Name[es]"));
+    if (n.isEmpty()) n = ini.value(QStringLiteral("Name[es_ES]"));
+    if (n.isEmpty()) n = ini.value(QStringLiteral("Name"));
+    return n;
+}
+
+QString DockModel::nombreVentana(const QString &appId, const QString &titulo) const
+{
+    const QString n = nombreDesdeDesktop(appId);
+    if (!n.isEmpty())
+        return n;
+    // Las ancladas tienen su nombre bueno ("Finder", "Música"...); las demás
+    // del Dock guardan el título de la ventana, que no sirve aquí.
+    for (const QList<QVariantMap> *lista : {&m_pinnedApps})
+        for (const QVariantMap &app : *lista)
+            if (appsMatch(app.value(QStringLiteral("appId")).toString(), app.value(QStringLiteral("exec")).toString(), appId, titulo)) {
+                const QString n = app.value(QStringLiteral("name")).toString();
+                if (!n.isEmpty())
+                    return n;
+            }
+    return QString();
+}
+
+QString DockModel::iconoVentana(const QString &appId, const QString &titulo) const
+{
+    for (const QList<QVariantMap> *lista : {&m_apps, &m_pinnedApps})
+        for (const QVariantMap &app : *lista)
+            if (appsMatch(app.value(QStringLiteral("appId")).toString(), app.value(QStringLiteral("exec")).toString(), appId, titulo)) {
+                const QString ic = app.value(QStringLiteral("icon")).toString();
+                if (!ic.isEmpty())
+                    return ic;
+            }
+    const QString ic = resolveDynamicIcon(appId, titulo);
+    return ic.isEmpty() ? QStringLiteral("qrc:/icons/apps-folder.png") : ic;
+}
+
 QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title) const
 {
     QString cleanId = cleanAppId(appId);
     QString cleanTitle = title.trimmed().toLower();
 
-    // 1. Iconos estándar del sistema Solaris / Titan
+    // 0. Si la ventana tiene su .desktop, el mismo icono que en el lanzador
+    //    (antes "video", "music", "control"... en el app_id ganaban al suyo).
+    {
+        const QString ruta = titan::desktopDeAppId(appId);
+        if (!ruta.isEmpty()) {
+            const auto ini = titan::leerDesktop(ruta);
+            const QString ic = titan::iconoApp(ini.value(QStringLiteral("Icon")), ini.value(QStringLiteral("Exec")));
+            if (!ic.isEmpty())
+                return ic;
+        }
+    }
+
+    // 1. Iconos estándar del sistema Inti OS
     if (cleanId.contains(QStringLiteral("onlyoffice")) || cleanTitle.contains(QStringLiteral("onlyoffice"))) return QStringLiteral("qrc:/icons/onlyoffice.png");
     if (cleanId.contains(QStringLiteral("firefox")) || cleanTitle.contains(QStringLiteral("firefox")) || cleanId.contains(QStringLiteral("safari"))) return QStringLiteral("qrc:/icons/firefox.png");
     if (cleanId.contains(QStringLiteral("terminal")) || cleanId.contains(QStringLiteral("kitty")) || cleanId.contains(QStringLiteral("foot")) || cleanId.contains(QStringLiteral("alacritty"))) return QStringLiteral("qrc:/icons/terminal.png");
@@ -336,9 +411,7 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
             }
 
             if (match) {
-                QSettings ini(fi.absoluteFilePath(), QSettings::IniFormat);
-                ini.beginGroup(QStringLiteral("Desktop Entry"));
-                QString iconVal = ini.value(QStringLiteral("Icon")).toString();
+                QString iconVal = titan::leerDesktop(fi.absoluteFilePath()).value(QStringLiteral("Icon"));
                 if (!iconVal.isEmpty()) {
                     if (iconVal.startsWith(QLatin1Char('/')) && QFile::exists(iconVal)) {
                         return QUrl::fromLocalFile(iconVal).toString();
@@ -354,8 +427,8 @@ QString DockModel::resolveDynamicIcon(const QString &appId, const QString &title
         }
     }
 
-    // Fallback: icono de aplicación elegante estilo macOS, NUNCA el engranaje de ajustes
-    return QStringLiteral("qrc:/icons/apps-folder.png");
+    // Sin icono en el sistema: se genera uno en SVG con su categoria o iniciales.
+    return titan::iconoGenerado(title.isEmpty() ? appId : title, appId);
 }
 
 int DockModel::rowCount(const QModelIndex &parent) const
@@ -605,33 +678,12 @@ void DockModel::updateWindowStates()
 
 static QString resolveBinary(const QString &program)
 {
-    if (QFile::exists(program)) return program;
-    QString inPath = QStandardPaths::findExecutable(program);
-    if (!inPath.isEmpty()) return inPath;
-
-    const QStringList candidates = {
-        QStringLiteral("/usr/local/bin/") + program,
-        QStringLiteral("/usr/bin/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/") + program,
-        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/") + program,
-        QDir::currentPath() + QStringLiteral("/apps/") + program + QStringLiteral("/build/") + program,
-        QDir::currentPath() + QStringLiteral("/iso/titan/airootfs/usr/local/bin/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/apps/") + program + QStringLiteral("/") + program,
-        QStringLiteral("/home/isai/Proyectos/titan-linux/iso/titan/airootfs/usr/local/bin/") + program
-    };
-
-    for (const QString &c : candidates) {
-        if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
-            return c;
-        }
-    }
-    return program;
+    return titan::resolverBinario(program);
 }
 
-void DockModel::setAppLaunching(const QString &appId, const QString &exec, const QString &name, const QString &icon)
+bool DockModel::setAppLaunching(const QString &appId, const QString &exec, const QString &name, const QString &icon)
 {
-    if (appId.isEmpty() && exec.isEmpty()) return;
+    if (appId.isEmpty() && exec.isEmpty()) return false;
 
     QString targetId = cleanAppId(!appId.isEmpty() ? appId : exec);
 
@@ -645,39 +697,18 @@ void DockModel::setAppLaunching(const QString &appId, const QString &exec, const
         }
     }
 
-    if (foundIdx >= 0) {
-        m_apps[foundIdx][QStringLiteral("launching")] = true;
+    // Solo rebotan las apps que están en el Dock. Antes las demás se
+    // añadían como icono temporal y, al abrir varias, el Dock se llenaba de
+    // iconos fantasma; ahora esas muestran un indicador junto al puntero.
+    if (foundIdx < 0) {
+        Q_UNUSED(name);
+        Q_UNUSED(icon);
+        return false;
+    }
+    m_apps[foundIdx][QStringLiteral("launching")] = true;
+    {
         QModelIndex idx = index(foundIdx);
         emit dataChanged(idx, idx, {LaunchingRole});
-    } else {
-        QVariantMap launchInfo;
-        launchInfo[QStringLiteral("appId")] = targetId;
-        launchInfo[QStringLiteral("name")] = name.isEmpty() ? targetId : name;
-        QString resolvedIcon = icon;
-        if (resolvedIcon.isEmpty() || resolvedIcon.contains(QStringLiteral("system.png"))) {
-            resolvedIcon = resolveDynamicIcon(targetId, name);
-        }
-        launchInfo[QStringLiteral("icon")] = resolvedIcon;
-        launchInfo[QStringLiteral("exec")] = exec.isEmpty() ? targetId : exec;
-        launchInfo[QStringLiteral("running")] = false;
-        launchInfo[QStringLiteral("hasWindow")] = false;
-        launchInfo[QStringLiteral("active")] = false;
-        launchInfo[QStringLiteral("launching")] = true;
-        launchInfo[QStringLiteral("isPinned")] = false;
-        launchInfo[QStringLiteral("showSeparator")] = true;
-        m_launchingAppInfo[targetId] = launchInfo;
-
-        int insertPos = m_apps.size();
-        for (int i = 0; i < m_apps.size(); ++i) {
-            if (m_apps[i][QStringLiteral("appId")].toString() == QStringLiteral("titan-trash")) {
-                insertPos = i;
-                break;
-            }
-        }
-
-        beginInsertRows(QModelIndex(), insertPos, insertPos);
-        m_apps.insert(insertPos, launchInfo);
-        endInsertRows();
     }
 
     if (m_launchTimers.contains(targetId)) {
@@ -713,18 +744,20 @@ void DockModel::setAppLaunching(const QString &appId, const QString &exec, const
     });
     m_launchTimers[targetId] = timer;
     timer->start(12000);
+    return true;
 }
 
 void DockModel::launchApp(const QString &appId, const QString &exec, const QString &name, const QString &icon)
 {
-    setAppLaunching(appId, exec, name, icon);
+    const bool enDock = setAppLaunching(appId, exec, name, icon);
 
     QString toExec = exec.isEmpty() ? appId : exec;
     if (!toExec.isEmpty()) {
-        QStringList parts = toExec.split(' ');
+        QStringList parts = QProcess::splitCommand(toExec);
+        if (parts.isEmpty())
+            return;
         QString program = parts.takeFirst();
-        QString resolved = resolveBinary(program);
-        QProcess::startDetached(resolved, parts);
+        ColaApps::instancia()->lanzar(resolveBinary(program), parts, enDock, icon);
     }
 }
 
@@ -766,10 +799,12 @@ void DockModel::activateApp(const QString &appId)
             setAppLaunching(aId, exec, name, icon);
 
             if (!exec.isEmpty()) {
-                QStringList parts = exec.split(' ');
+                QStringList parts = QProcess::splitCommand(exec);
+                if (parts.isEmpty())
+                    break;
                 QString program = parts.takeFirst();
-                QString resolved = resolveBinary(program);
-                QProcess::startDetached(resolved, parts);
+                // De una en una (ColaApps): pulsar dos veces no la abre dos veces
+                ColaApps::instancia()->lanzar(resolveBinary(program), parts, true, icon);
             }
             break;
         }

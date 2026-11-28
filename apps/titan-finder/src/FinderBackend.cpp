@@ -1,4 +1,7 @@
 #include "FinderBackend.h"
+#include "TitanPredeterminadas.h"
+#include "Red.h"
+#include "TitanDesktopEntry.h"
 
 #include <QDir>
 #include <QFile>
@@ -24,6 +27,33 @@
 #include <QPixmap>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QLocale>
+#include <QMimeDatabase>
+#include <QMimeType>
+#include <QSet>
+#include <QImageReader>
+
+// "Música" y "musica" son lo mismo al buscar
+QString sinAcentos(const QString &t)
+{
+    QString r;
+    const QString n = t.toLower().normalized(QString::NormalizationForm_D);
+    r.reserve(n.size());
+    for (const QChar c : n)
+        if (c.category() != QChar::Mark_NonSpacing)
+            r.append(c);
+    return r;
+}
+
+namespace {
+bool esFoto(const QString &ext)
+{
+    static const QSet<QString> fotos = {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                        QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("bmp"),
+                                        QStringLiteral("svg")};
+    return fotos.contains(ext);
+}
+}
 
 static QString resolveFinderBinary(const QString &program)
 {
@@ -54,17 +84,70 @@ FinderBackend::FinderBackend(QObject *parent)
     , m_historyIndex(-1)
     , m_showHiddenFiles(false)
     , m_searchQuery(QString())
-    , m_viewMode(QStringLiteral("list"))
+    , m_viewMode(QStringLiteral("grid"))
     , m_sortBy(QStringLiteral("name"))
     , m_sortAscending(true)
     , m_watcher(new QFileSystemWatcher(this))
 {
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &FinderBackend::onDirectoryChanged);
 
+    m_temporizadorBusqueda = new QTimer(this);
+    m_temporizadorBusqueda->setSingleShot(true);
+    m_temporizadorBusqueda->setInterval(350);
+    connect(m_temporizadorBusqueda, &QTimer::timeout, this, &FinderBackend::buscarEnSubcarpetas);
+
+    // Explorador de archivos: iconos grandes y panel de detalles por defecto;
+    // lo que el usuario elige se recuerda.
+    {
+        QSettings ajustes(QStringLiteral("titan"), QStringLiteral("explorador"));
+        const QString vista = ajustes.value(QStringLiteral("vista"), QStringLiteral("grid")).toString();
+        m_viewMode = (vista == QLatin1String("list")) ? vista : QStringLiteral("grid");
+        m_panelDetalles = ajustes.value(QStringLiteral("detalles"), true).toBool();
+    }
+
     m_deviceTimer = new QTimer(this);
     m_deviceTimer->setInterval(2000);
     connect(m_deviceTimer, &QTimer::timeout, this, &FinderBackend::refreshDevices);
     m_deviceTimer->start();
+
+    // Red: los equipos llegan cuando contestan; se pintan si se sigue ahí
+    m_red = new Red(this);
+    connect(m_red, &Red::listado, this, [this](const QString &uri, const QVariantList &entradas, const QString &error) {
+        if (uri != m_currentPath) return;
+        m_buscandoRed = false;
+        m_rawEntries.clear();
+        for (const QVariant &v : entradas) {
+            QVariantMap e = v.toMap();
+            const bool equipo = e.value(QStringLiteral("equipo")).toBool();
+            e[QStringLiteral("isSymLink")] = false;
+            e[QStringLiteral("isHidden")] = false;
+            e[QStringLiteral("isExecutable")] = false;
+            e[QStringLiteral("size")] = QString();
+            e[QStringLiteral("sizeBytes")] = 0;
+            e[QStringLiteral("modified")] = QString();
+            e[QStringLiteral("modifiedTimestamp")] = 0;
+            e[QStringLiteral("type")] = equipo ? QStringLiteral("Equipo de la red") : QStringLiteral("Carpeta compartida");
+            e[QStringLiteral("icon")] = equipo ? QStringLiteral("qrc:/icons/monitor.png") : QStringLiteral("qrc:/icons/folder.png");
+            e[QStringLiteral("foto")] = false;
+            e[QStringLiteral("red")] = true;
+            m_rawEntries.append(e);
+        }
+        if (!error.isEmpty()) ponerAviso(error);
+        filterAndSortEntries();
+        emit currentPathChanged();
+    });
+    connect(m_red, &Red::abierto, this, [this](const QString &, const QString &local, const QString &error) {
+        m_buscandoRed = false;
+        emit currentPathChanged();
+        if (!local.isEmpty()) goTo(local);
+        else if (!error.isEmpty()) ponerAviso(error);
+    });
+    connect(m_red, &Red::credencialesPedidas, this, &FinderBackend::credencialesRed);
+    // El título de la pestaña sigue a la carpeta
+    connect(this, &FinderBackend::currentPathChanged, this, &FinderBackend::pestanasChanged);
+
+    // Lo que copian otras apps también cuenta para "Pegar".
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FinderBackend::clipboardChanged);
 
     refreshDevices();
     initFavorites();
@@ -78,7 +161,7 @@ void FinderBackend::initFavorites()
     m_favorites.clear();
 
     auto addFav = [this](const QString &name, const QString &path, const QString &icon, const QString &section) {
-        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:"))) {
+        if (QDir(path).exists() || path == QStringLiteral("/") || path.startsWith(QStringLiteral("tag:")) || path == rutaRecientes() || path == Red::raiz()) {
             QVariantMap item;
             item[QStringLiteral("name")] = name;
             item[QStringLiteral("path")] = path;
@@ -90,53 +173,68 @@ void FinderBackend::initFavorites()
 
     const QString home = QDir::homePath();
 
-    // Sección Favoritos estilo macOS
-    addFav(QStringLiteral("Recientes"), home, QStringLiteral("qrc:/icons/notes.png"), QStringLiteral("Favoritos"));
+    // Acceso rápido (como el Explorador de Windows). Las carpetas del usuario
+    // salen de xdg-user-dirs (Imágenes, Música, Vídeos...); no se crean
+    // carpetas en inglés.
+    const QString rapido = QStringLiteral("Acceso rápido");
+    auto carpetaUsuario = [&home](QStandardPaths::StandardLocation donde, const QStringList &nombres) {
+        const QString p = QStandardPaths::writableLocation(donde);
+        if (!p.isEmpty() && p != home && QDir(p).exists())
+            return p;
+        for (const QString &n : nombres) {
+            if (QDir(home + QLatin1Char('/') + n).exists())
+                return home + QLatin1Char('/') + n;
+        }
+        return QString();
+    };
+    addFav(QStringLiteral("Carpeta personal"), home, QStringLiteral("qrc:/icons/folder.png"), rapido);
+    addFav(QStringLiteral("Recientes"), rutaRecientes(), QStringLiteral("qrc:/icons/notes.png"), rapido);
 
-    QString desktop = home + QStringLiteral("/Escritorio");
-    QDir().mkpath(desktop);
-    addFav(QStringLiteral("Escritorio"), desktop, QStringLiteral("qrc:/icons/desktop.png"), QStringLiteral("Favoritos"));
+    QString desktop = carpetaUsuario(QStandardPaths::DesktopLocation, {QStringLiteral("Escritorio")});
+    if (desktop.isEmpty()) { desktop = home + QStringLiteral("/Escritorio"); QDir().mkpath(desktop); }
+    addFav(QStringLiteral("Escritorio"), desktop, QStringLiteral("qrc:/icons/desktop.png"), rapido);
 
-    addFav(QStringLiteral("Aplicaciones"), QStringLiteral("/usr/share/applications"), QStringLiteral("qrc:/icons/apps-folder.png"), QStringLiteral("Favoritos"));
+    QString downloads = carpetaUsuario(QStandardPaths::DownloadLocation, {QStringLiteral("Descargas")});
+    if (downloads.isEmpty()) { downloads = home + QStringLiteral("/Descargas"); QDir().mkpath(downloads); }
+    addFav(QStringLiteral("Descargas"), downloads, QStringLiteral("qrc:/icons/downloads.png"), rapido);
 
-    QString documents = home + QStringLiteral("/Documentos");
-    QDir().mkpath(documents);
-    addFav(QStringLiteral("Documentos"), documents, QStringLiteral("qrc:/icons/files.png"), QStringLiteral("Favoritos"));
+    QString documents = carpetaUsuario(QStandardPaths::DocumentsLocation, {QStringLiteral("Documentos")});
+    if (documents.isEmpty()) { documents = home + QStringLiteral("/Documentos"); QDir().mkpath(documents); }
+    addFav(QStringLiteral("Documentos"), documents, QStringLiteral("qrc:/icons/files.png"), rapido);
 
-    QString downloads = home + QStringLiteral("/Descargas");
-    QDir().mkpath(downloads);
-    addFav(QStringLiteral("Descargas"), downloads, QStringLiteral("qrc:/icons/downloads.png"), QStringLiteral("Favoritos"));
+    const QString pictures = carpetaUsuario(QStandardPaths::PicturesLocation, {QStringLiteral("Imágenes"), QStringLiteral("Pictures")});
+    if (!pictures.isEmpty())
+        addFav(QStringLiteral("Imágenes"), pictures, QStringLiteral("qrc:/icons/pictures.png"), rapido);
+    const QString music = carpetaUsuario(QStandardPaths::MusicLocation, {QStringLiteral("Música"), QStringLiteral("Musica"), QStringLiteral("Music")});
+    if (!music.isEmpty())
+        addFav(QStringLiteral("Música"), music, QStringLiteral("qrc:/icons/music-folder.png"), rapido);
+    const QString videos = carpetaUsuario(QStandardPaths::MoviesLocation, {QStringLiteral("Vídeos"), QStringLiteral("Videos")});
+    if (!videos.isEmpty())
+        addFav(QStringLiteral("Vídeos"), videos, QStringLiteral("qrc:/icons/file-video.png"), rapido);
+    if (QDir(home + QStringLiteral("/Proyectos")).exists())
+        addFav(QStringLiteral("Proyectos"), home + QStringLiteral("/Proyectos"), QStringLiteral("qrc:/icons/developer.png"), rapido);
 
-    QString pictures = home + QStringLiteral("/Pictures");
-    if (!QDir(pictures).exists() && QDir(home + QStringLiteral("/Imágenes")).exists()) {
-        pictures = home + QStringLiteral("/Imágenes");
-    } else {
-        QDir().mkpath(pictures);
+    // Las que ancla el usuario (clic derecho > Anclar a Acceso rápido)
+    QStringList yaEstan;
+    for (const QVariant &f : std::as_const(m_favorites))
+        yaEstan << f.toMap().value(QStringLiteral("path")).toString();
+    const QStringList ancladas = QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).value(QStringLiteral("ancladas")).toStringList();
+    for (const QString &a : ancladas) {
+        if (yaEstan.contains(a) || !QFileInfo(a).isDir())
+            continue;
+        addFav(QFileInfo(a).fileName(), a, QStringLiteral("qrc:/icons/folder.png"), rapido);
+        QVariantMap ultimo = m_favorites.takeLast().toMap();
+        ultimo[QStringLiteral("anclada")] = true;
+        m_favorites.append(ultimo);
     }
-    addFav(QStringLiteral("Pictures"), pictures, QStringLiteral("qrc:/icons/pictures.png"), QStringLiteral("Favoritos"));
 
-    QString music = home + QStringLiteral("/Musica");
-    if (!QDir(music).exists() && QDir(home + QStringLiteral("/Música")).exists()) {
-        music = home + QStringLiteral("/Música");
-    } else {
-        QDir().mkpath(music);
-    }
-    addFav(QStringLiteral("Musica"), music, QStringLiteral("qrc:/icons/music-folder.png"), QStringLiteral("Favoritos"));
-
-    QString videos = home + QStringLiteral("/Videos");
-    QDir().mkpath(videos);
-    addFav(QStringLiteral("Videos"), videos, QStringLiteral("qrc:/icons/file-video.png"), QStringLiteral("Favoritos"));
-
-    QString proyectos = home + QStringLiteral("/Proyectos");
-    QDir().mkpath(proyectos);
-    addFav(QStringLiteral("Proyectos"), proyectos, QStringLiteral("qrc:/icons/developer.png"), QStringLiteral("Favoritos"));
-
-    // Sección Ubicaciones
-    addFav(QStringLiteral("Disco del Sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Ubicaciones"));
+    // Este equipo
+    addFav(QStringLiteral("Disco del sistema"), QStringLiteral("/"), QStringLiteral("qrc:/icons/system.png"), QStringLiteral("Este equipo"));
 
     QString trash = home + QStringLiteral("/.local/share/Trash/files");
     QDir().mkpath(trash);
-    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Ubicaciones"));
+    addFav(QStringLiteral("Papelera"), trash, QStringLiteral("qrc:/icons/trash.png"), QStringLiteral("Este equipo"));
+    addFav(QStringLiteral("Red"), Red::raiz(), QStringLiteral("qrc:/icons/monitor.png"), QStringLiteral("Este equipo"));
 
     // Sección Dispositivos (USBs y Discos detectados bajo demanda)
     for (const QVariant &v : m_devices) {
@@ -157,8 +255,13 @@ void FinderBackend::initFavorites()
 
 QString FinderBackend::currentPathName() const
 {
-    if (m_currentPath == QDir::homePath()) return QStringLiteral("Inicio");
+    if (m_currentPath == QDir::homePath()) return QStringLiteral("Carpeta personal");
+    if (m_currentPath == rutaRecientes()) return QStringLiteral("Recientes");
     if (m_currentPath == QStringLiteral("/")) return QStringLiteral("Sistema");
+    if (enRed()) {
+        const QStringList p = Red::partes(m_currentPath);
+        return p.isEmpty() ? QStringLiteral("Red") : p.last();
+    }
 
     QDir dir(m_currentPath);
     QString name = dir.dirName();
@@ -168,13 +271,24 @@ QString FinderBackend::currentPathName() const
 
 bool FinderBackend::canGoUp() const
 {
-    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty();
+    return m_currentPath != QStringLiteral("/") && !m_currentPath.isEmpty() && m_currentPath != rutaRecientes() && !enRed();
 }
 
 QVariantList FinderBackend::pathSegments() const
 {
     QVariantList segments;
     if (m_currentPath.isEmpty()) return segments;
+    if (m_currentPath == rutaRecientes())
+        return {QVariantMap{{QStringLiteral("name"), QStringLiteral("Recientes")}, {QStringLiteral("path"), rutaRecientes()}}};
+    if (enRed()) {
+        QVariantList r{QVariantMap{{QStringLiteral("name"), QStringLiteral("Red")}, {QStringLiteral("path"), Red::raiz()}}};
+        const QUrl u(m_currentPath);
+        if (u.scheme() != QLatin1String("network")) {
+            QString acumulado = u.scheme() + QStringLiteral("://") + u.authority() + QLatin1Char('/');
+            r << QVariantMap{{QStringLiteral("name"), u.host()}, {QStringLiteral("path"), acumulado}};
+        }
+        return r;
+    }
 
     QVariantMap rootSeg;
     rootSeg[QStringLiteral("name")] = QStringLiteral("Sistema");
@@ -189,7 +303,7 @@ QVariantList FinderBackend::pathSegments() const
         QVariantMap seg;
         QString displayName = parts.at(i);
         if (accumulated == QDir::homePath()) {
-            displayName = QStringLiteral("Inicio");
+            displayName = QStringLiteral("Carpeta personal");
         }
         seg[QStringLiteral("name")] = displayName;
         seg[QStringLiteral("path")] = accumulated;
@@ -199,12 +313,201 @@ QVariantList FinderBackend::pathSegments() const
     return segments;
 }
 
+// ---------------------------------------------------------------- pestañas
+qint64 FinderBackend::proceso() const
+{
+    return QCoreApplication::applicationPid();
+}
+
+QString FinderBackend::nombreDe(const QString &ruta) const
+{
+    if (ruta.isEmpty() || ruta == QDir::homePath()) return QStringLiteral("Carpeta personal");
+    if (ruta == rutaRecientes()) return QStringLiteral("Recientes");
+    if (ruta == QStringLiteral("/")) return QStringLiteral("Sistema");
+    if (ruta == QDir::homePath() + QStringLiteral("/.local/share/Trash/files")) return QStringLiteral("Papelera");
+    if (Red::esRed(ruta)) {
+        const QStringList p = Red::partes(ruta);
+        return p.isEmpty() ? QStringLiteral("Red") : p.last();
+    }
+    const QString n = QDir(ruta).dirName();
+    return n.isEmpty() ? ruta : n;
+}
+
+QVariantList FinderBackend::pestanas() const
+{
+    QVariantList r;
+    for (int i = 0; i < m_pestanas.size(); ++i) {
+        const QString ruta = i == m_actual ? m_currentPath
+                                           : m_pestanas.at(i).historial.value(m_pestanas.at(i).indice);
+        r << QVariantMap{{QStringLiteral("titulo"), nombreDe(ruta)}, {QStringLiteral("ruta"), ruta}};
+    }
+    return r;
+}
+
+void FinderBackend::guardarPestana()
+{
+    if (m_actual >= 0 && m_actual < m_pestanas.size())
+        m_pestanas[m_actual] = Pestana{m_history, m_historyIndex};
+}
+
+void FinderBackend::cargarPestana(int i)
+{
+    m_actual = i;
+    const Pestana p = m_pestanas.at(i);
+    m_history = p.historial;
+    m_historyIndex = p.indice;
+    if (!m_searchQuery.isEmpty()) {
+        m_searchQuery.clear();
+        emit searchQueryChanged();
+    }
+    emit historyChanged();
+    const QString ruta = m_history.value(m_historyIndex);
+    if (ruta.isEmpty()) {
+        m_history.clear();
+        m_historyIndex = -1;
+        goTo(QDir::homePath());
+    } else {
+        loadDirectory(ruta);
+    }
+    emit pestanasChanged();
+}
+
+void FinderBackend::nuevaPestana(const QString &ruta, bool activar)
+{
+    guardarPestana();
+    const QString destino = ruta.isEmpty() ? QDir::homePath() : ruta;
+    const int nueva = m_actual + 1;
+    if (activar) {
+        m_pestanas.insert(nueva, Pestana{});
+        m_actual = nueva;
+        m_history.clear();
+        m_historyIndex = -1;
+        if (!m_searchQuery.isEmpty()) {
+            m_searchQuery.clear();
+            emit searchQueryChanged();
+        }
+        goTo(destino);
+        if (m_history.isEmpty())   // no existe: la carpeta personal
+            goTo(QDir::homePath());
+    } else {
+        // Detrás, sin moverse (clic central en una carpeta)
+        m_pestanas.insert(nueva, Pestana{{destino}, 0});
+    }
+    emit pestanasChanged();
+}
+
+bool FinderBackend::cerrarPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size()) return true;
+    if (m_pestanas.size() == 1) return false;
+    guardarPestana();
+    m_pestanas.removeAt(i);
+    if (i == m_actual)
+        cargarPestana(qMin(i, int(m_pestanas.size()) - 1));
+    else {
+        if (i < m_actual) --m_actual;
+        emit pestanasChanged();
+    }
+    return true;
+}
+
+void FinderBackend::irAPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size() || i == m_actual) return;
+    guardarPestana();
+    cargarPestana(i);
+}
+
+void FinderBackend::moverPestana(int de, int a)
+{
+    const int n = m_pestanas.size();
+    if (de < 0 || de >= n || a < 0 || a >= n || de == a) return;
+    guardarPestana();
+    m_pestanas.move(de, a);
+    if (m_actual == de) m_actual = a;
+    else if (de < m_actual && m_actual <= a) --m_actual;
+    else if (a <= m_actual && m_actual < de) ++m_actual;
+    emit pestanasChanged();
+}
+
+QString FinderBackend::datosPestana(int i)
+{
+    guardarPestana();
+    if (i < 0 || i >= m_pestanas.size()) return QString();
+    const Pestana &p = m_pestanas.at(i);
+    QJsonObject o;
+    o[QStringLiteral("proceso")] = QString::number(proceso());
+    o[QStringLiteral("indice")] = p.indice;
+    o[QStringLiteral("historial")] = QJsonArray::fromStringList(p.historial);
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+bool FinderBackend::recibirPestana(const QString &json, int antes)
+{
+    const QJsonObject o = QJsonDocument::fromJson(json.toUtf8()).object();
+    // Solo carpetas que existen aquí (o de la red); nada de rutas raras
+    QStringList historial;
+    int indice = o.value(QStringLiteral("indice")).toInt(-1);
+    const QJsonArray h = o.value(QStringLiteral("historial")).toArray();
+    for (int k = 0; k < h.size() && k < 200; ++k) {
+        const QString r = h.at(k).toString();
+        if (QFileInfo(r).isDir() || r == rutaRecientes() || Red::esRed(r)) historial << r;
+        else if (k <= indice) --indice;
+    }
+    if (historial.isEmpty()) return false;
+    indice = qBound(0, indice, int(historial.size()) - 1);
+    guardarPestana();
+    const int pos = (antes < 0 || antes > m_pestanas.size()) ? m_pestanas.size() : antes;
+    m_pestanas.insert(pos, Pestana{historial, indice});
+    if (pos <= m_actual) ++m_actual;
+    cargarPestana(pos);
+    return true;
+}
+
+void FinderBackend::separarPestana(int i)
+{
+    if (i < 0 || i >= m_pestanas.size() || m_pestanas.size() == 1) return;
+    guardarPestana();
+    const Pestana &p = m_pestanas.at(i);
+    const QString ruta = p.historial.value(p.indice, QDir::homePath());
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {ruta});
+    cerrarPestana(i);
+}
+
+void FinderBackend::abrirEnVentanaNueva(const QString &ruta)
+{
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {ruta.isEmpty() ? QDir::homePath() : ruta});
+}
+
+bool FinderBackend::enRed() const
+{
+    return Red::esRed(m_currentPath);
+}
+
+void FinderBackend::responderCredenciales(bool aceptar, const QString &usuario, const QString &dominio,
+                                          const QString &clave, bool anonimo)
+{
+    m_red->responder(aceptar, usuario, dominio, clave, anonimo);
+}
+
 void FinderBackend::goTo(const QString &path)
 {
-    QDir target(path);
-    QString canonical = target.canonicalPath();
-    if (canonical.isEmpty()) canonical = path;
-    if (!QDir(canonical).exists()) return;
+    // \\PC\Carpeta (como en Windows), smb://, network:// ...
+    const QString uriRed = Red::normalizar(path);
+    if (!uriRed.isEmpty() && Red::esCarpetaCompartida(uriRed)) {
+        // Se monta y, al estar, se abre su ruta local (Red::abierto)
+        m_buscandoRed = true;
+        emit currentPathChanged();
+        ponerAviso(QStringLiteral("Conectando con %1…").arg(Red::partes(uriRed).value(0)));
+        m_red->abrir(uriRed);
+        return;
+    }
+    QString canonical = uriRed.isEmpty() ? path : uriRed;
+    if (canonical != rutaRecientes() && uriRed.isEmpty()) {
+        canonical = QDir(path).canonicalPath();
+        if (canonical.isEmpty()) canonical = path;
+        if (!QDir(canonical).exists()) return;
+    }
 
     // Actualizar historial
     if (m_historyIndex >= 0 && m_historyIndex < m_history.size() - 1) {
@@ -273,6 +576,26 @@ void FinderBackend::loadDirectory(const QString &path)
     }
 
     m_rawEntries.clear();
+    m_extraBusqueda.clear();
+
+    if (Red::esRed(path)) {
+        m_currentPath = path;
+        m_buscandoRed = true;
+        m_red->listar(path);
+        m_freeSpaceText.clear();
+        emit freeSpaceTextChanged();
+        filterAndSortEntries();
+        emit currentPathChanged();
+        return;
+    }
+
+    if (path == rutaRecientes()) {
+        cargarRecientes();
+        updateFreeSpace();
+        filterAndSortEntries();
+        emit currentPathChanged();
+        return;
+    }
 
     QDir dir(path);
     QDir::Filters filters = QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot;
@@ -282,34 +605,8 @@ void FinderBackend::loadDirectory(const QString &path)
 
     const QFileInfoList list = dir.entryInfoList(filters, QDir::DirsFirst | QDir::Name);
 
-    for (const QFileInfo &info : list) {
-        QVariantMap entry;
-        entry[QStringLiteral("name")] = info.fileName();
-        entry[QStringLiteral("path")] = info.absoluteFilePath();
-        entry[QStringLiteral("isDir")] = info.isDir();
-        entry[QStringLiteral("isSymLink")] = info.isSymLink();
-        entry[QStringLiteral("isHidden")] = info.isHidden();
-        entry[QStringLiteral("isExecutable")] = info.isExecutable();
-
-        if (info.isDir()) {
-            QDir sub(info.absoluteFilePath());
-            const uint count = sub.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
-            entry[QStringLiteral("size")] = QStringLiteral("%1 elementos").arg(count);
-            entry[QStringLiteral("sizeBytes")] = static_cast<qint64>(count);
-        } else {
-            entry[QStringLiteral("size")] = formatBytes(info.size());
-            entry[QStringLiteral("sizeBytes")] = info.size();
-        }
-
-        const QDateTime modified = info.lastModified();
-        entry[QStringLiteral("modified")] = modified.toString(QStringLiteral("d MMM yyyy, hh:mm"));
-        entry[QStringLiteral("modifiedTimestamp")] = modified.toMSecsSinceEpoch();
-
-        entry[QStringLiteral("type")] = resolveType(info);
-        entry[QStringLiteral("icon")] = resolveIcon(info);
-
-        m_rawEntries.append(entry);
-    }
+    for (const QFileInfo &info : list)
+        m_rawEntries.append(entradaDe(info));
 
     updateFreeSpace();
     filterAndSortEntries();
@@ -321,16 +618,22 @@ void FinderBackend::filterAndSortEntries()
 {
     m_filteredEntries.clear();
 
-    const QString query = m_searchQuery.trimmed().toLower();
+    const QString query = sinAcentos(m_searchQuery.trimmed());
 
     for (const QVariant &var : m_rawEntries) {
         const QVariantMap item = var.toMap();
-        if (!query.isEmpty()) {
-            const QString name = item.value(QStringLiteral("name")).toString().toLower();
-            if (!name.contains(query)) continue;
-        }
+        if (!query.isEmpty() && !sinAcentos(item.value(QStringLiteral("name")).toString()).contains(query))
+            continue;
         m_filteredEntries.append(item);
     }
+    if (enRecientes()) { // lo último abierto, primero
+        std::sort(m_filteredEntries.begin(), m_filteredEntries.end(), [](const QVariant &a, const QVariant &b) {
+            return a.toMap().value(QStringLiteral("reciente")).toLongLong() > b.toMap().value(QStringLiteral("reciente")).toLongLong();
+        });
+        emit entriesChanged();
+        return;
+    }
+    const int locales = m_filteredEntries.size();
 
     // Ordenamiento natural estilo macOS: carpetas primero, luego archivos
     std::sort(m_filteredEntries.begin(), m_filteredEntries.end(), [this](const QVariant &a, const QVariant &b) {
@@ -368,6 +671,11 @@ void FinderBackend::filterAndSortEntries()
         const QString nB = mb.value(QStringLiteral("name")).toString();
         return m_sortAscending ? (nA.localeAwareCompare(nB) < 0) : (nA.localeAwareCompare(nB) > 0);
     });
+
+    // Lo encontrado dentro de las subcarpetas va después de lo de aquí
+    Q_UNUSED(locales)
+    if (!query.isEmpty())
+        m_filteredEntries.append(m_extraBusqueda);
 
     emit entriesChanged();
 }
@@ -483,6 +791,7 @@ QString FinderBackend::resolveType(const QFileInfo &info) const
     if (info.isDir()) return QStringLiteral("Carpeta");
 
     const QString ext = info.suffix().toLower();
+    if (ext == QStringLiteral("appimage")) return QStringLiteral("Aplicación (AppImage)");
     if (ext == QStringLiteral("png")) return QStringLiteral("Imagen PNG");
     if (ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg")) return QStringLiteral("Imagen JPEG");
     if (ext == QStringLiteral("svg")) return QStringLiteral("Gráfico vectorial SVG");
@@ -491,6 +800,10 @@ QString FinderBackend::resolveType(const QFileInfo &info) const
     if (ext == QStringLiteral("txt")) return QStringLiteral("Documento de texto");
     if (ext == QStringLiteral("md")) return QStringLiteral("Documento Markdown");
     if (ext == QStringLiteral("pdf")) return QStringLiteral("Documento PDF");
+    if (ext == QStringLiteral("docx") || ext == QStringLiteral("doc") || ext == QStringLiteral("odt")) return QStringLiteral("Documento");
+    if (ext == QStringLiteral("xlsx") || ext == QStringLiteral("xls") || ext == QStringLiteral("ods")) return QStringLiteral("Hoja de cálculo");
+    if (ext == QStringLiteral("pptx") || ext == QStringLiteral("ppt") || ext == QStringLiteral("odp")) return QStringLiteral("Presentación");
+    if (ext == QStringLiteral("zip") || ext == QStringLiteral("rar") || ext == QStringLiteral("7z") || ext == QStringLiteral("gz")) return QStringLiteral("Archivo comprimido");
     if (ext == QStringLiteral("cpp") || ext == QStringLiteral("c") || ext == QStringLiteral("h")) return QStringLiteral("Código C/C++");
     if (ext == QStringLiteral("py")) return QStringLiteral("Script Python");
     if (ext == QStringLiteral("rs")) return QStringLiteral("Código Rust");
@@ -547,16 +860,65 @@ void FinderBackend::setSearchQuery(const QString &query)
     if (m_searchQuery != query) {
         m_searchQuery = query;
         emit searchQueryChanged();
+        ++m_generacionBusqueda;          // lo que se estaba buscando ya no vale
+        m_extraBusqueda.clear();
+        if (m_buscando) { m_buscando = false; emit busquedaChanged(); }
         filterAndSortEntries();
+        m_temporizadorBusqueda->start(); // y en un momento, en las subcarpetas
     }
 }
 
 void FinderBackend::setViewMode(const QString &mode)
 {
-    if (m_viewMode != mode) {
+    if (m_viewMode != mode && (mode == QLatin1String("grid") || mode == QLatin1String("list"))) {
         m_viewMode = mode;
+        QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).setValue(QStringLiteral("vista"), mode);
         emit viewModeChanged();
     }
+}
+
+void FinderBackend::setPanelDetalles(bool v)
+{
+    if (m_panelDetalles == v)
+        return;
+    m_panelDetalles = v;
+    QSettings(QStringLiteral("titan"), QStringLiteral("explorador")).setValue(QStringLiteral("detalles"), v);
+    emit panelDetallesChanged();
+}
+
+
+QVariantMap FinderBackend::detalles(const QString &path) const
+{
+    QVariantMap m;
+    const QFileInfo fi(path.isEmpty() ? m_currentPath : path);
+    if (!fi.exists())
+        return m;
+    const QLocale es(QLocale::Spanish);
+    const QString ext = fi.suffix().toLower();
+    m[QStringLiteral("nombre")] = fi.fileName().isEmpty() ? fi.absoluteFilePath() : fi.fileName();
+    m[QStringLiteral("ruta")] = fi.absoluteFilePath();
+    m[QStringLiteral("carpeta")] = QFileInfo(fi.absolutePath()).fileName();
+    m[QStringLiteral("esCarpeta")] = fi.isDir();
+    m[QStringLiteral("tipo")] = resolveType(fi);
+    m[QStringLiteral("icono")] = resolveIcon(fi);
+    if (fi.isDir()) {
+        const int n = QDir(fi.absoluteFilePath()).entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
+        m[QStringLiteral("tamano")] = n == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(n);
+    } else {
+        m[QStringLiteral("tamano")] = formatBytes(fi.size());
+    }
+    m[QStringLiteral("modificado")] = es.toString(fi.lastModified(), QStringLiteral("d MMM yyyy, HH:mm"));
+    const QDateTime creado = fi.birthTime().isValid() ? fi.birthTime() : fi.metadataChangeTime();
+    m[QStringLiteral("creado")] = es.toString(creado, QStringLiteral("d MMM yyyy, HH:mm"));
+    const bool foto = !fi.isDir() && esFoto(ext);
+    m[QStringLiteral("esFoto")] = foto;
+    if (foto && ext != QLatin1String("svg")) {
+        // Solo lee la cabecera: no carga la foto entera
+        const QSize t = QImageReader(fi.absoluteFilePath()).size();
+        if (t.isValid())
+            m[QStringLiteral("dimensiones")] = QStringLiteral("%1 × %2").arg(t.width()).arg(t.height());
+    }
+    return m;
 }
 
 void FinderBackend::setSortBy(const QString &by)
@@ -591,6 +953,10 @@ void FinderBackend::sort(const QString &criteria)
 
 void FinderBackend::openItem(const QString &path)
 {
+    if (Red::esRed(path)) {
+        goTo(path);
+        return;
+    }
     QFileInfo info(path);
     if (!info.exists()) return;
 
@@ -599,11 +965,14 @@ void FinderBackend::openItem(const QString &path)
         return;
     }
 
+    // A Recientes (no los programas ni los lanzadores)
+    if (info.suffix() != QLatin1String("desktop") && info.suffix().compare(QLatin1String("appimage"), Qt::CaseInsensitive) != 0)
+        apuntarReciente(info.absoluteFilePath());
+
     // Si es un lanzador .desktop
     if (info.suffix() == QStringLiteral("desktop")) {
-        QSettings desktop(info.absoluteFilePath(), QSettings::IniFormat);
-        desktop.beginGroup(QStringLiteral("Desktop Entry"));
-        QString exec = desktop.value(QStringLiteral("Exec")).toString();
+        // QSettings no sirve para .desktop: con una coma el valor sale vacío.
+        QString exec = titan::leerDesktop(info.absoluteFilePath()).value(QStringLiteral("Exec"));
         exec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
         exec = exec.trimmed();
         if (!exec.isEmpty()) {
@@ -616,11 +985,47 @@ void FinderBackend::openItem(const QString &path)
         }
     }
 
+    // Instaladores de Ubuntu/Debian (.deb) y Fedora (.rpm): titan-paquete
+    // ofrece la App Store o instalarlo solo en la cuenta.
+    if (info.suffix().compare(QStringLiteral("deb"), Qt::CaseInsensitive) == 0
+        || info.suffix().compare(QStringLiteral("rpm"), Qt::CaseInsensitive) == 0) {
+        const QString paquete = resolveFinderBinary(QStringLiteral("titan-paquete"));
+        if (QFile::exists(paquete)) {
+            QProcess::startDetached(paquete, {info.absoluteFilePath()});
+            return;
+        }
+    }
+
+    // Programas de Windows (.exe/.msi): titan-exe los abre con Wine y, si no
+    // está, ofrece instalarlo (con la ventana de contraseña de Inti).
+    if (info.suffix().compare(QStringLiteral("exe"), Qt::CaseInsensitive) == 0
+        || info.suffix().compare(QStringLiteral("msi"), Qt::CaseInsensitive) == 0) {
+        const QString exe = resolveFinderBinary(QStringLiteral("titan-exe"));
+        if (QFile::exists(exe)) {
+            QProcess::startDetached(exe, {info.absoluteFilePath()});
+            return;
+        }
+    }
+
+    // AppImage: preguntar e instalar como en Windows (titan-appimage). Por
+    // tipo no se puede: xdg-mime lo ve como un ejecutable cualquiera.
+    if (info.suffix().compare(QStringLiteral("appimage"), Qt::CaseInsensitive) == 0) {
+        const QString instalador = resolveFinderBinary(QStringLiteral("titan-appimage"));
+        if (QFile::exists(instalador)) {
+            QProcess::startDetached(instalador, {info.absoluteFilePath()});
+            return;
+        }
+    }
+
     // Si es ejecutable de consola/script
     if (info.isExecutable() && (info.suffix() == QStringLiteral("sh") || info.suffix() == QStringLiteral("bin") || info.suffix().isEmpty())) {
         QProcess::startDetached(info.absoluteFilePath(), QStringList());
         return;
     }
+
+    // Lo elegido en Ajustes > Aplicaciones predeterminadas va primero
+    if (titan::abrirConElegida(info.absoluteFilePath()))
+        return;
 
     // Documentos ofimáticos -> ONLYOFFICE DEBE SER EL PREDETERMINADO
     const QString ext = info.suffix().toLower();
@@ -661,6 +1066,11 @@ void FinderBackend::openTerminal(const QString &path)
 
 bool FinderBackend::createFolder(const QString &name)
 {
+    if (!puedeEscribir()) {
+        ponerAviso(enPapelera() ? QStringLiteral("En la Papelera no se crean carpetas")
+                                : QStringLiteral("No tienes permiso para crear carpetas aquí"));
+        return false;
+    }
     QString base = name.trimmed().isEmpty() ? QStringLiteral("Nueva carpeta") : name.trimmed();
     QDir dir(m_currentPath);
     QString candidate = base;
@@ -669,33 +1079,16 @@ bool FinderBackend::createFolder(const QString &name)
         candidate = QStringLiteral("%1 %2").arg(base).arg(index++);
     }
     bool ok = dir.mkdir(candidate);
-    if (ok) refresh();
+    if (ok) {
+        apuntarDeshacer(QStringLiteral("crear"), {QVariantMap{{QStringLiteral("b"), dir.filePath(candidate)}}}, QStringLiteral("Deshacer: nueva carpeta"));
+        refresh();
+    }
     return ok;
 }
 
 bool FinderBackend::deleteItem(const QString &path)
 {
-    QFileInfo info(path);
-    if (!info.exists()) return false;
-
-    QString trashFiles = QDir::homePath() + QStringLiteral("/.local/share/Trash/files");
-    QDir().mkpath(trashFiles);
-
-    QString dest = trashFiles + QStringLiteral("/") + info.fileName();
-    if (QFile::exists(dest)) {
-        dest = trashFiles + QStringLiteral("/") + QString::number(QDateTime::currentMSecsSinceEpoch()) + QStringLiteral("_") + info.fileName();
-    }
-
-    bool ok = QFile::rename(path, dest);
-    if (!ok) {
-        if (info.isDir()) {
-            ok = QDir(path).removeRecursively();
-        } else {
-            ok = QFile::remove(path);
-        }
-    }
-    if (ok) refresh();
-    return ok;
+    return deleteItems(QStringList{path});
 }
 
 bool FinderBackend::renameItem(const QString &oldPath, const QString &newName)
@@ -704,8 +1097,17 @@ bool FinderBackend::renameItem(const QString &oldPath, const QString &newName)
     QFileInfo info(oldPath);
     if (!info.exists()) return false;
     QString target = info.absolutePath() + QStringLiteral("/") + newName.trimmed();
+    if (target == info.absoluteFilePath()) return true;
+    if (QFileInfo::exists(target)) {
+        ponerAviso(QStringLiteral("Ya hay algo llamado «%1» aquí").arg(newName.trimmed()));
+        return false;
+    }
     bool ok = QFile::rename(oldPath, target);
-    if (ok) refresh();
+    if (ok) {
+        apuntarDeshacer(QStringLiteral("renombrar"), {QVariantMap{{QStringLiteral("a"), info.absoluteFilePath()}, {QStringLiteral("b"), target}}},
+                        QStringLiteral("Deshacer: renombrar"));
+        refresh();
+    }
     return ok;
 }
 
@@ -783,6 +1185,8 @@ bool FinderBackend::sendToDesktop(const QString &path)
 
 void FinderBackend::startDrag(const QString &path)
 {
+    arrastrar(QStringList{path});
+    return;
     if (path.isEmpty()) return;
     QString local = path;
     if (local.startsWith(QLatin1String("file://"))) {
@@ -892,112 +1296,87 @@ void FinderBackend::copyItems(const QStringList &paths)
     }
     mime->setUrls(urls);
     mime->setText(paths.join(QLatin1Char('\n')));
+    QByteArray gnome("copy");
+    for (const QUrl &u : std::as_const(urls))
+        gnome += '\n' + u.toEncoded();
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnome);
     QGuiApplication::clipboard()->setMimeData(mime);
     emit clipboardChanged();
+    ponerAviso(urls.size() == 1 ? QStringLiteral("Copiado") : QStringLiteral("%1 elementos copiados").arg(urls.size()));
 }
 
 bool FinderBackend::deleteItems(const QStringList &paths)
 {
-    bool allOk = true;
-    for (const QString &p : paths) {
-        if (!deleteItem(p)) {
-            allOk = false;
+    // A la Papelera de verdad (con su .trashinfo, para poder recuperar).
+    // Si no se puede, NO se borra para siempre: se avisa.
+    int n = 0, protegidas = 0;
+    QString fallo;
+    QVariantList deshacer;
+    for (const QString &p0 : paths) {
+        const QString p = p0.startsWith(QStringLiteral("file:")) ? QUrl(p0).toLocalFile() : p0;
+        if (!QFileInfo::exists(p) && !QFileInfo(p).isSymLink())
+            continue;
+        if (esProtegida(p)) {
+            ++protegidas;
+            continue;
         }
+        QString enLaPapelera;
+        if (QFile::moveToTrash(p, &enLaPapelera)) {
+            ++n;
+            deshacer << QVariantMap{{QStringLiteral("a"), p}, {QStringLiteral("b"), enLaPapelera}};
+        }
+        else if (fallo.isEmpty())
+            fallo = QFileInfo(p).fileName();
     }
+    apuntarDeshacer(QStringLiteral("papelera"), deshacer, QStringLiteral("Deshacer: enviar a la Papelera"));
     refresh();
-    return allOk;
+    if (!fallo.isEmpty())
+        ponerAviso(QStringLiteral("«%1» no se pudo mover a la Papelera (¿sin permiso?)").arg(fallo));
+    else if (protegidas > 0 && n == 0)
+        ponerAviso(QStringLiteral("Las carpetas principales de tu carpeta personal no se tiran"));
+    else if (n > 0)
+        ponerAviso(n == 1 ? QStringLiteral("Movido a la Papelera") : QStringLiteral("%1 elementos movidos a la Papelera").arg(n));
+    return fallo.isEmpty() && n > 0;
 }
 
 bool FinderBackend::moveItems(const QStringList &paths, const QString &targetDir)
 {
-    QString destDir = targetDir.isEmpty() ? m_currentPath : targetDir;
-    QFileInfo destInfo(destDir);
-    if (!destInfo.isDir()) destDir = m_currentPath;
-
-    bool allOk = true;
-    for (const QString &p : paths) {
-        QFileInfo fi(p);
-        if (!fi.exists()) continue;
-        QString destPath = destDir + QLatin1Char('/') + fi.fileName();
-        if (destPath != p) {
-            if (!QFile::rename(p, destPath)) {
-                if (copyPathRecursively(p, destPath)) {
-                    deleteItem(p);
-                } else {
-                    allOk = false;
-                }
-            }
-        }
-    }
-    refresh();
-    return allOk;
+    QVariantList urls;
+    for (const QString &p : paths)
+        urls << p;
+    soltar(urls, targetDir.isEmpty() ? m_currentPath : targetDir, false);
+    return true;
 }
 
 bool FinderBackend::paste(const QString &destinationDir)
 {
     QString destDir = destinationDir.isEmpty() ? m_currentPath : destinationDir;
-    QFileInfo destDirInfo(destDir);
-    if (!destDirInfo.isDir()) {
+    if (!QFileInfo(destDir).isDir())
         destDir = m_currentPath;
+    if (enPapelera() && destinationDir.isEmpty()) {
+        ponerAviso(QStringLiteral("No se puede pegar en la Papelera"));
+        return false;
     }
-
     const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+    QVariantList urls;
     if (mime && mime->hasUrls()) {
-        bool anyPasted = false;
-        for (const QUrl &url : mime->urls()) {
-            QString srcPath = url.toLocalFile();
-            if (srcPath.isEmpty() || (!QFile::exists(srcPath) && !QDir(srcPath).exists())) continue;
-
-            QFileInfo srcInfo(srcPath);
-            QString baseName = srcInfo.completeBaseName();
-            QString suffix = srcInfo.suffix();
-            QString destName = srcInfo.fileName();
-            QString target = destDir + QLatin1Char('/') + destName;
-
-            int counter = 1;
-            while (QFile::exists(target) || QDir(target).exists()) {
-                if (srcInfo.isDir() || suffix.isEmpty()) {
-                    destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
-                } else {
-                    destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
-                }
-                target = destDir + QLatin1Char('/') + destName;
-                counter++;
-            }
-
-            if (copyPathRecursively(srcPath, target)) {
-                anyPasted = true;
-            }
-        }
-        if (anyPasted) {
-            refresh();
-            return true;
-        }
+        for (const QUrl &u : mime->urls())
+            if (u.isLocalFile())
+                urls << u.toLocalFile();
+    } else if (!m_clipboardPath.isEmpty()) {
+        urls << m_clipboardPath;
     }
-
-    if (m_clipboardPath.isEmpty()) return false;
-    QFileInfo srcInfo(m_clipboardPath);
-    if (!srcInfo.exists()) return false;
-
-    QString baseName = srcInfo.completeBaseName();
-    QString suffix = srcInfo.suffix();
-    QString destName = srcInfo.fileName();
-    QString target = destDir + QLatin1Char('/') + destName;
-
-    int counter = 1;
-    while (QFile::exists(target) || QDir(target).exists()) {
-        if (srcInfo.isDir() || suffix.isEmpty()) {
-            destName = QStringLiteral("%1 (copia%2)").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter));
-        } else {
-            destName = QStringLiteral("%1 (copia%2).%3").arg(baseName).arg(counter == 1 ? QString() : QStringLiteral(" %1").arg(counter)).arg(suffix);
-        }
-        target = destDir + QLatin1Char('/') + destName;
-        counter++;
+    if (urls.isEmpty())
+        return false;
+    const bool cortado = portapapelesCortado();
+    soltar(urls, destDir, !cortado);
+    if (cortado) {
+        // Lo cortado se pega una vez: luego el portapapeles queda vacío.
+        QGuiApplication::clipboard()->clear();
+        m_clipboardPath.clear();
+        emit clipboardChanged();
     }
-
-    bool ok = copyPathRecursively(m_clipboardPath, target);
-    if (ok) refresh();
-    return ok;
+    return true;
 }
 
 QVariantMap FinderBackend::getFileProperties(const QString &path)
@@ -1225,4 +1604,184 @@ bool FinderBackend::mountAndOpen(const QString &deviceNode)
         }
     }
     return false;
+}
+
+// ---------------------------------------------------------------- menú contextual
+
+namespace {
+// Documentos vacíos de ONLYOFFICE (los usa él mismo para "Nuevo"): en el
+// idioma del sistema si los hay, si no en inglés.
+QString plantillaOffice(const QString &ext)
+{
+    const QString base = QStringLiteral("/opt/onlyoffice/desktopeditors/converter/empty/");
+    const QString idioma = QLocale().name().replace(QLatin1Char('_'), QLatin1Char('-'));
+    for (const QString &d : {idioma, QStringLiteral("es-ES"), QStringLiteral("en-US"), QStringLiteral("default")}) {
+        const QString f = base + d + QStringLiteral("/new.") + ext;
+        if (QFile::exists(f))
+            return f;
+    }
+    return QString();
+}
+
+QStringList carpetasAplicaciones()
+{
+    QStringList d = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+    d << QStringLiteral("/var/lib/flatpak/exports/share/applications")
+      << QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications");
+    d.removeDuplicates();
+    return d;
+}
+}
+
+QVariantList FinderBackend::tiposNuevos() const
+{
+    QVariantList l;
+    auto poner = [&l](const QString &tipo, const QString &texto, const QString &icono) {
+        l.append(QVariantMap{{QStringLiteral("tipo"), tipo}, {QStringLiteral("t"), texto}, {QStringLiteral("i"), icono}});
+    };
+    poner(QStringLiteral("txt"), QStringLiteral("Documento de texto"), QStringLiteral("📝"));
+    if (!plantillaOffice(QStringLiteral("docx")).isEmpty())
+        poner(QStringLiteral("docx"), QStringLiteral("Documento"), QStringLiteral("📄"));
+    if (!plantillaOffice(QStringLiteral("xlsx")).isEmpty())
+        poner(QStringLiteral("xlsx"), QStringLiteral("Hoja de cálculo"), QStringLiteral("📊"));
+    if (!plantillaOffice(QStringLiteral("pptx")).isEmpty())
+        poner(QStringLiteral("pptx"), QStringLiteral("Presentación"), QStringLiteral("📽"));
+    return l;
+}
+
+QString FinderBackend::nuevoArchivo(const QString &tipo)
+{
+    if (!puedeEscribir()) {
+        ponerAviso(QStringLiteral("No tienes permiso para crear archivos aquí"));
+        return QString();
+    }
+    QString base, plantilla;
+    if (tipo == QLatin1String("txt")) base = QStringLiteral("Documento de texto");
+    else if (tipo == QLatin1String("docx")) base = QStringLiteral("Documento");
+    else if (tipo == QLatin1String("xlsx")) base = QStringLiteral("Hoja de cálculo");
+    else if (tipo == QLatin1String("pptx")) base = QStringLiteral("Presentación");
+    else return QString();
+    if (tipo != QLatin1String("txt")) {
+        plantilla = plantillaOffice(tipo);
+        if (plantilla.isEmpty())
+            return QString();
+    }
+    QDir dir(m_currentPath);
+    QString nombre = base + QLatin1Char('.') + tipo;
+    for (int i = 2; dir.exists(nombre); ++i)
+        nombre = QStringLiteral("%1 %2.%3").arg(base).arg(i).arg(tipo);
+    const QString ruta = dir.filePath(nombre);
+    bool ok;
+    if (plantilla.isEmpty()) {
+        QFile f(ruta);
+        ok = f.open(QIODevice::WriteOnly | QIODevice::NewOnly);
+    } else {
+        ok = QFile::copy(plantilla, ruta);
+        if (ok)
+            QFile::setPermissions(ruta, QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup | QFile::ReadOther);
+    }
+    if (!ok) {
+        ponerAviso(QStringLiteral("No se pudo crear el archivo"));
+        return QString();
+    }
+    apuntarDeshacer(QStringLiteral("crear"), {QVariantMap{{QStringLiteral("b"), ruta}}}, QStringLiteral("Deshacer: nuevo documento"));
+    refresh();
+    return ruta;
+}
+
+// Apps que dicen abrir ese tipo de archivo (MimeType= de su .desktop), la
+// predeterminada primero. Como "Abrir con" de Windows.
+QVariantList FinderBackend::aplicacionesPara(const QString &path) const
+{
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(path);
+    QSet<QString> tipos{mime.name()};
+    for (const QString &t : mime.allAncestors()) tipos.insert(t);
+    for (const QString &t : mime.aliases()) tipos.insert(t);
+    tipos.remove(QStringLiteral("application/octet-stream"));
+
+    QProcess xdg;
+    xdg.start(QStringLiteral("xdg-mime"), {QStringLiteral("query"), QStringLiteral("default"), mime.name()});
+    const QString predeterminada = xdg.waitForFinished(1500) ? QString::fromUtf8(xdg.readAllStandardOutput()).trimmed() : QString();
+
+    QVariantList lista;
+    QSet<QString> vistos, nombres;
+    const QString idioma = QLocale().name().left(2);
+    for (const QString &carpeta : carpetasAplicaciones()) {
+        const QFileInfoList ficheros = QDir(carpeta).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files);
+        for (const QFileInfo &fi : ficheros) {
+            if (vistos.contains(fi.fileName()))
+                continue;   // el de más prioridad (el de la persona) gana
+            vistos.insert(fi.fileName());
+            const auto d = titan::leerDesktop(fi.absoluteFilePath());
+            if (titan::esVerdadero(d.value(QStringLiteral("NoDisplay"))) || titan::esVerdadero(d.value(QStringLiteral("Hidden")))
+                || d.value(QStringLiteral("Type")) != QLatin1String("Application"))
+                continue;
+            bool sirve = false;
+            for (const QString &m : d.value(QStringLiteral("MimeType")).split(QLatin1Char(';'), Qt::SkipEmptyParts))
+                if (tipos.contains(m)) { sirve = true; break; }
+            if (!sirve)
+                continue;
+            QString nombre = d.value(QStringLiteral("Name[") + idioma + QLatin1Char(']'));
+            if (nombre.isEmpty()) nombre = d.value(QStringLiteral("Name"));
+            if (nombres.contains(nombre))
+                continue;   // dos .desktop con el mismo nombre: uno basta
+            nombres.insert(nombre);
+            QVariantMap app{{QStringLiteral("t"), nombre}, {QStringLiteral("desktop"), fi.absoluteFilePath()}};
+            if (fi.fileName() == predeterminada) lista.prepend(app); else lista.append(app);
+        }
+    }
+    // Las demás por nombre (la predeterminada se queda la primera)
+    const bool hayPred = !lista.isEmpty() && lista.first().toMap().value(QStringLiteral("desktop")).toString().endsWith(QLatin1Char('/') + predeterminada);
+    std::sort(lista.begin() + (hayPred ? 1 : 0), lista.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value(QStringLiteral("t")).toString().localeAwareCompare(b.toMap().value(QStringLiteral("t")).toString()) < 0;
+    });
+    while (lista.size() > 10) lista.removeLast();
+    return lista;
+}
+
+void FinderBackend::abrirCon(const QString &path, const QString &desktop)
+{
+    if (path.isEmpty() || !desktop.endsWith(QStringLiteral(".desktop")) || !QFile::exists(desktop))
+        return;
+    QProcess::startDetached(QStringLiteral("gio"), {QStringLiteral("launch"), desktop, path});
+}
+
+void FinderBackend::copiarRuta(const QStringList &paths)
+{
+    if (paths.isEmpty())
+        return;
+    QGuiApplication::clipboard()->setText(paths.join(QLatin1Char('\n')));
+    ponerAviso(paths.size() == 1 ? QStringLiteral("Ruta copiada") : QStringLiteral("Rutas copiadas"));
+}
+
+QVariantMap FinderBackend::entradaDe(const QFileInfo &info) const
+{
+    QVariantMap entry;
+    entry[QStringLiteral("name")] = info.fileName();
+    entry[QStringLiteral("path")] = info.absoluteFilePath();
+    entry[QStringLiteral("isDir")] = info.isDir();
+    entry[QStringLiteral("isSymLink")] = info.isSymLink();
+    entry[QStringLiteral("isHidden")] = info.isHidden();
+    entry[QStringLiteral("isExecutable")] = info.isExecutable();
+
+    if (info.isDir()) {
+        QDir sub(info.absoluteFilePath());
+        const uint count = sub.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).size();
+        entry[QStringLiteral("size")] = count == 1 ? QStringLiteral("1 elemento") : QStringLiteral("%1 elementos").arg(count);
+        entry[QStringLiteral("sizeBytes")] = static_cast<qint64>(count);
+    } else {
+        entry[QStringLiteral("size")] = formatBytes(info.size());
+        entry[QStringLiteral("sizeBytes")] = info.size();
+    }
+
+    const QDateTime modified = info.lastModified();
+    entry[QStringLiteral("modified")] = modified.toString(QStringLiteral("d MMM yyyy, hh:mm"));
+    entry[QStringLiteral("modifiedTimestamp")] = modified.toMSecsSinceEpoch();
+
+    entry[QStringLiteral("type")] = resolveType(info);
+    entry[QStringLiteral("icon")] = resolveIcon(info);
+    // Las fotos se ven en miniatura en la vista de iconos
+    entry[QStringLiteral("foto")] = !info.isDir() && esFoto(info.suffix().toLower());
+
+    return entry;
 }

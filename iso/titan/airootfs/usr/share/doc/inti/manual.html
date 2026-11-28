@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual de Inti OS</title>
+<style>
+  :root {
+    --fondo: #ffffff; --texto: #1d1d1f; --tenue: #6e6e73; --tarjeta: #f5f5f7;
+    --borde: rgba(0,0,0,.10); --acento: #0071e3; --aviso: #fff6dc; --aviso-texto: #7a5a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #000000; --texto: #f2f2f5; --tenue: #a2aab8; --tarjeta: #161618;
+      --borde: rgba(255,255,255,.12); --acento: #2f8cff; --aviso: #2a2410; --aviso-texto: #ffd60a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fondo); color: var(--texto);
+    font: 16px/1.55 "Inter", "Noto Sans", system-ui, sans-serif;
+  }
+  .pagina { display: grid; grid-template-columns: 250px 1fr; max-width: 1180px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 32px 20px; border-right: 1px solid var(--borde);
+  }
+  nav h2 { font-size: 15px; margin: 0 0 14px; padding: 0; border: 0; }
+  nav a { display: block; padding: 5px 10px; border-radius: 7px; color: var(--texto); text-decoration: none; font-size: 14px; }
+  nav a:hover { background: var(--tarjeta); color: var(--acento); }
+  main { padding: 40px 48px 80px; max-width: 860px; }
+  h1 { font-size: 34px; margin: 0 0 6px; }
+  .sub { color: var(--tenue); margin: 0 0 30px; }
+  h2 { font-size: 24px; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--borde); }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  a { color: var(--acento); }
+  kbd {
+    display: inline-block; padding: 1px 7px; border: 1px solid var(--borde); border-bottom-width: 2px;
+    border-radius: 6px; background: var(--tarjeta); font: 600 13px/1.5 "Inter", system-ui, sans-serif; white-space: nowrap;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 18px; font-size: 15px; }
+  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); vertical-align: top; }
+  th { color: var(--tenue); font-weight: 600; font-size: 13px; }
+  td:first-child { white-space: nowrap; width: 1%; }
+  .nota { background: var(--tarjeta); border-radius: 12px; padding: 14px 18px; margin: 14px 0; }
+  .aviso { background: var(--aviso); color: var(--aviso-texto); border-radius: 12px; padding: 14px 18px; margin: 14px 0; }
+  ol li, ul li { margin: 4px 0; }
+  .marca { color: var(--acento); font-weight: 600; }
+  @media (max-width: 860px) { .pagina { display: block; } nav { position: static; height: auto; border: 0; } main { padding: 24px; } }
+  @media print { nav { display: none; } .pagina { display: block; } }
+</style>
+</head>
+<body>
+<div class="pagina">
+<nav>
+  <h2>Manual de Inti OS</h2>
+  <a href="#empezar">Primeros pasos</a>
+  <a href="#escritorio">El escritorio</a>
+  <a href="#ventanas">Ventanas</a>
+  <a href="#atajos">Atajos de teclado</a>
+  <a href="#archivos">Archivos y carpetas</a>
+  <a href="#programas">Instalar programas</a>
+  <a href="#windows-exe">Programas de Windows (.exe)</a>
+  <a href="#escribir">Portapapeles y emojis</a>
+  <a href="#capturas">Capturas y grabación</a>
+  <a href="#ajustes">Ajustes</a>
+  <a href="#monitor">Monitor de recursos</a>
+  <a href="#seguridad">Seguridad y privacidad</a>
+  <a href="#problemas">Si algo no va bien</a>
+  <a href="#desde-windows">Si vienes de Windows</a>
+</nav>
+<main>
+
+<h1>Manual de Inti OS</h1>
+<p class="sub">Inti OS 1.8 · Cómo hacer cada cosa, paso a paso. <span class="marca">Win</span> es la tecla con el logotipo de Windows (también llamada Super).</p>
+
+<!-- ============================================================ -->
+<h2 id="empezar">Primeros pasos</h2>
+<p>La primera vez que entras en tu cuenta se abre la <b>Bienvenida</b>. En un minuto eliges:</p>
+<ul>
+  <li><b>Dónde van los botones de las ventanas:</b> estilo Inti (círculos de colores a la izquierda) o estilo Windows (<kbd>_</kbd> <kbd>☐</kbd> <kbd>✕</kbd> a la derecha).</li>
+  <li><b>Claro u oscuro</b> y el <b>color de acento</b> (el color de botones, gráficas y selecciones).</li>
+</ul>
+<p>Todo se puede cambiar después en <b>Ajustes</b>. Para volver a ver la Bienvenida, búscala en el menú de inicio.</p>
+<div class="nota">💡 Con <kbd>Win</kbd> + <kbd>F1</kbd> ves en cualquier momento la lista de atajos de teclado.</div>
+
+<!-- ============================================================ -->
+<h2 id="escritorio">El escritorio</h2>
+<h3>Menú de inicio</h3>
+<p>Pulsa y suelta <kbd>Win</kbd> (o <kbd>Win</kbd> + <kbd>Espacio</kbd>). Escribe para buscar una aplicación, un ajuste («wifi», «impresora», «modo oscuro») o un archivo de tu carpeta personal y pulsa <kbd>Intro</kbd>. La búsqueda se hace en tu equipo: no se envía nada a internet. Desde aquí también se apaga, reinicia o suspende el equipo.</p>
+<h3>Dock</h3>
+<p>La barra de abajo con tus aplicaciones. Un clic abre la aplicación o la trae delante; el punto bajo el icono indica que está abierta. Clic derecho para fijarla o quitarla. Su posición (abajo, izquierda o derecha) se cambia en <b>Ajustes › Escritorio y Dock</b>.</p>
+<h3>Barra superior</h3>
+<p>Arriba a la derecha están el Wi-Fi, el Bluetooth, el sonido, la batería, la hora y las notificaciones. Un clic en los iconos abre el <b>Centro de control</b> (Wi-Fi, Bluetooth, brillo, volumen, modo oscuro, No molestar…).</p>
+<ul>
+  <li><b>Fecha:</b> un clic abre el calendario del mes. Las flechas (o la rueda del ratón) pasan de mes y «Hoy» vuelve al actual.</li>
+  <li><b>Mostrar el escritorio:</b> la franja fina del borde derecho, junto a la campana, como en Windows. Otro clic devuelve las ventanas. Es lo mismo que <kbd>Win</kbd> + <kbd>D</kbd>.</li>
+  <li><b>En el centro</b> están los números de tus escritorios; el que usas ahora va coloreado. Un clic en un número lleva a ese escritorio.</li>
+</ul>
+<h3>Clic derecho en el escritorio</h3>
+<p>Nueva carpeta, Pegar, Abrir en el Explorador, Cambiar fondo de pantalla, Configuración de pantalla y Personalizar.</p>
+<h3>Escritorios virtuales</h3>
+<p>Puedes repartir las ventanas en varios escritorios. <kbd>Win</kbd> + <kbd>↑</kbd> muestra todos, y también dejar el ratón 2 o 3 segundos en la <b>esquina inferior derecha</b> de la pantalla (un cuarto de círculo azul crece mientras esperas). <kbd>Win</kbd> + <kbd>1</kbd>…<kbd>8</kbd> va a cada uno. En el panel táctil, desliza con tres dedos a los lados.</p>
+
+<!-- ============================================================ -->
+<h2 id="ventanas">Ventanas</h2>
+<ul>
+  <li><b>Cerrar:</b> botón cerrar, <kbd>Win</kbd> + <kbd>Q</kbd> o <kbd>Alt</kbd> + <kbd>F4</kbd>.</li>
+  <li><b>Minimizar:</b> botón minimizar o <kbd>Win</kbd> + <kbd>M</kbd>. Vuelve desde el Dock o con <kbd>Alt</kbd> + <kbd>Tab</kbd>.</li>
+  <li><b>Maximizar / restaurar:</b> doble clic en la barra de título o <kbd>Win</kbd> + <kbd>F</kbd>.</li>
+  <li><b>Pantalla completa:</b> <kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>F</kbd> (otra vez para salir).</li>
+  <li><b>Media pantalla:</b> <kbd>Win</kbd> + <kbd>←</kbd> o <kbd>Win</kbd> + <kbd>→</kbd>, como en Windows.</li>
+  <li><b>Mover y cambiar tamaño:</b> arrastra la barra de título o los bordes. También <kbd>Win</kbd> + arrastrar mueve la ventana desde cualquier punto.</li>
+  <li><b>Cambiar de ventana:</b> <kbd>Alt</kbd> + <kbd>Tab</kbd>; mantén <kbd>Alt</kbd> y pulsa <kbd>Tab</kbd> varias veces para elegir.</li>
+  <li><b>Ver el escritorio:</b> <kbd>Win</kbd> + <kbd>D</kbd>.</li>
+  <li><b>Mosaico, como Hyprland:</b> en <b>Ajustes › Ventanas</b> activa «Acoplar las ventanas al abrirlas». Cada app que abras ocupa su parte de la pantalla y las demás se hacen sitio, sin taparse. <kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>T</kbd> acopla o suelta la ventana de delante, <kbd>Win</kbd> + <kbd>Alt</kbd> + flechas pasa a la de al lado y <kbd>Win</kbd> + arrastrar la cambia de sitio. Viene apagado; funciona con los efectos de escritorio (no en el modo de compatibilidad).</li>
+</ul>
+<p>El estilo de los botones (izquierda o derecha y su forma) se cambia en <b>Ajustes › Ventanas</b>.</p>
+
+<!-- ============================================================ -->
+<h2 id="atajos">Atajos de teclado</h2>
+<h3>Lo básico</h3>
+<table>
+  <tr><td><kbd>Win</kbd></td><td>Abrir el menú de inicio</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>E</kbd></td><td>Explorador de archivos</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>D</kbd></td><td>Ver el escritorio</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>L</kbd></td><td>Bloquear el equipo</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>I</kbd></td><td>Ajustes</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Supr</kbd></td><td>Pantalla de seguridad: bloquear, cambiar de usuario, cerrar sesión, Monitor de recursos, apagar</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>Mayús</kbd> + <kbd>Esc</kbd></td><td>Monitor de recursos</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>F1</kbd></td><td>Lista de atajos</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>X</kbd></td><td>Menú de herramientas: apps instaladas, Monitor de recursos, Discos, Terminal, Ajustes…</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>P</kbd></td><td>Segunda pantalla o proyector: duplicar, extender…</td></tr>
+</table>
+<h3>Ventanas</h3>
+<table>
+  <tr><td><kbd>Alt</kbd> + <kbd>Tab</kbd></td><td>Cambiar de ventana (con <kbd>Mayús</kbd>, hacia atrás)</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Tab</kbd></td><td>Ver todas las ventanas a la vez</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Q</kbd> &nbsp;o&nbsp; <kbd>Alt</kbd> + <kbd>F4</kbd></td><td>Cerrar la ventana</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>M</kbd></td><td>Minimizar</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>F</kbd></td><td>Maximizar / restaurar</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>F</kbd></td><td>Pantalla completa</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>←</kbd> / <kbd>→</kbd></td><td>Ventana a media pantalla</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>↑</kbd></td><td>Ver todas las ventanas abiertas</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>T</kbd></td><td>Acoplar o soltar la ventana en el mosaico</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Alt</kbd> + flechas</td><td>Ir a la ventana de al lado (mosaico)</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>1</kbd>…<kbd>8</kbd></td><td>Mover la ventana al escritorio 1…8 (te quedas donde estás)</td></tr>
+</table>
+<h3>Escribir</h3>
+<table>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copiar, cortar y pegar</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Deshacer</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>V</kbd></td><td>Historial del portapapeles</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>.</kbd></td><td>Emojis</td></tr>
+</table>
+<h3>Capturas</h3>
+<table>
+  <tr><td><kbd>Impr Pant</kbd></td><td>Captura de toda la pantalla</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>S</kbd></td><td>Captura de una zona (también <kbd>Mayús</kbd> + <kbd>Impr Pant</kbd>)</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>R</kbd></td><td>Grabar la pantalla; otra vez para parar y guardar</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>Mayús</kbd> + <kbd>R</kbd></td><td>Grabar una zona</td></tr>
+</table>
+<h3>Escritorios</h3>
+<table>
+  <tr><td><kbd>Win</kbd> + <kbd>↑</kbd></td><td>Ver todos los escritorios</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>1</kbd> … <kbd>8</kbd></td><td>Ir al escritorio 1 … 8</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + <kbd>Win</kbd> + <kbd>←</kbd> / <kbd>→</kbd></td><td>Escritorio anterior / siguiente</td></tr>
+</table>
+<h3>Más</h3>
+<table>
+  <tr><td><kbd>Win</kbd> + <kbd>T</kbd></td><td>Terminal</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>W</kbd></td><td>Cambiar el fondo de pantalla</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>D</kbd></td><td>Cambiar entre claro y oscuro</td></tr>
+  <tr><td><kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>S</kbd></td><td>Lector de pantalla (lee en voz alta)</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="archivos">Archivos y carpetas</h2>
+<p>Abre el <b>Explorador de archivos</b> con <kbd>Win</kbd> + <kbd>E</kbd> o desde el Dock. A la izquierda están tu <b>Carpeta personal</b>, Escritorio, Documentos, Descargas, Imágenes, Música, Vídeos, <b>Recientes</b>, la Papelera y los discos y memorias USB.</p>
+<ul>
+  <li><b>Copiar, cortar, pegar, renombrar y borrar</b> funcionan como en Windows: <kbd>Ctrl</kbd> + <kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd>, <kbd>F2</kbd> para renombrar y <kbd>Supr</kbd> para mandar a la Papelera.</li>
+  <li><b>Deshacer:</b> <kbd>Ctrl</kbd> + <kbd>Z</kbd> deshace lo último (un borrado, un cambio de nombre, un movimiento).</li>
+  <li><b>Buscar:</b> escribe en el buscador de arriba; busca también dentro de las subcarpetas y no importan las tildes.</li>
+  <li><b>Barra de direcciones:</b> <kbd>Ctrl</kbd> + <kbd>L</kbd> para escribir una ruta.</li>
+  <li><b>Pestañas</b>, como en Windows 11: <kbd>Ctrl</kbd> + <kbd>T</kbd> abre una, <kbd>Ctrl</kbd> + <kbd>W</kbd> la cierra y <kbd>Ctrl</kbd> + <kbd>Tab</kbd> pasa a la siguiente. Clic central (rueda) en una carpeta la abre en una pestaña nueva. <kbd>Ctrl</kbd> + <kbd>N</kbd> abre una ventana nueva.</li>
+  <li><b>Juntar y separar ventanas:</b> arrastra una pestaña a otra ventana del Explorador para juntarlas, o suéltala fuera de cualquier ventana para sacarla a una ventana nueva. Dentro de la misma barra, arrastrarla cambia el orden.</li>
+  <li><b>Terminal aquí:</b> <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd>.</li>
+  <li><b>Anclar una carpeta</b> a la barra lateral: clic derecho › Anclar. Para quitarla, clic derecho sobre ella en la barra.</li>
+  <li><b>Comprimir y extraer</b>: clic derecho › Comprimir o Extraer aquí (ZIP, 7z, RAR, tar…).</li>
+  <li>Los discos de Windows (NTFS) y las memorias USB (exFAT/FAT) se abren sin hacer nada.</li>
+</ul>
+<h3>Red: otros equipos de casa</h3>
+<p>En <b>Red</b> (barra lateral, en «Este equipo») salen los otros ordenadores de tu red (Windows, Mac, Linux) y los discos de red (NAS). Entra en uno y luego en su carpeta compartida; si pide usuario y contraseña, son los de ese equipo.</p>
+<ul>
+  <li>Si un equipo no sale, pulsa <kbd>Ctrl</kbd> + <kbd>L</kbd> y escribe su dirección como en Windows: <code>\\NOMBRE-PC\Carpeta</code>.</li>
+  <li>La contraseña solo se recuerda hasta que cierres la sesión.</li>
+  <li>Inti solo <b>mira</b> la red: tu equipo no se anuncia a los demás si no activas Ajustes › Compartir.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="programas">Instalar programas</h2>
+<h3>App Store (lo recomendado)</h3>
+<ol>
+  <li>Abre la <b>App Store</b> desde el Dock o el menú de inicio.</li>
+  <li>Busca el programa (por ejemplo «GIMP», «Spotify» o «Steam»).</li>
+  <li>Pulsa <b>Instalar</b>. Aparecerá en el menú de inicio.</li>
+</ol>
+<p>Para quitarlo, en la App Store pulsa <b>Quitar</b>, o clic derecho sobre su icono en el menú de inicio › Desinstalar.</p>
+<h3>Archivos AppImage</h3>
+<p>Muchas webs ofrecen su programa como <code>.AppImage</code>. Haz doble clic y elige <b>Instalar</b> (queda en el menú de inicio) o <b>Abrir solo esta vez</b>. No hace falta contraseña.</p>
+
+<h3>Instaladores .deb y .rpm</h3>
+<p>Algunas webs ofrecen su programa como <code>.deb</code> (para Ubuntu) o <code>.rpm</code> (para Fedora). Inti usa otro sistema, pero también puedes hacer doble clic:</p>
+<ul>
+  <li>Si el programa está en la <b>App Store</b>, Inti te lo dice y te recomienda instalarlo desde ahí: funciona mejor y se actualiza solo.</li>
+  <li>Si no, <b>Instalar en mi cuenta</b> lo instala solo para ti, sin contraseña, y aparece en el menú de inicio. Para quitarlo: clic derecho › Desinstalar.</li>
+  <li>Así instalado <b>no se actualiza solo</b>: para actualizar, descarga el instalador nuevo y ábrelo.</li>
+</ul>
+<div class="aviso">⚠ Por seguridad, Inti nunca ejecuta los scripts de instalación que traen estos paquetes. Por eso no funcionan así los controladores, las VPN ni los programas que necesitan un servicio del sistema; búscalos en la App Store.</div>
+
+<h2 id="windows-exe">Programas de Windows (.exe y .msi)</h2>
+<p>Inti puede abrir muchos programas de Windows con <b>Wine</b>.</p>
+<ol>
+  <li>Haz doble clic en el <code>.exe</code> o el <code>.msi</code>.</li>
+  <li>La primera vez Inti te ofrece <b>Instalar Wine y abrir</b> (unos 600 MB de descarga). Pide la contraseña de administrador en la ventana «Por tu seguridad…».</li>
+  <li>A partir de ahí los programas de Windows se abren con doble clic. Los que instales aparecen en el menú de inicio.</li>
+</ol>
+<div class="nota">💡 Antes de usar Wine, mira si el programa existe en la <b>App Store</b>: la versión para Linux suele ir mejor. El botón <b>Buscar en la App Store</b> lo hace por ti.</div>
+<div class="aviso">⚠ No funcionan con Wine: controladores, antivirus, programas que modifican Windows y muchos juegos con sistema antitrampas. Abre solo programas de quien confíes.</div>
+
+<!-- ============================================================ -->
+<h2 id="escribir">Portapapeles y emojis</h2>
+<h3>Historial del portapapeles (<kbd>Win</kbd> + <kbd>V</kbd>)</h3>
+<p>La primera vez pulsa <b>Activar</b>. Desde entonces guarda las últimas 25 cosas que copies. Elige una (con el ratón o con las flechas e <kbd>Intro</kbd>) y se pega donde estabas escribiendo. <kbd>Supr</kbd> quita una; <b>Borrar todo</b> las quita todas.</p>
+<div class="nota">🔒 El historial solo está en la memoria del equipo: se borra al cerrar la sesión. No guarda lo que copian los gestores de contraseñas.</div>
+<h3>Emojis (<kbd>Win</kbd> + <kbd>.</kbd>)</h3>
+<p>Escribe lo que buscas en español («corazón», «risa», «gato», «fiesta»), elige con las flechas y pulsa <kbd>Intro</kbd>: se escribe en la ventana donde estabas. Arriba hay categorías y los que más usas.</p>
+
+<!-- ============================================================ -->
+<h2 id="capturas">Capturas y grabación de pantalla</h2>
+<ul>
+  <li><kbd>Impr Pant</kbd>: toda la pantalla. <kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>S</kbd>: eliges una zona con el ratón.</li>
+  <li>Las capturas se guardan en <b>Imágenes › Capturas de pantalla</b> y se copian al portapapeles, listas para pegar.</li>
+  <li><kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>R</kbd> empieza a grabar la pantalla, como en Windows; pulsa lo mismo para parar. El vídeo va a <b>Vídeos › Grabaciones de pantalla</b>.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ajustes">Ajustes</h2>
+<p>Ábrelos con <kbd>Win</kbd> + <kbd>I</kbd>, desde el Dock o desde el Centro de control. Algunas secciones:</p>
+<table>
+  <tr><td>Wi-Fi, Bluetooth, VPN</td><td>Conectarse a redes y dispositivos</td></tr>
+  <tr><td>Pantallas</td><td>Resolución (también menores que la de tu pantalla, como 1280 × 720 u 800 × 600, aunque la pantalla no las anuncie; con «Mostrar más resoluciones», también mayores: si la pantalla no la acepta, se deshace sola en 15 segundos; si la tarjeta gráfica va sin su driver, aparece «Resolución de arranque», que se aplica al reiniciar), escala, varios monitores, luz nocturna</td></tr>
+  <tr><td>Sonido</td><td>Altavoces, auriculares, micrófono y el volumen de cada aplicación (como el mezclador de Windows)</td></tr>
+  <tr><td>Aplicaciones predeterminadas</td><td>Con qué app se abren las páginas web, el correo, los PDF, las fotos, la música…</td></tr>
+  <tr><td>Apariencia, Fondo, Ventanas</td><td>Claro/oscuro, color de acento, fondo de pantalla, estilo de botones, mosaico de ventanas</td></tr>
+  <tr><td>Escritorio y Dock</td><td>Posición y tamaño del Dock, iconos del escritorio</td></tr>
+  <tr><td>Ratón y panel táctil, Teclado</td><td>Velocidad, tocar para hacer clic, distribución del teclado</td></tr>
+  <tr><td>Impresoras</td><td>Añadir impresoras (la mayoría se detectan solas)</td></tr>
+  <tr><td>Usuarios</td><td>Crear cuentas, cambiar tu contraseña</td></tr>
+  <tr><td>Energía</td><td>Batería, suspensión, modo para equipos lentos</td></tr>
+  <tr><td>General › Actualizaciones</td><td>Actualizar el sistema sin usar la terminal</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="monitor">Monitor de recursos</h2>
+<p>Ábrelo con <kbd>Ctrl</kbd> + <kbd>Mayús</kbd> + <kbd>Esc</kbd>. Es el equivalente al Administrador de tareas:</p>
+<ul>
+  <li><b>Procesos:</b> qué programa gasta CPU, memoria o disco. Si uno se cuelga, selecciónalo y pulsa <b>Finalizar tarea</b> (o <kbd>Supr</kbd>). Clic derecho › Forzar el cierre si no responde.</li>
+  <li><b>Rendimiento:</b> gráficas de CPU, memoria, discos y red.</li>
+  <li><b>Aplicaciones de inicio:</b> qué se abre solo al entrar. Desactivar lo que no usas hace que el equipo arranque antes.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="seguridad">Seguridad y privacidad</h2>
+<ul>
+  <li><b>Contraseña de administrador:</b> cuando algo va a cambiar el sistema (instalar, actualizar, abrir un puerto…) Inti lo pide en una ventana que empieza por <b>«Por tu seguridad…»</b>. Ningún programa puede hacerlo a escondidas. Si esa ventana aparece sin que hayas hecho nada, pulsa Cancelar.</li>
+  <li><b>Sin telemetría:</b> Inti no envía datos de uso a nadie.</li>
+  <li><b>Bloqueo:</b> <kbd>Win</kbd> + <kbd>L</kbd>. En Ajustes › Bloqueo eliges qué se ve en la pantalla de bloqueo (notificaciones, música).</li>
+  <li><b>Cortafuegos</b> activado y <b>actualizaciones</b> que avisan solas.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="problemas">Si algo no va bien</h2>
+<table>
+  <tr><td>Un programa no responde</td><td><kbd>Ctrl</kbd> + <kbd>Mayús</kbd> + <kbd>Esc</kbd> › selecciónalo › Finalizar tarea.</td></tr>
+  <tr><td>Todo parece bloqueado</td><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Supr</kbd> › Monitor de recursos, Cerrar sesión o Reiniciar.</td></tr>
+  <tr><td>No hay sonido</td><td>Centro de control › volumen, o Ajustes › Sonido y elige la salida correcta.</td></tr>
+  <tr><td>No se conecta al Wi-Fi</td><td>Ajustes › Wi-Fi: apágalo y enciéndelo; comprueba la contraseña.</td></tr>
+  <tr><td>El equipo va lento</td><td>Monitor de recursos para ver qué gasta; Ajustes › Energía › modo equipo ligero.</td></tr>
+  <tr><td>Informar de un fallo</td><td>Abre <b>Informe del equipo</b> desde el menú de inicio: prepara en tu Carpeta personal un archivo con lo necesario (sin contraseñas ni nombres de redes). Revísalo y envíalo.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="desde-windows">Si vienes de Windows</h2>
+<table>
+  <tr><th>En Windows</th><th>En Inti OS</th></tr>
+  <tr><td>Botón Inicio</td><td>Tecla <kbd>Win</kbd> o el botón de la esquina superior izquierda</td></tr>
+  <tr><td>Barra de tareas</td><td>El Dock (abajo) y la barra superior</td></tr>
+  <tr><td>Reloj y calendario de la barra</td><td>Clic en la fecha, arriba a la derecha</td></tr>
+  <tr><td>Botón «Mostrar escritorio» (esquina de la barra)</td><td>La franja fina a la derecha de la campana, o <kbd>Win</kbd> + <kbd>D</kbd></td></tr>
+  <tr><td>Explorador de archivos</td><td>Explorador de archivos (<kbd>Win</kbd> + <kbd>E</kbd>)</td></tr>
+  <tr><td>Configuración / Panel de control</td><td>Ajustes (<kbd>Win</kbd> + <kbd>I</kbd>)</td></tr>
+  <tr><td>Administrador de tareas</td><td>Monitor de recursos (<kbd>Ctrl</kbd> + <kbd>Mayús</kbd> + <kbd>Esc</kbd>)</td></tr>
+  <tr><td>Microsoft Store</td><td>App Store</td></tr>
+  <tr><td>Word, Excel, PowerPoint</td><td>OnlyOffice y LibreOffice (abren y guardan .docx, .xlsx y .pptx)</td></tr>
+  <tr><td>Edge</td><td>Firefox</td></tr>
+  <tr><td>Recortes</td><td><kbd>Win</kbd> + <kbd>Mayús</kbd> + <kbd>S</kbd></td></tr>
+  <tr><td>Disco C:</td><td>Tu Carpeta personal (<code>/home/tu-nombre</code>)</td></tr>
+  <tr><td>Programas .exe</td><td>App Store, AppImage, o Wine para los de Windows</td></tr>
+  <tr><td>Aplicaciones predeterminadas</td><td>Ajustes › Aplicaciones predeterminadas (navegador, correo, PDF, fotos…)</td></tr>
+  <tr><td>Descargas .deb / .rpm</td><td>Doble clic: App Store si está, o se instala en tu cuenta</td></tr>
+  <tr><td>Cerrar con <kbd>Alt</kbd> + <kbd>F4</kbd></td><td>Igual, y también <kbd>Win</kbd> + <kbd>Q</kbd></td></tr>
+  <tr><td>Maximizar con <kbd>Win</kbd> + <kbd>↑</kbd></td><td><kbd>Win</kbd> + <kbd>F</kbd> (<kbd>Win</kbd> + <kbd>↑</kbd> muestra los escritorios)</td></tr>
+</table>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,11 +1,22 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Finder.qml</file>
+        <file>qml/Pestanas.qml</file>
         <file>qml/Sidebar.qml</file>
         <file>qml/FileList.qml</file>
+        <file>qml/BarraComandos.qml</file>
+        <file>qml/PanelDetalles.qml</file>
+        <file>qml/Icono.qml</file>
         <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
         <file alias="qml/TitanWindow.qml">../titan-theme/qml/TitanWindow.qml</file>
         <file alias="qml/GlassPanel.qml">../titan-theme/qml/GlassPanel.qml</file>
+        <file alias="qml/botones/BotonesActual.qml">../titan-theme/qml/botones/BotonesActual.qml</file>
+        <file alias="qml/botones/BotonesWindows.qml">../titan-theme/qml/botones/BotonesWindows.qml</file>
+        <file alias="qml/botones/BotonesCirculos.qml">../titan-theme/qml/botones/BotonesCirculos.qml</file>
+        <file alias="qml/botones/BotonesAcento.qml">../titan-theme/qml/botones/BotonesAcento.qml</file>
+        <file alias="qml/botones/BotonesCapsula.qml">../titan-theme/qml/botones/BotonesCapsula.qml</file>
+        <file alias="qml/botones/BotonesContorno.qml">../titan-theme/qml/botones/BotonesContorno.qml</file>
+        <file alias="qml/botones/BotonesColor.qml">../titan-theme/qml/botones/BotonesColor.qml</file>
         <file>icons/about.png</file>
         <file>icons/desktop.png</file>
         <file>icons/developer.png</file>
@@ -41,6 +52,7 @@
         <file>icons/file-video.png</file>
         <file>icons/file-exec.png</file>
         <file>icons/calculator.png</file>
+        <file>icons/monitor.png</file>
         <file>icons/calendar.png</file>
         <file>icons/clock.png</file>
         <file>icons/video.png</file>

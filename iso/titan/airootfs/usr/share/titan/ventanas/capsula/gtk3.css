@@ -1,0 +1,14 @@
+/* Inti OS - botones de ventana: Capsula. GTK 3. */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 28px; min-height: 22px; margin: 0; padding: 0 2px;
+  border: none; border-radius: 0; background-image: none; box-shadow: none;
+  background-color: alpha(currentColor, 0.08); -gtk-icon-shadow: none;
+  transition: background-color 100ms ease-out;
+}
+headerbar button.titlebutton.minimize, .titlebar button.titlebutton.minimize { border-radius: 99px 0 0 99px; padding-left: 6px; }
+headerbar button.titlebutton.close, .titlebar button.titlebutton.close { border-radius: 0 99px 99px 0; padding-right: 6px; }
+headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover { background-color: alpha(currentColor, 0.18); }
+headerbar button.titlebutton.close:hover, .titlebar button.titlebutton.close:hover { background-color: #e5484d; color: #ffffff; }
+headerbar button.titlebutton.close:active, .titlebar button.titlebutton.close:active { background-color: #c93a3f; color: #ffffff; }
+headerbar:backdrop button.titlebutton, .titlebar:backdrop button.titlebutton { color: alpha(currentColor, 0.45); }

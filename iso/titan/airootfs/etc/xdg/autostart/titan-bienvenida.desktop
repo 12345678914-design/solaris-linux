@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Bienvenida de Inti OS
+Comment=Se abre una sola vez, la primera vez que se entra en la cuenta
+Exec=titan-bienvenida --primera-vez
+NoDisplay=true
+X-GNOME-Autostart-Phase=Applications

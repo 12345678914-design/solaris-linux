@@ -1,0 +1,37 @@
+#!/bin/sh
+# Inti OS - aviso de actualizaciones (temporizador de usuario cada 6 h).
+#
+# checkupdates (pacman-contrib) mira en una base de datos temporal, sin tocar
+# la del sistema ni pedir contrasena. Si hay actualizaciones, una notificacion
+# con boton "Actualizar" abre Ajustes > General, que las instala.
+# Avisa una sola vez por cada lista distinta, no cada 6 horas lo mismo.
+#
+#   titan-actualizaciones          comprobar y avisar
+#   titan-actualizaciones --contar solo imprime cuantas hay
+
+[ -d /run/archiso ] && exit 0
+command -v checkupdates >/dev/null 2>&1 || exit 0
+
+lista="$(checkupdates 2>/dev/null)"
+n="$(printf '%s' "$lista" | grep -c .)"
+
+if [ "${1:-}" = "--contar" ]; then
+    echo "$n"
+    exit 0
+fi
+[ "$n" -gt 0 ] || exit 0
+
+estado="${XDG_STATE_HOME:-$HOME/.local/state}/titan"
+mkdir -p "$estado"
+huella="$(printf '%s' "$lista" | md5sum | cut -c1-32)"
+[ "$(cat "$estado/actualizaciones-avisadas" 2>/dev/null)" = "$huella" ] && exit 0
+printf '%s\n' "$huella" > "$estado/actualizaciones-avisadas"
+
+if [ "$n" -eq 1 ]; then texto="Hay 1 actualización disponible"; else texto="Hay $n actualizaciones disponibles"; fi
+accion="$(timeout 3600 notify-send -a "Actualizaciones" -i system-software-update \
+    -A actualizar=Actualizar --wait \
+    "$texto" "Inti OS se mantiene al día con las versiones de Arch Linux." 2>/dev/null)"
+if [ "$accion" = actualizar ]; then
+    setsid titan-settings --actualizar >/dev/null 2>&1 &
+fi
+exit 0

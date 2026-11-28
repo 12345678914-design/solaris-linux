@@ -1,0 +1,138 @@
+#!/bin/sh
+# Inti OS - informe de prueba del equipo.
+#
+# Reúne en un solo fichero de texto lo necesario para saber si Inti funciona
+# bien en este equipo: hardware y controladores, arranque, red, sonido,
+# batería, suspensión, gráficos, actualizaciones y errores del sistema.
+# Solo LEE: no cambia nada y no pide contraseña. No recoge contraseñas,
+# nombres de redes Wi-Fi ni direcciones MAC.
+#
+#   titan-informe            escribe ~/informe-inti-FECHA.txt
+#   titan-informe FICHERO    lo escribe en FICHERO (p. ej. en un USB)
+#   titan-informe --abrir    (menú de inicio) lo escribe y lo abre para verlo
+set -u
+abrir=false
+[ "${1:-}" = --abrir ] && { abrir=true; shift; }
+export LC_ALL=C
+salida="${1:-$HOME/informe-inti-$(date +%Y%m%d-%H%M).txt}"
+
+hay() { command -v "$1" >/dev/null 2>&1; }
+seccion() { printf '\n===== %s =====\n' "$1"; }
+# Ejecuta con límite de tiempo y sin romper el informe si falla
+ver() {
+    printf '$ %s\n' "$*"
+    if hay "$1"; then timeout 20 "$@" 2>&1 | head -n 200; else echo "(no está instalado: $1)"; fi
+}
+# Quita MAC, SSID e IP públicas del texto
+limpiar() {
+    sed -E 's/([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}/XX:XX:XX:XX:XX:XX/g'
+}
+
+{
+seccion "Sistema"
+date
+cat /etc/os-release 2>/dev/null | grep -E '^(NAME|VERSION|ID)='
+uname -r
+ver cat /proc/cmdline
+echo "sesión: ${XDG_CURRENT_DESKTOP:-?} / ${XDG_SESSION_TYPE:-?}"
+if [ -d /run/archiso ]; then echo "modo: LIVE (USB)"; else echo "modo: INSTALADO"; fi
+
+seccion "Equipo"
+for f in sys_vendor product_name product_version bios_version bios_date; do
+    printf '%s: %s\n' "$f" "$(cat /sys/class/dmi/id/$f 2>/dev/null)"
+done
+grep -m1 'model name' /proc/cpuinfo
+free -h | head -n 2
+if [ -d /sys/firmware/efi ]; then echo "arranque: UEFI"; else echo "arranque: BIOS/Legacy"; fi
+sb=$(od -An -t u1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c 2>/dev/null | awk '{print $NF}')
+echo "Secure Boot: ${sb:-desconocido} (1 = activado)"
+
+seccion "Dispositivos y controladores"
+ver lspci -nnk
+ver lsusb
+
+seccion "Gráficos"
+ls /sys/class/drm/ 2>/dev/null | tr '\n' ' '; echo
+for c in /sys/class/drm/card*-*/status; do [ -f "$c" ] && echo "$c: $(cat "$c")"; done
+lsmod 2>/dev/null | grep -E '^(i915|xe|amdgpu|radeon|nouveau|nvidia|nvidia_drm|virtio_gpu)\b'
+ver wlr-randr
+[ -f /proc/driver/nvidia/version ] && cat /proc/driver/nvidia/version
+ver dkms status
+
+seccion "Red"
+ver nmcli -t -f DEVICE,TYPE,STATE general
+ver nmcli -t -f DEVICE,TYPE,STATE device
+ver rfkill list
+ver bluetoothctl show
+
+seccion "Sonido"
+ver pactl info
+ver pactl list short sinks
+ver pactl list short sources
+
+seccion "Batería y energía"
+ver upower -e
+for b in $(upower -e 2>/dev/null | grep -E 'battery|BAT'); do upower -i "$b" | grep -E 'state|percentage|capacity|energy-full:|energy-full-design'; done
+ver powerprofilesctl get
+cat /sys/power/mem_sleep 2>/dev/null
+
+seccion "Suspender y despertar (este arranque)"
+journalctl -b --no-pager -o short-monotonic 2>/dev/null |
+    grep -iE 'suspend|resume|PM: |sleep' | tail -n 40
+
+seccion "Entrada (teclado, panel táctil, pantalla táctil)"
+grep -E '^N: Name=' /proc/bus/input/devices 2>/dev/null
+ver libinput list-devices
+
+seccion "Arranque del sistema"
+ver systemd-analyze
+ver systemctl --failed --no-legend
+ver systemctl --user --failed --no-legend
+ver bootctl status
+
+seccion "Errores de este arranque"
+journalctl -b -p 3 --no-pager 2>/dev/null | tail -n 80
+
+seccion "Programas que se han cerrado de golpe"
+ver coredumpctl list --no-pager -q
+ls -1 "$HOME/.local/state/titan/fallos" 2>/dev/null
+
+seccion "Wayfire / sesión"
+for f in "$HOME/.local/state/titan/"*.log "$HOME/.cache/wayfire.log"; do
+    [ -f "$f" ] && { echo "--- $f"; tail -n 40 "$f"; }
+done
+grep -E '^plugins' "$HOME/.config/wayfire.ini" 2>/dev/null
+
+seccion "Discos"
+ver lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+ver findmnt -no FSTYPE,OPTIONS /
+ver snapper list-configs
+
+seccion "Seguridad"
+ver aa-enabled
+cat /sys/kernel/security/lsm 2>/dev/null; echo
+ver systemctl is-active titan-cortafuegos systemd-oomd fstrim.timer systemd-timesyncd
+
+seccion "Actualizaciones e Inti"
+pacman -Q 2>/dev/null | grep -E '^(inti-|linux-titanlinux|wayfire )'
+grep -A2 '^#\?\[inti\]' /etc/pacman.conf 2>/dev/null
+cat /etc/pacman.d/titan-servidores 2>/dev/null | grep -v '^#'
+cat /etc/titan/actualizaciones.conf 2>/dev/null
+pacman-key --list-keys 24A37B2AFA79707B68E415882DD76620B77639F6 2>&1 | head -n 3
+tail -n 30 /var/log/titan-actualizacion.log 2>/dev/null
+
+seccion "Idioma y teclado"
+ver localectl status
+cat "$HOME/.config/locale.conf" 2>/dev/null
+
+seccion "Firefox"
+[ -f /etc/firefox/policies/policies.json ] && echo "políticas de Firefox: presentes" || echo "políticas de Firefox: FALTAN"
+} 2>&1 | limpiar > "$salida"
+
+echo "Informe guardado en: $salida"
+echo "Revísalo antes de compartirlo; no contiene contraseñas ni nombres de redes."
+if $abrir; then
+    command -v notify-send >/dev/null 2>&1 && notify-send -a "Inti" -i utilities-system-monitor \
+        "Informe del equipo listo" "Guardado en tu Carpeta personal: $(basename "$salida")"
+    xdg-open "$salida" >/dev/null 2>&1 &
+fi

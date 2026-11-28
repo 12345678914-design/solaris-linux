@@ -1,0 +1,6 @@
+#%PAM-1.0
+# titan-usuarios-helper: comprueba la contrasena del administrador antes de
+# crear o cambiar cuentas y grupos. system-auth incluye pam_faillock, que
+# bloquea la cuenta tras varios intentos fallidos.
+auth       include      system-auth
+account    include      system-auth

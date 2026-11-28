@@ -1,0 +1,61 @@
+#!/bin/bash
+# Inti OS - resolución de arranque (GRUB) para tarjetas que van SIN su driver.
+#
+# Si la tarjeta gráfica no tiene driver (o se arrancó en modo compatibilidad),
+# Linux usa la imagen que dejó preparada el arranque (simpledrm/efifb) y la
+# resolución ya no se puede cambiar dentro del sistema: la fija GRUB. Aquí se
+# elige cuál pide GRUB al firmware (GRUB_GFXMODE) y se le pasa tal cual a
+# Linux (GRUB_GFXPAYLOAD_LINUX=keep). Se aplica al reiniciar.
+#
+#   titan-resolucion-arranque estado        la de ahora (no necesita root)
+#   titan-resolucion-arranque poner auto    la que elija el firmware (root)
+#   titan-resolucion-arranque poner 1366x768
+#
+# Por seguridad solo acepta "auto" o una resolución de la lista de abajo; lo
+# lanza Ajustes con pkexec (ventana de contraseña "Por tu seguridad...").
+
+set -u
+GRUB_DEF="${TITAN_GRUB_DEF:-/etc/default/grub}"
+GRUB_CFG="${TITAN_GRUB_CFG:-/boot/grub/grub.cfg}"
+PERMITIDAS="auto 3840x2160 2560x1600 2560x1440 1920x1200 1920x1080 1680x1050 1600x900
+1440x900 1366x768 1360x768 1280x1024 1280x800 1280x720 1024x768 1024x600 800x600"
+
+estado() {
+    local v
+    v=$(sed -n 's/^GRUB_GFXMODE="\{0,1\}\([^",]*\).*/\1/p' "$GRUB_DEF" 2>/dev/null | tail -n 1)
+    echo "${v:-auto}"
+}
+
+case "${1:-estado}" in
+    estado)
+        estado
+        ;;
+    poner)
+        valor="${2:-}"
+        printf '%s\n' $PERMITIDAS | grep -qxF -- "$valor" \
+            || { echo "Resolución no permitida: $valor" >&2; exit 2; }
+        [ -n "${TITAN_GRUB_DEF:-}" ] || [ "$(id -u)" = 0 ] \
+            || { echo "Hace falta ser administrador" >&2; exit 1; }
+        { [ -f "$GRUB_DEF" ] && command -v grub-mkconfig >/dev/null 2>&1; } \
+            || { echo "Este equipo no arranca con GRUB: no se puede cambiar aquí." >&2; exit 3; }
+        cp -f "$GRUB_DEF" "$GRUB_DEF.antes-resolucion" 2>/dev/null
+        # "WxH,auto": si el firmware no tiene esa, GRUB usa la suya en vez de fallar
+        if [ "$valor" = auto ]; then modo="auto"; else modo="$valor,auto"; fi
+        for par in "GRUB_GFXMODE=\"$modo\"" 'GRUB_GFXPAYLOAD_LINUX=keep'; do
+            clave="${par%%=*}"
+            if grep -q "^$clave=" "$GRUB_DEF"; then
+                sed -i "s|^$clave=.*|$par|" "$GRUB_DEF"
+            else
+                printf '%s\n' "$par" >> "$GRUB_DEF"
+            fi
+        done
+        if [ -n "${TITAN_GRUB_DEF:-}" ]; then exit 0; fi   # pruebas: sin grub-mkconfig
+        grub-mkconfig -o "$GRUB_CFG" >/dev/null 2>&1 \
+            || { cp -f "$GRUB_DEF.antes-resolucion" "$GRUB_DEF"; echo "No se pudo actualizar GRUB; no se ha cambiado nada." >&2; exit 4; }
+        echo "ok"
+        ;;
+    *)
+        echo "uso: titan-resolucion-arranque estado | poner auto|ANCHOxALTO" >&2
+        exit 2
+        ;;
+esac

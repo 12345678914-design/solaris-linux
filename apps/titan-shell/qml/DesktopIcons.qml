@@ -111,8 +111,8 @@ Item {
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
                 desktopIconsRoot.ctxPath = ""
-                desktopIconsRoot.ctxX = Math.min(mouse.x, desktopIconsRoot.width - 200)
-                desktopIconsRoot.ctxY = Math.min(mouse.y, desktopIconsRoot.height - 180)
+                desktopIconsRoot.ctxX = mouse.x
+                desktopIconsRoot.ctxY = mouse.y
                 desktopIconsRoot.ctxVisible = true
             }
         }
@@ -201,12 +201,13 @@ Item {
 
         var snapX = w - gridRight - 90 - (col * cellWidth)
         var snapY = gridTop + (row * cellHeight)
-        return { x: snapX, y: snapY }
+        return { x: snapX, y: snapY, col: col, row: row }
     }
 
     Repeater {
         id: iconRepeater
-        model: desktopBackend.items
+        // Ajustes > Escritorio y Dock > Mostrar iconos en el escritorio
+        model: { prefs.version; return prefs.b("Escritorio/iconos") ? desktopBackend.items : [] }
 
         delegate: Item {
             id: iconWrapper
@@ -214,20 +215,19 @@ Item {
             readonly property string itemPath: modelData.path
             readonly property bool isSelected: desktopIconsRoot.selectedPaths.indexOf(itemPath) !== -1
             readonly property bool hasSaved: (modelData.hasSavedPos === true && modelData.savedX !== undefined && modelData.savedX >= 0)
+            // Casilla guardada (columna desde la derecha, fila). Si en esta
+            // pantalla caben menos filas, sigue en la columna siguiente.
+            readonly property int filaReal: modelData.gridRow !== undefined ? modelData.gridRow : index
+            readonly property int colReal: (modelData.gridCol !== undefined ? modelData.gridCol : 0)
+                                           + Math.floor(filaReal / desktopIconsRoot.maxRows)
             readonly property real targetX: {
                 if (hasSaved) return modelData.savedX;
-                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
-                    var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width;
-                    return w - desktopIconsRoot.gridRight - 90 - (modelData.gridCol * desktopIconsRoot.cellWidth);
-                }
-                return desktopIconsRoot.defaultPositionForIndex(index).x;
+                var w = (desktopIconsRoot.width > 200) ? desktopIconsRoot.width : Screen.width;
+                return w - desktopIconsRoot.gridRight - 90 - (colReal * desktopIconsRoot.cellWidth);
             }
             readonly property real targetY: {
                 if (hasSaved) return modelData.savedY;
-                if (modelData.gridCol !== undefined && modelData.gridRow !== undefined) {
-                    return desktopIconsRoot.gridTop + (modelData.gridRow * desktopIconsRoot.cellHeight);
-                }
-                return desktopIconsRoot.defaultPositionForIndex(index).y;
+                return desktopIconsRoot.gridTop + ((filaReal % desktopIconsRoot.maxRows) * desktopIconsRoot.cellHeight);
             }
 
             x: targetX
@@ -293,7 +293,7 @@ Item {
                     Image {
                         id: appIconImage
                         anchors.fill: parent
-                        source: modelData.icon ? modelData.icon : (modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png")
+                        source: titanTheme.tinte(modelData.icon ? modelData.icon : (modelData.isApp ? "qrc:/icons/apps-folder.png" : "qrc:/icons/file-generic.png"))
                         sourceSize: Qt.size(128, 128)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -417,7 +417,7 @@ Item {
                                 var itm = iconRepeater.itemAt(k)
                                 if (itm && itm.itemPath === pth) {
                                     var snapped = desktopIconsRoot.snapToGrid(itm.x, itm.y, pth)
-                                    desktopBackend.moveItem(pth, snapped.x, snapped.y)
+                                    desktopBackend.moveItemToSlot(pth, snapped.col, snapped.row)
                                     itm.x = snapped.x
                                     itm.y = snapped.y
                                 }
@@ -440,18 +440,17 @@ Item {
                         }
                         desktopIconsRoot.ctxPath = modelData.path
                         var pt = iconWrapper.mapToItem(desktopIconsRoot, mouse.x, mouse.y)
-                        desktopIconsRoot.ctxX = Math.min(pt.x, desktopIconsRoot.width - 200)
-                        desktopIconsRoot.ctxY = Math.min(pt.y, desktopIconsRoot.height - 180)
+                        desktopIconsRoot.ctxX = pt.x
+                        desktopIconsRoot.ctxY = pt.y
                         desktopIconsRoot.ctxVisible = true
                     }
                 }
 
                 onDoubleClicked: (mouse) => {
                     if (mouse.button === Qt.LeftButton) {
-                        if (modelData.isApp) {
-                            dockModel.setAppLaunching(modelData.exec ? modelData.exec : modelData.name, modelData.exec, modelData.name, modelData.icon)
-                        }
-                        desktopBackend.openItem(modelData.path)
+                        var enDock = modelData.isApp
+                            && dockModel.setAppLaunching(modelData.exec ? modelData.exec : modelData.name, modelData.exec, modelData.name, modelData.icon)
+                        desktopBackend.openItem(modelData.path, enDock)
                         desktopIconsRoot.selectedPaths = []
                     }
                 }
@@ -459,13 +458,24 @@ Item {
         }
     }
 
-    // ── Menú Contextual Liquid Glass (Orden estricto: Copiar, Mover, Eliminar) ──────────────────────────────────────────
+    // ── Menú contextual (orden: Copiar, Mover, Eliminar; en el fondo: Nueva carpeta, Pegar...) ──────────────────────────────────────────
     Rectangle {
         id: contextMenu
         visible: desktopIconsRoot.ctxVisible
-        x: desktopIconsRoot.ctxX
-        y: desktopIconsRoot.ctxY
-        width: 190
+        // Como en Windows: se abre hacia la derecha y abajo del puntero; si no
+        // cabe, hacia el otro lado (con su tamaño real), y nunca se sale.
+        // ctxX/ctxY siguen siendo el punto del clic (ahí va "Nueva carpeta").
+        x: {
+            var m = 8, w = width, W = desktopIconsRoot.width
+            var px = desktopIconsRoot.ctxX + w + m <= W ? desktopIconsRoot.ctxX : desktopIconsRoot.ctxX - w
+            return Math.max(m, Math.min(px, W - w - m))
+        }
+        y: {
+            var m = 8, h = height, H = desktopIconsRoot.height
+            var py = desktopIconsRoot.ctxY + h + m <= H ? desktopIconsRoot.ctxY : desktopIconsRoot.ctxY - h
+            return Math.max(m, Math.min(py, H - h - m))
+        }
+        width: 232
         height: ctxCol.implicitHeight + 16
         radius: 13
         z: 35
@@ -475,22 +485,10 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
 
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: titanTheme.windowBgTop }
-            GradientStop { position: 1.0; color: titanTheme.windowBgBottom }
-        }
-        border.color: titanTheme.glassBorder
+        // Fondo opaco (como los menús de Windows y macOS): se lee mejor que el vidrio
+        color: titanTheme.isDark ? "#161618" : "#ffffff"
+        border.color: titanTheme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
         border.width: 1
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 20
-            height: 1
-            color: titanTheme.specularGlow
-            radius: 1
-        }
 
         Column {
             id: ctxCol
@@ -567,7 +565,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌘C"
+                    text: "Ctrl+C"
                     color: titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -619,7 +617,7 @@ Item {
                 }
             }
 
-            // 3. ELIMINAR (Orden estricto solicitado: copiar-mover-eliminar)
+            // 3. QUITAR DEL ESCRITORIO (a la Papelera, recuperable)
             Rectangle {
                 width: parent.width
                 height: 32
@@ -635,7 +633,7 @@ Item {
                     spacing: 8
                     Text { text: "🗑"; color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextPrimary; font.pixelSize: 13 }
                     Text {
-                        text: desktopIconsRoot.selectedPaths.length > 1 ? ("Eliminar (" + desktopIconsRoot.selectedPaths.length + ")") : "Eliminar"
+                        text: desktopIconsRoot.selectedPaths.length > 1 ? ("Quitar del escritorio (" + desktopIconsRoot.selectedPaths.length + ")") : "Quitar del escritorio"
                         color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextPrimary
                         font.pixelSize: 13
                         Behavior on color { ColorAnimation { duration: 100 } }
@@ -646,7 +644,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌫"
+                    text: "Supr"
                     color: deleteMouse.containsMouse ? "#ff4444" : titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -661,6 +659,44 @@ Item {
                         desktopBackend.deleteItems(desktopIconsRoot.selectedPaths)
                         desktopIconsRoot.selectedPaths = []
                     }
+                }
+            }
+
+            // Fondo del escritorio (como Windows): Nueva carpeta, y abajo
+            // Cambiar fondo / Configuración de pantalla / Personalizar
+            component OpcionFondo: Rectangle {
+                id: of
+                property string icono: ""
+                property string texto: ""
+                signal elegida()
+                width: parent ? parent.width : 0
+                height: 32
+                radius: 6
+                visible: desktopIconsRoot.selectedPaths.length === 0
+                color: zof.containsMouse ? titanTheme.itemHover : "transparent"
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    spacing: 8
+                    Text { text: of.icono; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                    Text { text: of.texto; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                }
+                MouseArea {
+                    id: zof
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { desktopIconsRoot.ctxVisible = false; of.elegida() }
+                }
+            }
+
+            OpcionFondo {
+                icono: "📁"
+                texto: "Nueva carpeta"
+                onElegida: {
+                    var p = desktopIconsRoot.snapToGrid(desktopIconsRoot.ctxX, desktopIconsRoot.ctxY, "")
+                    desktopBackend.nuevaCarpeta(p.x, p.y)
                 }
             }
 
@@ -686,7 +722,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 12
-                    text: "⌘V"
+                    text: "Ctrl+V"
                     color: titanTheme.contentTextSecondary
                     font.pixelSize: 11
                 }
@@ -704,7 +740,7 @@ Item {
                 }
             }
 
-            // Opción "Abrir en Finder"
+            // Opción "Abrir en el Explorador"
             Rectangle {
                 width: parent.width
                 height: 32
@@ -719,7 +755,7 @@ Item {
                     anchors.leftMargin: 12
                     spacing: 8
                     Text { text: "📂"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
-                    Text { text: "Abrir en Finder"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
+                    Text { text: "Abrir en el Explorador"; color: titanTheme.contentTextPrimary; font.pixelSize: 13 }
                 }
 
                 MouseArea {
@@ -733,6 +769,18 @@ Item {
                     }
                 }
             }
+
+            Rectangle {
+                width: parent.width - 16
+                height: 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: titanTheme.glassBorder
+                opacity: 0.6
+                visible: desktopIconsRoot.selectedPaths.length === 0
+            }
+            OpcionFondo { icono: "🖼"; texto: "Cambiar fondo de pantalla"; onElegida: shellBackend.toggleWallpaperPicker() }
+            OpcionFondo { icono: "🖥"; texto: "Configuración de pantalla"; onElegida: shellBackend.openSettings("Pantallas") }
+            OpcionFondo { icono: "🎨"; texto: "Personalizar"; onElegida: shellBackend.openSettings("Apariencia") }
         }
     }
 }

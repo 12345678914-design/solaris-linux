@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar aplicación
+Name[en]=Install application
+Comment=Instala o abre aplicaciones AppImage
+Exec=/usr/local/bin/titan-appimage %f
+Icon=system-software-install
+MimeType=application/vnd.appimage;application/x-iso9660-appimage;
+NoDisplay=true
+Terminal=false

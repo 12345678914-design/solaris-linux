@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Teclado.qml</file>
+        <file alias="qml/TitanTheme.qml">../titan-theme/qml/TitanTheme.qml</file>
+    </qresource>
+</RCC>

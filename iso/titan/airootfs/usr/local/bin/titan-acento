@@ -1,0 +1,94 @@
+#!/bin/sh
+# Inti OS - lleva el color de acento (y claro/oscuro) de Ajustes a lo que no
+# es Qt: las apps de Inti lo leen solas de ~/.config/titan/theme.conf.
+#   - GTK 3 y GTK 4: ~/.config/gtk-*/titan-acento.css (lo importa gtk.css)
+#   - libadwaita (GNOME 47+): org.gnome.desktop.interface accent-color
+#   - kitty: ~/.config/titan/kitty-acento.conf (lo incluye kitty.conf) y recarga
+#   - pantalla de bloqueo (gtklock): lo lee titan-bloquear
+# Lo lanza ThemeManager al cambiar el acento o el modo, y titan-sesion al entrar.
+dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+tema="$dir/titan/theme.conf"
+
+acento=$(sed -n 's/^accent=//p' "$tema" 2>/dev/null | tail -n 1 | tr -d '"' | tr 'A-F' 'a-f')
+printf '%s' "$acento" | grep -Eq '^#[0-9a-f]{6}$' || acento="#0071e3"
+oscuro=false
+grep -qs '^isDark=true' "$tema" && oscuro=true
+
+r=$((0x$(printf '%s' "$acento" | cut -c2-3)))
+g=$((0x$(printf '%s' "$acento" | cut -c4-5)))
+b=$((0x$(printf '%s' "$acento" | cut -c6-7)))
+
+# Texto sobre el acento: negro si el color es muy claro (amarillo), si no blanco.
+luz=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+if [ "$luz" -gt 170 ]; then sobre="#1d1d1f"; else sobre="#ffffff"; fi
+
+# ---- GTK 3 / GTK 4
+for v in gtk-3.0 gtk-4.0; do
+    mkdir -p "$dir/$v"
+    cat > "$dir/$v/titan-acento.css" <<CSS
+/* Inti OS - color de acento (lo genera titan-acento; no editar) */
+@define-color accent_color $acento;
+@define-color accent_bg_color $acento;
+@define-color accent_fg_color $sobre;
+@define-color theme_selected_bg_color $acento;
+@define-color theme_selected_fg_color $sobre;
+@define-color selected_bg_color $acento;
+CSS
+    # Linea de 1 px con el acento alrededor de cada ventana (como las de Inti)
+    if [ "$v" = gtk-3.0 ]; then
+        cat >> "$dir/$v/titan-acento.css" <<'CSS'
+decoration { box-shadow: 0 0 0 1px @accent_color, 0 3px 9px 1px alpha(black, 0.5); }
+decoration:backdrop { box-shadow: 0 0 0 1px alpha(@accent_color, 0.45), 0 2px 6px 2px alpha(black, 0.4); }
+.maximized decoration, .fullscreen decoration, .tiled decoration { box-shadow: none; }
+CSS
+    else
+        cat >> "$dir/$v/titan-acento.css" <<'CSS'
+window.csd { outline: 1px solid @accent_color; outline-offset: -1px; }
+window.csd:backdrop { outline-color: alpha(@accent_color, 0.45); }
+window.csd.maximized, window.csd.fullscreen, window.csd.tiled { outline: none; }
+CSS
+    fi
+    # gtk.css de cada persona: importar el acento si aun no lo hace.
+    css="$dir/$v/gtk.css"
+    if ! grep -qs 'titan-acento.css' "$css"; then
+        { printf '@import url("titan-acento.css");\n'; cat "$css" 2>/dev/null || true; } > "$css.nuevo" && mv "$css.nuevo" "$css"
+    fi
+done
+
+# ---- libadwaita: solo admite colores con nombre; se elige el mas parecido.
+if command -v gsettings >/dev/null 2>&1 &&
+   gsettings writable org.gnome.desktop.interface accent-color >/dev/null 2>&1; then
+    nombre=$(awk -v r="$r" -v g="$g" -v b="$b" 'BEGIN {
+        split("blue 53 132 228|teal 33 144 164|green 58 148 74|yellow 200 136 0|orange 237 91 0|red 230 45 66|pink 213 97 153|purple 145 65 172|slate 111 131 150", c, "|")
+        mejor = ""; md = 1e9
+        for (i in c) {
+            split(c[i], p, " ")
+            d = (r - p[2]) ^ 2 + (g - p[3]) ^ 2 + (b - p[4]) ^ 2
+            if (d < md) { md = d; mejor = p[1] }
+        }
+        print mejor
+    }')
+    gsettings set org.gnome.desktop.interface accent-color "$nombre" 2>/dev/null
+fi
+
+# ---- kitty
+mkdir -p "$dir/titan"
+if $oscuro; then fondo_sel="#2a2d3a"; else fondo_sel="#d8dbe6"; fi
+cat > "$dir/titan/kitty-acento.conf" <<KITTY
+# Inti OS - color de acento (lo genera titan-acento; no editar)
+cursor $acento
+selection_background $acento
+selection_foreground $sobre
+url_color $acento
+active_border_color $acento
+active_tab_background $acento
+active_tab_foreground $sobre
+inactive_tab_background $fondo_sel
+KITTY
+pkill -USR1 -u "$(id -u)" -x kitty 2>/dev/null
+
+# ---- Botones de ventana (Ajustes > Ventanas): sus iconos de labwc llevan el
+#      acento y cambian con claro/oscuro.
+[ -x /usr/local/bin/titan-estilo-ventanas ] && /usr/local/bin/titan-estilo-ventanas >/dev/null 2>&1
+
+exit 0

@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 
 Item {
     id: sidebar
+    property var lista   // FileList: para sus menús
 
     TitanTheme { id: theme }
 
@@ -73,7 +74,7 @@ Item {
 
                     Image {
                         visible: modelData.icon.indexOf("color:") !== 0
-                        source: modelData.icon.indexOf("color:") !== 0 ? modelData.icon : ""
+                        source: modelData.icon.indexOf("color:") !== 0 ? theme.tinte(modelData.icon) : ""
                         width: 17
                         height: 17
                         anchors.centerIn: parent
@@ -135,7 +136,19 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            if (modelData.anclada && sidebar.lista) {
+                                var ruta = modelData.path
+                                sidebar.lista.mostrarMenu([
+                                    { t: "Abrir", i: "↗", a: function () { finderBackend.goTo(ruta) } },
+                                    { sep: true },
+                                    { t: "Quitar de Acceso rápido", i: "✕", a: function () { finderBackend.desanclar(ruta) } }
+                                ], favItem)
+                            }
+                            return
+                        }
                         if (modelData.isDevice) {
                             if (!modelData.isMounted) {
                                 finderBackend.mountAndOpen(modelData.deviceNode)

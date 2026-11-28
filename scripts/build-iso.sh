@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-iso.sh - construye la ISO en vivo de Solaris Linux 1.8 con archiso.
+# build-iso.sh - construye la ISO en vivo de Inti OS 1.8 con archiso.
 #
 # Que hace, en orden:
 #   1. comprueba que el host tiene lo necesario (Arch, archiso, xorriso, disco)
@@ -30,6 +30,8 @@
 #   TITAN_OUT       directorio de salida         (<distro>/out)
 #   TITAN_WORK      directorio de trabajo        (<proyecto>/build/archiso)
 #   TITAN_SKIP_APP  1 = no recompilar el CLI titan
+#   TITAN_SIN_ONLYOFFICE  1 = no descargar ONLYOFFICE si falta (la ISO
+#                   sale sin suite ofimatica; solo para pruebas)
 
 set -euo pipefail
 
@@ -73,6 +75,7 @@ done
 for cmd in mkarchiso xorriso pacstrap; do
   command -v "$cmd" >/dev/null || { red "Falta '$cmd'. Instala: pacman -S archiso devtools"; exit 1; }
 done
+command -v python3 >/dev/null || { red "Falta 'python3'. Instala: pacman -S python"; exit 1; }
 [[ -f "${PROFILE}/profiledef.sh" ]] || { red "Perfil no encontrado: ${PROFILE}"; exit 1; }
 
 avail_mb="$(df --output=avail -B1M / | tail -n1 | tr -dc '0-9')"
@@ -181,6 +184,18 @@ verificar_tmux || exit 1
 # puede hacer unshare (y avisa con "not a mountpoint"). Con esos montajes puestos,
 # 'rm -rf' del arbol falla con "Permission denied" aunque el directorio este
 # vacio, y el build entero se queda sin herramienta.
+# Cache de paquetes FUERA del work dir, para que sobreviva a la limpieza: antes
+# vivia en ${WORK_DIR}/x86_64/cache y cada build volvia a bajar varios GB (con
+# una conexion lenta, horas), y si la descarga fallaba a mitad se perdia todo.
+# Ahora un build que falla deja lo ya descargado y el siguiente sigue desde ahi.
+CACHE_DIR="${TITAN_CACHE:-${PROJECT}/build/cache-paquetes}"
+mkdir -p "${CACHE_DIR}"
+if [[ -d "${WORK_DIR}/x86_64/cache" ]]; then
+  # Lo que dejo un build anterior con la cache vieja se aprovecha.
+  find "${WORK_DIR}/x86_64/cache" -maxdepth 1 -type f -name '*.pkg.tar.*' \
+    -exec mv -n -t "${CACHE_DIR}" {} + 2>/dev/null || true
+fi
+
 info "limpiando ${WORK_DIR}"
 montajes_dentro() {
   findmnt -rn -o TARGET 2>/dev/null | grep "^${WORK_DIR}/" || true
@@ -355,6 +370,18 @@ if [[ -x "${DISTRO}/verify/comprobar-resolucion.sh" ]]; then
   fi
 fi
 
+# Arranque grafico: cuando se entra al escritorio, cuando no, y el cursor
+# por hardware en VMs (sin el, dos flechas tras la pantalla de inicio).
+if [[ -x "${DISTRO}/verify/comprobar-arranque-grafico.sh" ]]; then
+  info "comprobando el arranque grafico (15-titan-grafico.sh)"
+  if ! "${DISTRO}/verify/comprobar-arranque-grafico.sh" \
+       >"${WORK_DIR}/titan-arranque-grafico-test.log" 2>&1; then
+    red "Fallo la prueba del arranque grafico; ultimas lineas del log:"
+    tail -n 30 "${WORK_DIR}/titan-arranque-grafico-test.log" >&2
+    exit 1
+  fi
+fi
+
 # ------------------------------------- 2e. TITAN Shell y aplicaciones -------
 
 build_qt_app() {
@@ -403,9 +430,98 @@ build_qt_app titan-fotos || exit 1
 build_qt_app titan-musica || exit 1
 build_qt_app titan-settings || exit 1
 build_qt_app titan-calc || exit 1
+build_qt_app titan-monitor || exit 1
+build_qt_app titan-bienvenida || exit 1
 build_qt_app titan-calendar || exit 1
 build_qt_app titan-clock || exit 1
 build_qt_app titan-video || exit 1
+build_qt_app titan-greeter || exit 1
+build_qt_app titan-polkit || exit 1
+build_qt_app titan-teclado || exit 1
+# El instalador tambien se compila en cada ISO: antes se copiaba a mano y la
+# ISO podia llevar uno viejo (sin activar greetd, por ejemplo).
+build_qt_app titan-installer || exit 1
+
+# Pruebas de funcionamiento con los binarios recién compilados (EXIF de Fotos,
+# particionado manual del instalador sobre un disco simulado, reglas).
+info "pruebas de funcionamiento de las aplicaciones"
+if ! "${DISTRO}/verify/pruebas-funcionamiento.sh" >"${WORK_DIR}/pruebas-funcionamiento.log" 2>&1; then
+  red "Fallaron las pruebas de funcionamiento; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/pruebas-funcionamiento.log" >&2
+  exit 1
+fi
+
+# Barra Titan de Wayfire (titan-decor): opciones del codigo = XML, y la sesion
+# la usa en lugar de la de Wayfire. Si falla, Wayfire no cargaria el plugin.
+if ! "${DISTRO}/verify/comprobar-titan-decor.sh" >"${WORK_DIR}/titan-decor-test.log" 2>&1; then
+  red "Fallo la prueba de titan-decor; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-decor-test.log" >&2
+  exit 1
+fi
+
+# Servicio root de usuarios y grupos (lo usan titan-greeter y titan-shell).
+info "compilando titan-usuarios-helper"
+if ! (
+  cd "${DISTRO}/apps/titan-greeter/helper" &&
+  qmake6 titan-usuarios-helper.pro &&
+  make -j"$(nproc)"
+) >"${WORK_DIR}/titan-usuarios-helper-build.log" 2>&1; then
+  red "Fallo al compilar titan-usuarios-helper; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-usuarios-helper-build.log" >&2
+  exit 1
+fi
+install -m 0755 "${DISTRO}/apps/titan-greeter/helper/titan-usuarios-helper" \
+  "${PROFILE}/airootfs/usr/local/bin/titan-usuarios-helper"
+
+# ONLYOFFICE no esta en los repos de Arch (solo en AUR, que no se usa), asi
+# que va como AppImage oficial en /opt/onlyoffice; lo abre el lanzador
+# /usr/local/bin/onlyoffice-desktopeditors y es la app por defecto de los
+# documentos (mimeapps.list). El AppImage (unos 400 MB) no esta en git: si
+# falta, se descarga de la ultima version publicada por ONLYOFFICE en GitHub.
+# Sin el, la ISO saldria con los .docx/.odt apuntando a una app que no existe.
+OO_DIR="${PROFILE}/airootfs/opt/onlyoffice"
+OO="${OO_DIR}/DesktopEditors.AppImage"
+OO_URL="https://github.com/ONLYOFFICE/DesktopEditors/releases/latest/download/DesktopEditors-x86_64.AppImage"
+# AppImage de tipo 2: ejecutable ELF con "AI" 0x02 en el byte 8.
+es_appimage() {
+  [[ -s "$1" ]] &&
+    [[ "$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')" == "7f454c46" ]] &&
+    [[ "$(dd if="$1" bs=1 skip=8 count=3 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "414902" ]]
+}
+if es_appimage "${OO}"; then
+  info "ONLYOFFICE: se usa el AppImage que ya hay ($(du -h "${OO}" | cut -f1))"
+elif [[ "${TITAN_SIN_ONLYOFFICE:-0}" == "1" ]]; then
+  yel "TITAN_SIN_ONLYOFFICE=1: la ISO sale SIN suite ofimatica"
+else
+  info "descargando ONLYOFFICE (AppImage oficial, unos 400 MB)"
+  install -d "${OO_DIR}"
+  if curl -fL --retry 3 --connect-timeout 20 -o "${OO}.parte" "${OO_URL}" && es_appimage "${OO}.parte"; then
+    mv -f "${OO}.parte" "${OO}"
+  else
+    rm -f -- "${OO}.parte"
+    red "No se pudo descargar ONLYOFFICE de ${OO_URL}"
+    red "Descargalo a mano y ponlo con scripts/integrar-onlyoffice-appimage.sh <fichero>,"
+    red "o compila sin el con TITAN_SIN_ONLYOFFICE=1."
+    exit 1
+  fi
+fi
+[[ -f "${OO}" ]] && chmod 0755 "${OO}"
+
+# Notificaciones en la pantalla de bloqueo segura: modulo de gtklock (C, GTK 3).
+info "compilando el modulo de gtklock titan-avisos"
+command -v pkg-config >/dev/null 2>&1 && pkg-config --exists gtk+-3.0 gmodule-export-2.0 || {
+  red "Faltan las cabeceras de GTK 3 (paquete gtk3) para el modulo de gtklock."
+  exit 1
+}
+install -d "${PROFILE}/airootfs/usr/lib/gtklock"
+if ! make -C "${DISTRO}/apps/titan-avisos-bloqueo" \
+     SALIDA="${PROFILE}/airootfs/usr/lib/gtklock/titan-avisos-module.so" \
+     >"${WORK_DIR}/titan-avisos-build.log" 2>&1; then
+  red "Fallo al compilar titan-avisos-module; ultimas lineas del log:"
+  tail -n 30 "${WORK_DIR}/titan-avisos-build.log" >&2
+  exit 1
+fi
+chmod 0644 "${PROFILE}/airootfs/usr/lib/gtklock/titan-avisos-module.so"
 
 # ------------------------------------------- 2d. app 'titan-acerca' ----------
 
@@ -438,6 +554,44 @@ if [[ ! -f "${desktop_acerca}" ]]; then
   exit 1
 fi
 info "app Acerca y su entrada del catalogo en el perfil"
+
+# Plugins de Wayfire propios (sin gelatina al redimensionar). Si no se pueden
+# compilar por el entorno, el script avisa y la ISO sigue sin ellos.
+if ! "${DISTRO}/scripts/build-wayfire-plugins.sh" "${PROFILE}/airootfs/usr/lib/wayfire"; then
+  red "Fallo al compilar los plugins de Wayfire (apps/wayfire-titan)"
+  exit 1
+fi
+
+# Marca de nivel ISA. En un anfitrion CachyOS con repos v4 todo lo enlazado
+# aqui sale marcado "necesita x86-64-v4" (lo hereda del Scrt1.o de su glibc),
+# aunque el codigo no use AVX-512; ld.so se negaria a arrancar las apps en CPUs
+# sin AVX-512 ("CPU ISA level is lower than required"). Se baja a baseline y
+# despues se comprueba: si quedara alguno marcado, la ISO no se construye.
+mapfile -t elfs_propios < <(
+  find "${PROFILE}/airootfs/usr/local/bin" "${PROFILE}/airootfs/usr/lib/titan" \
+       "${PROFILE}/airootfs/usr/lib/wayfire" -type f 2>/dev/null |
+  while read -r f; do [[ "$(head -c4 "$f" | tr -d '\0')" == $'\x7fELF' ]] && printf '%s\n' "$f"; done
+)
+if (( ${#elfs_propios[@]} )); then
+  python3 -I "${DISTRO}/scripts/fijar-isa-baseline.py" "${elfs_propios[@]}" | sed 's/^/    /'
+  if ! python3 -I "${DISTRO}/scripts/fijar-isa-baseline.py" --comprobar "${elfs_propios[@]}"; then
+    red "Hay binarios que exigen mas que x86-64-baseline"
+    exit 1
+  fi
+  info "${#elfs_propios[@]} binarios propios listos para cualquier CPU x86-64"
+fi
+
+# Escritorio completo (polkit, bloqueo, capturas, impresion, cortafuegos,
+# instantaneas, instalador con cifrado...): paquetes, scripts y configuracion.
+if [[ -x "${DISTRO}/verify/comprobar-escritorio-completo.sh" ]]; then
+  info "comprobando el escritorio completo (verify/comprobar-escritorio-completo.sh)"
+  if ! "${DISTRO}/verify/comprobar-escritorio-completo.sh" \
+       >"${WORK_DIR}/titan-escritorio-completo-test.log" 2>&1; then
+    red "Fallo la comprobacion del escritorio completo; fallos:"
+    grep -F 'FALLO' "${WORK_DIR}/titan-escritorio-completo-test.log" >&2
+    exit 1
+  fi
+fi
 
 if [[ -x "${DISTRO}/verify/comprobar-acerca.sh" ]]; then
   info "comprobando app Acerca y su entrada en el catalogo"
@@ -480,10 +634,23 @@ if (( use_kernel )); then
     # Un repositorio file:// necesita su base de datos (titan.db); sin ella
     # pacman aborta con "failed retrieving file 'titan.db' from disk".
     command -v repo-add >/dev/null || { red "Falta 'repo-add' (viene con pacman)"; exit 1; }
+    # Las cabeceras de la misma version: sin ellas DKMS no puede compilar el
+    # controlador de NVIDIA (nvidia-open-dkms) para este kernel, y con una
+    # tarjeta NVIDIA sola el sistema se quedaria sin grafica (nvidia-utils
+    # pone nouveau en lista negra).
+    kver="$(basename "${kernel_pkg}")"; kver="${kver#linux-titanlinux-}"
+    headers_pkg="${DISTRO}/kernel/linux-titanlinux/linux-titanlinux-headers-${kver}"
+    if [[ -f "${headers_pkg}" ]]; then
+      install -m 0644 "${headers_pkg}" "${REPO_DIR}/$(basename "${headers_pkg}")"
+    else
+      yel "Faltan las cabeceras del kernel propio (${headers_pkg##*/}):"
+      yel "el controlador NVIDIA solo funcionara con el kernel de Arch."
+    fi
     repo-add --quiet "${REPO_DIR}/titan.db.tar.gz" \
       "${REPO_DIR}"/linux-titanlinux-*.pkg.tar.zst
     # Sin el '-p' aqui: lo antepone la linea que llama a mkarchiso.
     extra_packages+=(linux-titanlinux)
+    [[ -f "${headers_pkg}" ]] && extra_packages+=(linux-titanlinux-headers)
     info "kernel propio: $(basename "${kernel_pkg}") (repo local 'titan' actualizado)"
 
     # El paquete tambien viaja DENTRO de la ISO, en /titan-repo. Motivo: el
@@ -500,6 +667,15 @@ if (( use_kernel )); then
       # El .PKGINFO basta para que el instalador sepa de que version se trata
       # sin tener que abrir el paquete entero.
       printf '%s\n' "$(basename "${kernel_pkg}")" >"${PROFILE}/airootfs/titan-repo/LEEME"
+      # Las cabeceras en una subcarpeta: el instalador busca el kernel con
+      # 'linux-titanlinux-*.pkg.tar.zst' y si estuvieran al lado podria coger
+      # las cabeceras por el kernel. Las usa el instalador de consola para que
+      # DKMS compile el controlador de NVIDIA (el grafico copia el live, que
+      # ya las lleva instaladas).
+      if [[ -f "${headers_pkg}" ]]; then
+        install -D -m 0644 "${headers_pkg}" \
+          "${PROFILE}/airootfs/titan-repo/cabeceras/$(basename "${headers_pkg}")"
+      fi
       info "paquete del kernel copiado al perfil (/titan-repo en el live)"
     else
       rm -rf -- "${PROFILE}/airootfs/titan-repo"
@@ -565,9 +741,9 @@ info "espejos para el build -> ${generated_mirrorlist} (CDNs oficiales al frente
 # Que es un error de lo mas tonto del mundo (no queda espacio) expresado de la
 # forma mas dificil de entender, y solo cuando ya se ha descargado un gigabyte.
 # Aqui se le dice donde puede dejar los paquetes, en el disco de verdad, que
-# tiene 20 GB libres. Y luego se borran, porque 1,5 GB de .pkg.tar.zst en un
-# directorio de trabajo no se pueden quedar dando vueltas.
-cache_dir="${WORK_DIR}/x86_64/cache"
+# tiene 20 GB libres. Va en ${CACHE_DIR} (fuera del work dir, ver arriba) y al
+# terminar bien se queda solo la ultima version de cada paquete.
+cache_dir="${CACHE_DIR}"
 mkdir -p "${cache_dir}"
 sed -i "s|^#\?CacheDir.*|CacheDir = ${cache_dir}|" "${generated_conf}"
 if ! grep -q "^CacheDir = ${cache_dir}$" "${generated_conf}"; then
@@ -608,6 +784,45 @@ if [[ ! -x "${DISTRO}/scripts/detectar-resolucion.sh" ]]; then
 fi
 info "${entradas_total} entradas de arranque sin resolucion fija"
 
+# ------------------------------------------- 4b. paquetes de Inti ([inti]) ---
+# Lo que hace Inti (apps, herramientas, plugins, tema) se empaqueta con los
+# mismos ficheros recién compilados y la ISO los registra en la base de datos
+# de pacman sin volver a copiarlos (customize_airootfs.sh: pacman -U --dbonly).
+# Así un sistema instalado sabe que son paquetes y puede actualizarlos desde
+# el repositorio [inti]. makepkg no funciona como root: va con el usuario.
+rm -rf -- "${PROFILE}/airootfs/root/inti-paquetes"
+if [[ "${TITAN_PAQUETES_INTI:-1}" == "1" ]]; then
+  # makepkg no corre como root: se usa el dueño del proyecto. Con 'sudo make
+  # iso' el Makefile vuelve a llamar a sudo y SUDO_USER llega como root.
+  usuario="${SUDO_USER:-}"
+  [[ -z "${usuario}" || "${usuario}" == "root" ]] && usuario="$(stat -c %U "${DISTRO}")"
+  if [[ -n "${usuario}" && "${usuario}" != "root" ]] && command -v makepkg >/dev/null; then
+    install -d -o "${usuario}" -m 0755 "${DISTRO}/build"
+    # Sin firmar: la ISO los instala desde su propio disco (LocalFileSigLevel
+    # Optional) y pedir la contraseña de la clave bajo sudo podría colgarla.
+    if runuser -u "${usuario}" -- env -u INTI_CLAVE \
+         "${DISTRO}/scripts/construir-repo-inti.sh" >"${WORK_DIR}/inti-paquetes.log" 2>&1; then
+      install -d -m 0755 "${PROFILE}/airootfs/root/inti-paquetes"
+      install -m 0644 "${DISTRO}"/build/inti-repo/inti-*.pkg.tar.zst "${PROFILE}/airootfs/root/inti-paquetes/"
+      # La clave se instala de verdad (sus ficheros no están en el perfil)
+      if compgen -G "${PROFILE}/airootfs/root/inti-paquetes/inti-keyring-*.pkg.tar.zst" >/dev/null; then
+        install -d -m 0755 "${PROFILE}/airootfs/root/inti-paquetes/clave"
+        mv "${PROFILE}"/airootfs/root/inti-paquetes/inti-keyring-*.pkg.tar.zst "${PROFILE}/airootfs/root/inti-paquetes/clave/"
+      fi
+      info "paquetes de Inti listos ($(ls "${PROFILE}/airootfs/root/inti-paquetes" | wc -l)); repositorio en build/inti-repo"
+    else
+      red "No se pudieron hacer los paquetes de Inti (registro: ${WORK_DIR}/inti-paquetes.log):"
+      tail -n 15 "${WORK_DIR}/inti-paquetes.log" >&2 || true
+      red "Sin ellos los equipos instalados no recibirian actualizaciones de Inti. Se para aqui."
+      exit 1
+    fi
+  else
+    red "No se pueden hacer los paquetes de Inti (proyecto de root o sin makepkg)."
+    red "La ISO saldria sin [inti]: los equipos instalados no recibirian actualizaciones de Inti."
+    exit 1
+  fi
+fi
+
 # ----------------------------------------------------------------- 5. mkarchiso --
 
 info "lanzando mkarchiso (esto tarda: descarga paquetes y monta airootfs.erofs)"
@@ -619,15 +834,39 @@ args=(-C "${generated_conf}"
       -o "${OUT_DIR}"
       -w "${WORK_DIR}"
       -L "TITAN_$(date +%Y%m)"
-      -P "Solaris Linux Project"
-      -A "Solaris Linux ${TITAN_VERSION} (${TITAN_CODENAME})")
-(( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[@]}")
+      -P "Inti OS Project"
+      -A "Inti OS ${TITAN_VERSION} (${TITAN_CODENAME})")
+# Una sola cadena con todos los paquetes separados por espacios: mkarchiso
+# lee un unico argumento tras '-p'; un segundo paquete suelto se tomaria por
+# el perfil.
+(( ${#extra_packages[@]} )) && args+=(-p "${extra_packages[*]}")
 args+=("${PROFILE}")
 [[ -n "$verbose" ]] && args+=(-v)
 
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}" export SOURCE_DATE_EPOCH
 TITAN_VERSION="${TITAN_VERSION}" export TITAN_VERSION
 TITAN_CODENAME="${TITAN_CODENAME}" export TITAN_CODENAME
+
+# Envoltorio de find: con mkarchiso como root, un sysfs que se quede montado en
+# airootfs/sys hace que su 'find "${work_dir}" ... -delete' tropiece con ficheros
+# del anfitrion que dan EIO (p. ej. /sys/module/realtek/drivers) y aborte. Solo
+# se perdonan esos errores; la salida estandar pasa intacta (mkarchiso usa find
+# con -exec gzip para el modalias.gz de syslinux: no puede pasar por una variable).
+FIND_WRAPPER_DIR="$(mktemp -d -t titan-find-wrap.XXXXXX)"
+cat > "${FIND_WRAPPER_DIR}/find" << 'EOF'
+#!/bin/bash
+errores="$(mktemp -t titan-find-err.XXXXXX)"
+/usr/bin/find "$@" 2>"$errores"
+codigo=$?
+if (( codigo != 0 )) && ! grep -qvE 'sys/module/.*/drivers.*(Input/output error|Error de entrada/salida)' "$errores"; then
+  codigo=0   # solo habia errores de sysfs del anfitrion
+else
+  cat "$errores" >&2
+fi
+rm -f "$errores"
+exit "$codigo"
+EOF
+chmod +x "${FIND_WRAPPER_DIR}/find"
 
 # mkarchiso no suelta ni una linea hasta el final (en archiso 90 todos sus
 # mensajes de progreso van detras del '-v', que se pide con -v aqui), asi que
@@ -642,17 +881,23 @@ if [[ -z "$verbose" ]]; then
     done
   ) &
   latido=$!
-  # Con 'trap', no con un kill aqui: si el build falla a mitad (por ejemplo en
-  # un check de customize_airootfs.sh) el script se va por 'set -e' y sin esto
-  # el latido se queda escribiendo en el log del build siguiente.
-  trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; true' EXIT
 fi
-mkarchiso "${args[@]}"
+# Con 'trap', no con un kill al final: si el build falla a mitad (por ejemplo en
+# un check de customize_airootfs.sh) el script se va por 'set -e' y sin esto
+# el latido se queda escribiendo en el log del build siguiente.
+trap '[[ "${latido:-0}" != 0 ]] && kill "${latido}" 2>/dev/null; rm -rf "${FIND_WRAPPER_DIR:-}" 2>/dev/null; true' EXIT
+
+# Como root, el _unshare de mkarchiso no aisla nada: los montajes de pacstrap y
+# arch-chroot se ven en todo el sistema (udisks, gvfs...) y pueden quedarse
+# ocupados. En un espacio de montajes privado mueren con mkarchiso.
+unshare -m --propagation private -- env PATH="${FIND_WRAPPER_DIR}:${PATH}" mkarchiso "${args[@]}"
+
 if (( latido )); then
   kill "${latido}" 2>/dev/null || true
   wait "${latido}" 2>/dev/null || true
   latido=0
 fi
+rm -rf "${FIND_WRAPPER_DIR}" 2>/dev/null || true
 
 # ------------------------------------------------------------------ 6. resultado
 
@@ -664,6 +909,11 @@ iso="$(find "${OUT_DIR}" -maxdepth 1 -name '*.iso' -printf '%T@ %p\n' | sort -rn
 [[ -n "$iso" ]] || { red "No se encontro ninguna ISO en ${OUT_DIR}"; exit 1; }
 
 grn "ISO construida: ${iso}"
+# Cache: solo la ultima version de cada paquete (las viejas no se vuelven a usar).
+if command -v paccache >/dev/null 2>&1; then
+  paccache -q -r -k1 -c "${CACHE_DIR}" >/dev/null 2>&1 || true
+fi
+info "cache de paquetes: ${CACHE_DIR} ($(du -sh "${CACHE_DIR}" 2>/dev/null | cut -f1))"
 ls -lh -- "${iso}" | awk '{print "   tamano: " $5}'
 ( cd "$(dirname "$iso")" && sha256sum "$(basename "$iso")" >"$(basename "$iso").sha256" )
 info "sha256: $(cut -d' ' -f1 <"${iso}.sha256")"

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# titan-battery-sync - Driver/daemon para sincronizar la batería del host en máquinas virtuales QEMU
+set -euo pipefail
+
+VIRTIO_PORT="/dev/virtio-ports/titan.battery"
+FWCFG_FILE="/sys/firmware/qemu_fw_cfg/by_name/opt/titan/battery/raw"
+
+# Si no hay canal QEMU de batería, salir silenciosamente
+if [[ ! -e "$VIRTIO_PORT" && ! -f "$FWCFG_FILE" ]]; then
+  exit 0
+fi
+
+# Cargar módulo de kernel test_power para exponer /sys/class/power_supply/test_battery al sistema
+modprobe test_power 2>/dev/null || true
+
+apply_battery() {
+  local cap="${1:-100}"
+  local stat="${2:-Discharging}"
+  local ac="${3:-0}"
+
+  case "${stat,,}" in
+    charging) stat="Charging" ;;
+    discharging) stat="Discharging" ;;
+    full) stat="Full" ;;
+    *) stat="Discharging" ;;
+  esac
+
+  if [[ -d /sys/class/power_supply/test_battery ]]; then
+    echo "$cap" > /sys/class/power_supply/test_battery/capacity 2>/dev/null || true
+    echo "$stat" > /sys/class/power_supply/test_battery/status 2>/dev/null || true
+  fi
+  if [[ -d /sys/class/power_supply/test_ac ]]; then
+    echo "$ac" > /sys/class/power_supply/test_ac/online 2>/dev/null || true
+  fi
+}
+
+# 1. Leer estado inicial desde fw_cfg si está disponible
+if [[ -f "$FWCFG_FILE" ]]; then
+  raw="$(cat "$FWCFG_FILE" 2>/dev/null || true)"
+  if [[ -n "$raw" ]]; then
+    IFS='|' read -r c s a <<< "$raw"
+    apply_battery "$c" "$s" "$a"
+  fi
+fi
+
+# 2. Escuchar continuamente actualizaciones desde el puerto virtio-serial
+if [[ -e "$VIRTIO_PORT" ]]; then
+  while true; do
+    if read -r line < "$VIRTIO_PORT"; then
+      if [[ -n "$line" ]]; then
+        IFS='|' read -r c s a <<< "$line"
+        apply_battery "$c" "$s" "$a"
+      fi
+    else
+      sleep 2
+    fi
+  done
+fi
+

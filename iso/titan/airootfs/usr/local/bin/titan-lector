@@ -1,0 +1,42 @@
+#!/bin/sh
+# Inti OS - lector de pantalla (Orca). Super+Alt+S lo enciende y lo apaga,
+# como en GNOME; Ajustes > Accesibilidad hace lo mismo. Se recuerda para la
+# proxima sesion en ~/.config/titan/accesibilidad.conf.
+#
+#   titan-lector            alternar
+#   titan-lector on|off     encender | apagar
+#   titan-lector estado     on | off
+conf="$HOME/.config/titan/accesibilidad.conf"
+uid="$(id -u)"
+corriendo() { pgrep -u "$uid" -x orca >/dev/null 2>&1; }
+
+guardar() {
+    mkdir -p "$(dirname "$conf")"
+    if [ -f "$conf" ] && grep -q '^LECTOR=' "$conf"; then
+        sed -i "s/^LECTOR=.*/LECTOR=$1/" "$conf"
+    else
+        echo "LECTOR=$1" >> "$conf"
+    fi
+    # GNOME y las apps GTK miran esta clave para activar su accesibilidad.
+    gsettings set org.gnome.desktop.a11y.applications screen-reader-enabled \
+        "$( [ "$1" = 1 ] && echo true || echo false )" 2>/dev/null
+}
+
+encender() {
+    guardar 1
+    corriendo || (setsid orca --replace >/dev/null 2>&1 &)
+    notify-send -a "Accesibilidad" -i preferences-desktop-accessibility "Lector de pantalla activado" "Super+Alt+S para desactivarlo" 2>/dev/null
+}
+apagar() {
+    guardar 0
+    pkill -u "$uid" -x orca 2>/dev/null
+    notify-send -a "Accesibilidad" -i preferences-desktop-accessibility "Lector de pantalla desactivado" 2>/dev/null
+}
+
+case "${1:-alternar}" in
+    on) encender ;;
+    off) apagar ;;
+    estado) if corriendo; then echo on; else echo off; fi ;;
+    *) if corriendo; then apagar; else encender; fi ;;
+esac
+exit 0

@@ -7,7 +7,7 @@ TitanWindow {
     title: "Reloj"
     width: 680
     height: 480
-    minimumWidth: 600
+    minimumWidth: 420
     minimumHeight: 440
     sidebarWidth: 0
 

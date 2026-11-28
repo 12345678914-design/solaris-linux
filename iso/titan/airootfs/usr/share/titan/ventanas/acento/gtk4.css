@@ -1,0 +1,8 @@
+/* Inti OS - botones de ventana: Inti acento. GTK 4. */
+windowcontrols > button { min-width: 30px; min-height: 26px; margin: 0 1px; padding: 0; border-radius: 7px; background: none; box-shadow: none; transition: background-color 100ms ease-out, color 100ms ease-out; }
+windowcontrols > button > image { background: none; box-shadow: none; padding: 0; }
+windowcontrols > button:hover { background-color: alpha(@accent_color, 0.2); color: @accent_color; }
+windowcontrols > button:active { background-color: alpha(@accent_color, 0.32); color: @accent_color; }
+windowcontrols > button.close:hover { background-color: #e5484d; color: #ffffff; }
+windowcontrols > button.close:active { background-color: #c93a3f; color: #ffffff; }
+windowcontrols > button:backdrop { color: alpha(currentColor, 0.45); }

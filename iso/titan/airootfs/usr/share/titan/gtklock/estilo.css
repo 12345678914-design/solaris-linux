@@ -1,0 +1,119 @@
+/* Inti OS - pantalla de bloqueo (gtklock, GTK 3).
+   titan-bloquear le anade al final el fondo de escritorio actual. */
+* {
+  font-family: "Inter", sans-serif;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+window {
+  background-color: #10121a;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#date-label {
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+#clock-label {
+  font-size: 104px;
+  font-weight: 700;
+  letter-spacing: -2px;
+}
+#user-image {
+  margin-bottom: 4px;
+}
+#user-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+entry#input-field {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  background-color: rgba(255, 255, 255, 0.18);
+  background-image: none;
+  box-shadow: none;
+  caret-color: #ffffff;
+  font-size: 14px;
+}
+entry#input-field:focus {
+  border-color: rgba(255, 255, 255, 0.60);
+  background-color: rgba(255, 255, 255, 0.24);
+}
+entry#input-field image {
+  color: rgba(255, 255, 255, 0.75);
+}
+button#unlock-button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 17px;
+  border: none;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+  font-size: 16px;
+  font-weight: 700;
+}
+button#unlock-button:hover { background-color: rgba(255, 255, 255, 0.34); }
+#error-label   { color: #ff9b94; font-weight: 600; }
+#warning-label { color: #ffd479; font-weight: 600; }
+#message-box label { color: rgba(255, 255, 255, 0.85); }
+
+/* Suspender, reiniciar, apagar (powerbar-module), abajo en el centro */
+#powerbar-box { margin-bottom: 34px; }
+#powerbar-box button {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0 10px;
+  padding: 0;
+  border-radius: 22px;
+  border: none;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+#powerbar-box button:hover { background-color: rgba(255, 255, 255, 0.30); }
+#powerbar-box button image { color: #ffffff; }
+
+/* Musica sonando (playerctl-module) */
+#playerctl-revealer > box {
+  margin-top: 18px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background-color: rgba(18, 20, 28, 0.42);
+}
+#title-label  { font-weight: 600; }
+#artist-label, #album-label { color: rgba(255, 255, 255, 0.75); }
+
+/* Notificaciones (titan-avisos-module), debajo del reloj y la musica */
+#titan-aviso {
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(18, 20, 28, 0.48);
+}
+#titan-aviso-app, #titan-aviso-hora { font-size: 11px; color: rgba(255, 255, 255, 0.65); }
+#titan-aviso-titulo { font-size: 13px; font-weight: 600; }
+#titan-aviso-texto  { font-size: 12px; color: rgba(255, 255, 255, 0.80); }
+/* Las que no caben hasta el perfil: acopladas en iconos */
+#titan-avisos-repisa {
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(18, 20, 28, 0.48);
+}
+#titan-avisos-cuenta {
+  min-width: 11px;
+  padding: 0 2px;
+  border-radius: 7px;
+  background-color: #ffffff;
+  color: #111111;
+  text-shadow: none;
+  font-size: 9px;
+  font-weight: 700;
+}
+#titan-avisos-rollo, #titan-avisos-rollo viewport { background: none; border: none; box-shadow: none; }

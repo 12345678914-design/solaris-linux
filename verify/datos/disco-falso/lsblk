@@ -1,0 +1,14 @@
+#!/bin/sh
+# lsblk falso: un disco de 512 GiB con Windows (EFI, MSR, C:, recuperación).
+case "$*" in
+  *-Jdpb*) echo '{"blockdevices":[{"name":"/dev/vda","size":549755813888,"type":"disk","tran":"nvme","model":"Disco de prueba","ro":false}]}';;
+  *FSTYPE*) cat <<J
+{"blockdevices":[{"name":"/dev/vda","children":[
+ {"name":"/dev/vda1","fstype":"vfat","label":"SYSTEM","partlabel":"EFI system partition","mountpoint":null},
+ {"name":"/dev/vda2","fstype":null,"label":null,"partlabel":"Microsoft reserved partition","mountpoint":null},
+ {"name":"/dev/vda3","fstype":"ntfs","label":"Windows","partlabel":"Basic data partition","mountpoint":null},
+ {"name":"/dev/vda4","fstype":"ntfs","label":"Recovery","partlabel":"","mountpoint":null}]}]}
+J
+;;
+  *) echo "";;
+esac

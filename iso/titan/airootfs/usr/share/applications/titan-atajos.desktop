@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Atajos de teclado
+Name[en]=Keyboard shortcuts
+Comment=Todos los atajos de teclado de Inti (también con Win + F1)
+Exec=titan-shell --tecla atajos
+Icon=/usr/share/titan/icons/system.png
+Terminal=false
+Categories=System;
+Keywords=atajos;teclado;shortcuts;teclas;combinaciones;

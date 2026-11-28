@@ -1,0 +1,111 @@
+// Inti OS - Ajustes: pantallas (wlr-randr, brillo, luz nocturna) y sonido
+// (PipeWire con pactl). Todo en procesos asincronos.
+#pragma once
+
+#include <QHash>
+#include <QObject>
+#include <QVariantList>
+#include <QVariantMap>
+#include <functional>
+
+class QTimer;
+
+class Dispositivos : public QObject
+{
+    Q_OBJECT
+    // Pantallas: [{nombre, descripcion, activa, modos[{ancho,alto,hz,texto,actual,preferido}],
+    //              modo, escala, giro, x, y}]
+    Q_PROPERTY(QVariantList pantallas READ pantallas NOTIFY pantallasCambiadas)
+    Q_PROPERTY(bool pantallasDisponibles READ pantallasDisponibles NOTIFY pantallasCambiadas)
+    Q_PROPERTY(bool pendienteConfirmar READ pendienteConfirmar NOTIFY pendienteCambiado)
+    Q_PROPERTY(int brillo READ brillo NOTIFY brilloCambiado)          // -1 = sin control
+    Q_PROPERTY(QVariantMap luzNocturna READ luzNocturna NOTIFY luzCambiada)
+    // Sonido: [{nombre, descripcion, volumen, silencio, predeterminado}]
+    Q_PROPERTY(QVariantList salidas READ salidas NOTIFY sonidoCambiado)
+    Q_PROPERTY(QVariantList entradas READ entradas NOTIFY sonidoCambiado)
+    Q_PROPERTY(bool sonidoDisponible READ sonidoDisponible NOTIFY sonidoCambiado)
+    // Mezclador (como el de Windows): apps que suenan ahora
+    //   [{id, nombre, detalle, icono, volumen, silencio}]
+    Q_PROPERTY(QVariantList appsSonido READ appsSonido NOTIFY appsSonidoCambiado)
+    Q_PROPERTY(QString aviso READ aviso NOTIFY avisoCambiado)
+    // Resolución de arranque (GRUB): la única que vale si la tarjeta va sin driver
+    Q_PROPERTY(QString resolucionArranque READ resolucionArranque NOTIFY arranqueCambiado)
+    Q_PROPERTY(bool arranqueCambiable READ arranqueCambiable CONSTANT)
+
+public:
+    explicit Dispositivos(QObject *parent = nullptr);
+
+    QVariantList pantallas() const { return m_pantallas; }
+    bool pantallasDisponibles() const { return m_pantallasOk; }
+    bool pendienteConfirmar() const { return !m_anterior.isEmpty(); }
+    int brillo() const { return m_brillo; }
+    QVariantMap luzNocturna() const { return m_luz; }
+    QVariantList salidas() const { return m_salidas; }
+    QVariantList entradas() const { return m_entradas; }
+    QVariantList appsSonido() const { return m_appsSonido; }
+    bool sonidoDisponible() const { return m_sonidoOk; }
+    QString aviso() const { return m_aviso; }
+
+    Q_INVOKABLE void leerPantallas();
+    // Cambia una pantalla: modo "1920x1080@60.000", escala, giro ("normal", "90"...),
+    // activa. Hay que confirmarlo en 15 s o se deshace solo.
+    Q_INVOKABLE void aplicarPantalla(const QString &nombre, const QString &modo, double escala,
+                                     const QString &giro, bool activa);
+    Q_INVOKABLE void confirmarPantallas();
+    Q_INVOKABLE void deshacerPantallas();
+    Q_INVOKABLE void identificar();
+    Q_INVOKABLE void setResolucionArranque(const QString &valor);
+    QString resolucionArranque() const { return m_resArranque; }
+    bool arranqueCambiable() const;
+
+    Q_INVOKABLE void leerBrillo();
+    Q_INVOKABLE void setBrillo(int porcentaje);
+
+    Q_INVOKABLE void setLuzNocturna(const QString &clave, const QVariant &valor);
+
+    Q_INVOKABLE void leerSonido();
+    Q_INVOKABLE void setPredeterminado(bool salida, const QString &nombre);
+    Q_INVOKABLE void setVolumen(bool salida, const QString &nombre, int porcentaje);
+    Q_INVOKABLE void setSilencio(bool salida, const QString &nombre, bool silencio);
+    Q_INVOKABLE void probarSonido();
+    Q_INVOKABLE void leerAppsSonido();
+    Q_INVOKABLE void setVolumenApp(int id, int porcentaje);
+    Q_INVOKABLE void setSilencioApp(int id, bool silencio);
+
+signals:
+    void pantallasCambiadas();
+    void pendienteCambiado();
+    void brilloCambiado();
+    void luzCambiada();
+    void sonidoCambiado();
+    void appsSonidoCambiado();
+    void avisoCambiado();
+    void arranqueCambiado();
+
+private:
+    using Fin = std::function<void(int codigo, const QByteArray &salida, const QString &error)>;
+    void correr(const QString &programa, const QStringList &args, Fin fin);
+    void avisar(const QString &t);
+    QStringList argumentosDe(const QVariantMap &p) const;
+    void guardarPantallas();
+    QString modoGuardado(const QString &nombre) const;
+    // Último modo aplicado por pantalla (los personalizados no salen como "en uso")
+    QHash<QString, QString> m_modoAplicado;
+    QString m_resArranque = QStringLiteral("auto");
+    void leerResolucionArranque();
+    void leerLuz();
+
+    QVariantList m_pantallas;
+    bool m_pantallasOk = false;
+    QVariantList m_anterior;     // para deshacer
+    QTimer *m_cuentaAtras = nullptr;
+    int m_brillo = -1;
+    QVariantMap m_luz;
+    QVariantList m_salidas;
+    QVariantList m_entradas;
+    QVariantList m_appsSonido;
+    bool m_sonidoOk = false;
+    QString m_aviso;
+    QTimer *m_volumenTimer = nullptr;
+    QVariantMap m_volumenPendiente;
+};

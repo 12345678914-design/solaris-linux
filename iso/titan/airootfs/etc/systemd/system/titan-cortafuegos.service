@@ -1,0 +1,12 @@
+[Unit]
+Description=Inti OS: politica inicial del cortafuegos (solo la primera vez)
+After=ufw.service
+Wants=ufw.service
+ConditionPathExists=!/var/lib/titan/cortafuegos-inicial
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/titan-cortafuegos inicial
+
+[Install]
+WantedBy=multi-user.target

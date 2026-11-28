@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar paquete
+Name[en]=Install package
+Comment=Instala programas descargados como .deb (Ubuntu) o .rpm (Fedora)
+Exec=/usr/local/bin/titan-paquete %f
+Icon=system-software-install
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;application/x-rpm;application/x-redhat-package-manager;
+NoDisplay=true
+Terminal=false

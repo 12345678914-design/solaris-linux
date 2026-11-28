@@ -1,14 +1,26 @@
 #include "SettingsBackend.h"
+#include <QLocalSocket>
 #include "ThemeManager.h"
+#include "TitanUsuario.h"
 
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QTextStream>
+#include <QFileInfo>
+#include <QHash>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QTimer>
 #include <QStorageInfo>
+
+// Programas de Inti (en pruebas, TITAN_BIN apunta a otros)
+static QString binTitan(const QString &nombre)
+{
+    return qEnvironmentVariable("TITAN_BIN", QStringLiteral("/usr/local/bin/")) + nombre;
+}
 
 SettingsBackend::SettingsBackend(QObject *parent)
     : QObject(parent)
@@ -23,6 +35,15 @@ SettingsBackend::SettingsBackend(QObject *parent)
     connect(tm, &ThemeManager::wallpapersChanged, this, &SettingsBackend::wallpapersChanged);
 
     updateNetworkStatus();
+
+    // ¿Se cerró Ajustes con una actualización a medias? Se retoma la barra.
+    QTimer::singleShot(300, this, [this]() {
+        readUpdateMode();
+        QProcess e;
+        e.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("estado")});
+        if (e.waitForFinished(3000) && QString::fromUtf8(e.readAllStandardOutput()).trimmed() == QStringLiteral("en-curso"))
+            followUpdate();
+    });
     QTimer *netTimer = new QTimer(this);
     connect(netTimer, &QTimer::timeout, this, &SettingsBackend::updateNetworkStatus);
     netTimer->start(8000);
@@ -45,9 +66,12 @@ void SettingsBackend::initSections()
     add(QStringLiteral("wifi"), QStringLiteral("Wi-Fi"), QStringLiteral("📶"), QStringLiteral("#007aff"));
     add(QStringLiteral("bluetooth"), QStringLiteral("Bluetooth"), QStringLiteral("ᛒ"), QStringLiteral("#007aff"));
     add(QStringLiteral("red"), QStringLiteral("Red"), QStringLiteral("↔"), QStringLiteral("#007aff"));
+    add(QStringLiteral("VPN"), QStringLiteral("VPN"), QStringLiteral("🔐"), QStringLiteral("#007aff"));
     add(QStringLiteral("General"), QStringLiteral("General"), QStringLiteral("⚙️"), QStringLiteral("#636366"));
+    add(QStringLiteral("Accesibilidad"), QStringLiteral("Accesibilidad"), QStringLiteral("♿"), QStringLiteral("#007aff"));
     add(QStringLiteral("Apariencia"), QStringLiteral("Apariencia"), QStringLiteral("◐"), QStringLiteral("#1c1c1e"));
     add(QStringLiteral("Fondo de pantalla"), QStringLiteral("Fondo de pantalla"), QStringLiteral("🖼️"), QStringLiteral("#007aff"));
+    add(QStringLiteral("Ventanas"), QStringLiteral("Ventanas"), QStringLiteral("❐"), QStringLiteral("#5856d6"));
     add(QStringLiteral("Pantallas"), QStringLiteral("Pantallas"), QStringLiteral("☀️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Batería"), QStringLiteral("Batería"), QStringLiteral("🔋"), QStringLiteral("#34c759"));
     add(QStringLiteral("Escritorio y Dock"), QStringLiteral("Escritorio y Dock"), QStringLiteral("⊞"), QStringLiteral("#5856d6"));
@@ -57,8 +81,15 @@ void SettingsBackend::initSections()
     add(QStringLiteral("Sonido"), QStringLiteral("Sonido"), QStringLiteral("🔊"), QStringLiteral("#ff3b30"));
     add(QStringLiteral("Concentración"), QStringLiteral("Concentración"), QStringLiteral("🌙"), QStringLiteral("#af52de"));
     add(QStringLiteral("Bloquear pantalla"), QStringLiteral("Bloquear pantalla"), QStringLiteral("🔒"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Privacidad y seguridad"), QStringLiteral("Privacidad y seguridad"), QStringLiteral("🛡️"), QStringLiteral("#007aff"));
+    add(QStringLiteral("Compartir"), QStringLiteral("Compartir"), QStringLiteral("🖥️"), QStringLiteral("#007aff"));
     add(QStringLiteral("Usuarios y grupos"), QStringLiteral("Usuarios y grupos"), QStringLiteral("👤"), QStringLiteral("#007aff"));
+    add(QStringLiteral("Aplicaciones predeterminadas"), QStringLiteral("Aplicaciones predeterminadas"), QStringLiteral("▦"), QStringLiteral("#007aff"));
     add(QStringLiteral("Teclado"), QStringLiteral("Teclado"), QStringLiteral("⌨️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Ratón y panel táctil"), QStringLiteral("Ratón y panel táctil"), QStringLiteral("🖱️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Impresoras y escáneres"), QStringLiteral("Impresoras y escáneres"), QStringLiteral("🖨️"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Almacenamiento"), QStringLiteral("Almacenamiento"), QStringLiteral("💽"), QStringLiteral("#8e8e93"));
+    add(QStringLiteral("Restaurar sistema"), QStringLiteral("Restaurar sistema"), QStringLiteral("🕘"), QStringLiteral("#34c759"));
 
     emit sectionsChanged();
 }
@@ -143,53 +174,87 @@ void SettingsBackend::setWallpaper(const QString &path)
     ThemeManager::instance()->setWallpaper(path);
 }
 
+// Idioma de esta cuenta (~/.config/locale.conf, lo lee /etc/profile.d/locale.sh
+// al entrar). No necesita administrador; solo si el idioma no está preparado
+// en el sistema se pide la contraseña, en ventana, para titan-idioma.
 void SettingsBackend::setLanguage(const QString &lang)
 {
-    if (m_language != lang) {
-        m_language = lang;
-        saveShellSettings();
-
-        // Aplicar locale según Arch Linux
-        QString localeCode = QStringLiteral("es_ES.UTF-8");
-        QString localeGenEntry = QStringLiteral("es_ES.UTF-8 UTF-8");
-        if (lang == QStringLiteral("en")) {
-            localeCode = QStringLiteral("en_US.UTF-8");
-            localeGenEntry = QStringLiteral("en_US.UTF-8 UTF-8");
-        } else if (lang == QStringLiteral("quz")) {
-            localeCode = QStringLiteral("quz_PE.UTF-8");
-            localeGenEntry = QStringLiteral("quz_PE.UTF-8 UTF-8");
-        } else if (lang == QStringLiteral("auto")) {
-            localeCode = QStringLiteral("es_ES.UTF-8");
-            localeGenEntry = QStringLiteral("es_ES.UTF-8 UTF-8");
-        }
-
-        // 1. Escribir configuración de usuario en ~/.config/locale.conf
-        QString confDir = QDir::homePath() + QStringLiteral("/.config");
-        QDir().mkpath(confDir);
-        QFile uLocale(confDir + QStringLiteral("/locale.conf"));
-        if (uLocale.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-            QTextStream ts(&uLocale);
-            ts << "LANG=" << localeCode << "\n";
-            ts << "LC_ALL=" << localeCode << "\n";
-            uLocale.close();
-        }
-
-        // 2. Método completo: habilitar en /etc/locale.gen, ejecutar locale-gen y actualizar /etc/locale.conf
-        QString script = QStringLiteral(
-            "grep -qE '^[# ]*%1' /etc/locale.gen && sudo sed -i 's/^[# ]*%1/%1/' /etc/locale.gen || echo '%2' | sudo tee -a /etc/locale.gen; "
-            "sudo locale-gen; "
-            "echo 'LANG=%3' | sudo tee /etc/locale.conf; "
-            "echo 'LC_ALL=%3' | sudo tee -a /etc/locale.conf; "
-            "localectl set-locale LANG=%3 2>/dev/null || true"
-        ).arg(localeGenEntry.section(QLatin1Char(' '), 0, 0), localeGenEntry, localeCode);
-
-        QProcess::startDetached(QStringLiteral("bash"), {QStringLiteral("-c"), script});
-
-        qputenv("LANG", localeCode.toUtf8());
-        qputenv("LC_ALL", localeCode.toUtf8());
-
-        emit languageChanged();
+    if (m_language == lang || m_languageBusy)
+        return;
+    static const QHash<QString, QString> codigos = {
+        {QStringLiteral("es"), QStringLiteral("es_ES.UTF-8")},
+        {QStringLiteral("en"), QStringLiteral("en_US.UTF-8")},
+        {QStringLiteral("quz"), QStringLiteral("quz_PE.UTF-8")},
+    };
+    if (lang == QStringLiteral("auto")) {
+        applyUserLanguage(lang, QString());
+        return;
     }
+    const QString codigo = codigos.value(lang);
+    if (codigo.isEmpty())
+        return;
+
+    const QString helper = binTitan(QStringLiteral("titan-idioma"));
+    QProcess comprobar;
+    comprobar.start(helper, {QStringLiteral("instalado"), codigo});
+    const bool listo = comprobar.waitForFinished(5000) &&
+                       QString::fromUtf8(comprobar.readAllStandardOutput()).trimmed() == QStringLiteral("si");
+    if (listo) {
+        applyUserLanguage(lang, codigo);
+        return;
+    }
+
+    m_languageBusy = true;
+    m_languageStatus = QStringLiteral("Preparando el idioma: escribe la contraseña de administrador en la ventana…");
+    emit languageChanged();
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p, lang, codigo](int c, QProcess::ExitStatus) {
+        p->deleteLater();
+        m_languageBusy = false;
+        if (c == 0) {
+            applyUserLanguage(lang, codigo);
+            return;
+        }
+        m_languageStatus = c == 126 ? QStringLiteral("Cancelado: el idioma no ha cambiado.")
+                         : c == 127 ? QStringLiteral("Tu cuenta no puede instalar idiomas: pídeselo a quien administre el equipo.")
+                                    : QStringLiteral("No se pudo preparar el idioma.");
+        emit languageChanged();
+    });
+    p->start(QStringLiteral("pkexec"), {helper, QStringLiteral("instalar"), codigo});
+}
+
+void SettingsBackend::applyUserLanguage(const QString &lang, const QString &codigo)
+{
+    const QString conf = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/locale.conf");
+    if (lang == QStringLiteral("auto")) {
+        QFile::remove(conf);   // sin fichero propio: el idioma del sistema
+    } else {
+        QDir().mkpath(QFileInfo(conf).absolutePath());
+        QFile f(conf);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QTextStream ts(&f);
+            ts << "LANG=" << codigo << "\n";
+            // Casi ninguna app está en quechua: lo que falte, en español
+            if (lang == QStringLiteral("quz"))
+                ts << "LANGUAGE=quz:es_ES:es\n";
+        }
+    }
+    // Al momento: el shell toma el idioma nuevo y lo pasa a lo que abra
+    QLocalSocket shell;
+    shell.connectToServer(QStringLiteral("titan-shell-ipc-") + qEnvironmentVariable("USER"));
+    if (shell.waitForConnected(500)) {
+        shell.write("idioma\n");
+        shell.flush();
+        shell.waitForBytesWritten(500);
+        shell.disconnectFromServer();
+        m_languageStatus = QStringLiteral("Listo: las apps que abras desde ahora ya salen en el idioma nuevo. "
+                                          "Las que estén abiertas, al cerrarlas y volver a abrirlas.");
+    } else {
+        m_languageStatus = QStringLiteral("Listo: el idioma cambiará la próxima vez que entres en la sesión.");
+    }
+    m_language = lang;
+    saveShellSettings();
+    emit languageChanged();
 }
 
 void SettingsBackend::setDockEnabled(bool enabled)
@@ -235,14 +300,11 @@ void SettingsBackend::saveShellSettings()
 void SettingsBackend::loadSystemInfo()
 {
     m_systemInfo[QStringLiteral("osName")] = QStringLiteral("Inti OS");
-    m_systemInfo[QStringLiteral("osVersion")] = QStringLiteral("1.0 (Edición Escritorio)");
+    m_systemInfo[QStringLiteral("osVersion")] = QStringLiteral("1.8 · Fácil, rápido y privado");
     m_systemInfo[QStringLiteral("kernel")] = QSysInfo::kernelType() + QStringLiteral(" ") + QSysInfo::kernelVersion();
     m_systemInfo[QStringLiteral("arch")] = QSysInfo::currentCpuArchitecture();
     m_systemInfo[QStringLiteral("hostname")] = QSysInfo::machineHostName();
-    m_systemInfo[QStringLiteral("user")] = QString::fromLocal8Bit(qgetenv("USER"));
-    if (m_systemInfo[QStringLiteral("user")].toString().isEmpty()) {
-        m_systemInfo[QStringLiteral("user")] = QStringLiteral("isai");
-    }
+    m_systemInfo[QStringLiteral("user")] = titan::usuarioActual();
 
     QStorageInfo rootStorage(QDir::rootPath());
     if (rootStorage.isValid()) {
@@ -252,128 +314,414 @@ void SettingsBackend::loadSystemInfo()
     }
 }
 
+namespace {
+// Base de datos temporal de checkupdates (la sincroniza sin tocar la del
+// sistema); con ella se calcula el tamaño real de la descarga.
+QString baseActualizaciones()
+{
+    return QDir::tempPath() + QStringLiteral("/titan-checkup-db-") + QString::fromLocal8Bit(qgetenv("USER")) + QLatin1Char('/');
+}
+
+QString tamanoLegible(qint64 b)
+{
+    if (b >= 1024LL * 1024 * 1024)
+        return QStringLiteral("%1 GiB").arg(b / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
+    if (b >= 1024 * 1024)
+        return QStringLiteral("%1 MiB").arg(b / (1024.0 * 1024.0), 0, 'f', 1);
+    return QStringLiteral("%1 KiB").arg(qMax<qint64>(1, b / 1024));
+}
+} // namespace
+
 void SettingsBackend::checkUpdates()
 {
     if (m_updateChecking) return;
 
-    m_updateChecking = true;
-    m_updatePromptVisible = false;
-    m_updateStatus = QStringLiteral("Buscando actualizaciones en los repositorios de Arch Linux...");
-    emit updateCheckingChanged();
-    emit updatePromptVisibleChanged();
-    emit updateStatusChanged();
-
-    // Ejecutar comprobación en hilo con QTimer para no bloquear la interfaz
-    QTimer::singleShot(500, this, [this]() {
-        // Ejecutamos checkupdates o pacman -Qu
-        QProcess proc;
-        proc.start(QStringLiteral("checkupdates"));
-        if (!proc.waitForStarted(2000)) {
-            // Si checkupdates no inicia, intentar con pacman -Qu
-            proc.start(QStringLiteral("pacman"), QStringList() << QStringLiteral("-Qu"));
-        }
-
-        bool finished = proc.waitForFinished(15000);
-        QString out;
-        if (finished) {
-            out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-        }
-
-        QStringList lines = out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        int count = lines.size();
-
-        if (count > 0) {
-            // Intentar calcular el tamaño de descarga
-            qint64 totalBytes = 0;
-            QStringList pkgs;
-            for (const QString &line : lines) {
-                QString p = line.section(QLatin1Char(' '), 0, 0).trimmed();
-                if (!p.isEmpty()) pkgs << p;
-            }
-
-            if (!pkgs.isEmpty()) {
-                QProcess sizeProc;
-                QStringList sizeArgs;
-                sizeArgs << QStringLiteral("-Sp") << QStringLiteral("--print-format") << QStringLiteral("%s") << pkgs;
-                sizeProc.start(QStringLiteral("pacman"), sizeArgs);
-                if (sizeProc.waitForFinished(5000)) {
-                    QString sizeOut = QString::fromUtf8(sizeProc.readAllStandardOutput());
-                    const QStringList sizeLines = sizeOut.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-                    for (const QString &sl : sizeLines) {
-                        bool ok = false;
-                        qint64 b = sl.trimmed().toLongLong(&ok);
-                        if (ok && b > 0) totalBytes += b;
-                    }
-                }
-            }
-
-            QString sizeText;
-            if (totalBytes > 1024 * 1024 * 1024) {
-                double gib = totalBytes / (1024.0 * 1024.0 * 1024.0);
-                sizeText = QStringLiteral("%1 GiB").arg(gib, 0, 'f', 2);
-            } else if (totalBytes > 0) {
-                double mib = totalBytes / (1024.0 * 1024.0);
-                sizeText = QStringLiteral("%1 MiB").arg(mib, 0, 'f', 1);
-            } else {
-                // Estimación aproximada si pacman no devolvió bytes
-                double estMib = count * 14.5;
-                sizeText = QStringLiteral("~%1 MiB").arg(estMib, 0, 'f', 0);
-            }
-
-            m_updateCount = count;
-            m_updateSize = sizeText;
-            m_updateStatus = QStringLiteral("Hay %1 actualizaciones disponibles de Arch Linux (Total: %2)")
-                                .arg(count)
-                                .arg(sizeText);
-            m_updatePromptVisible = true;
-        } else {
-            m_updateCount = 0;
-            m_updateSize = QStringLiteral("0 MB");
-            m_updateStatus = QStringLiteral("El sistema está al día con los repositorios de Arch Linux.");
-            m_updatePromptVisible = false;
-        }
-
+    auto fin = [this](const QString &estado, int cuantas, const QString &tamano) {
         m_updateChecking = false;
+        m_updateCount = cuantas;
+        m_updateSize = tamano;
+        m_updateStatus = estado;
+        m_updatePromptVisible = cuantas > 0;
         emit updateCheckingChanged();
         emit updatePromptVisibleChanged();
         emit updateCountChanged();
         emit updateSizeChanged();
         emit updateStatusChanged();
+    };
+
+    m_updateChecking = true;
+    m_updatePromptVisible = false;
+    m_updateStatus = QStringLiteral("Buscando actualizaciones…");
+    emit updateCheckingChanged();
+    emit updatePromptVisibleChanged();
+    emit updateStatusChanged();
+
+    if (QStandardPaths::findExecutable(QStringLiteral("checkupdates")).isEmpty()) {
+        fin(QStringLiteral("No se puede comprobar: falta el paquete pacman-contrib."), 0, QStringLiteral("0 MB"));
+        return;
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("fakeroot")).isEmpty()) {
+        fin(QStringLiteral("No se puede comprobar: falta el paquete fakeroot."), 0, QStringLiteral("0 MB"));
+        return;
+    }
+
+    // En segundo plano: sincronizar la base temporal puede tardar un rato y
+    // antes se cortaba a los 15 s y daba "al día" sin haber comprobado nada.
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("CHECKUPDATES_DB"), baseActualizaciones());
+    env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    proc->setProcessEnvironment(env);
+    auto *limite = new QTimer(proc);
+    limite->setSingleShot(true);
+    connect(limite, &QTimer::timeout, proc, [proc]() { proc->kill(); });
+    limite->start(180000);
+
+    connect(proc, &QProcess::finished, this, [this, proc, fin](int codigo, QProcess::ExitStatus estado) {
+        proc->deleteLater();
+        const QString salida = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+        const QString error = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+        // checkupdates: 0 = hay, 2 = no hay, 1 u otro = no se pudo comprobar
+        if (estado != QProcess::NormalExit || (codigo != 0 && codigo != 2)) {
+            QString motivo = error.section(QLatin1Char('\n'), -1).remove(QStringLiteral("==> ERROR: ")).trimmed();
+            if (estado != QProcess::NormalExit)
+                motivo = QStringLiteral("tardó demasiado");
+            if (motivo.contains(QStringLiteral("database"), Qt::CaseInsensitive) || motivo.isEmpty())
+                motivo = QStringLiteral("¿hay conexión a Internet?");
+            fin(QStringLiteral("No se pudo comprobar: %1").arg(motivo), 0, QStringLiteral("0 MB"));
+            return;
+        }
+
+        QStringList paquetes;
+        for (const QString &l : salida.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const QString p = l.section(QLatin1Char(' '), 0, 0).trimmed();
+            if (!p.isEmpty())
+                paquetes << p;
+        }
+
+        // Flatpak (Tienda) también cuenta, si está.
+        int flatpaks = 0;
+        if (!QStandardPaths::findExecutable(QStringLiteral("flatpak")).isEmpty()) {
+            QProcess fp;
+            fp.start(QStringLiteral("flatpak"), {QStringLiteral("remote-ls"), QStringLiteral("--updates"), QStringLiteral("--columns=application")});
+            if (fp.waitForFinished(20000) && fp.exitCode() == 0)
+                flatpaks = QString::fromUtf8(fp.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
+        }
+
+        const int total = paquetes.size() + flatpaks;
+        if (total == 0) {
+            fin(QStringLiteral("El sistema está al día."), 0, QStringLiteral("0 MB"));
+            return;
+        }
+
+        // Tamaño real de lo que hay que descargar (paquetes aún no en caché)
+        qint64 bytes = 0;
+        bool tamanoOk = false;
+        auto medir = [](const QStringList &pk, qint64 *suma) {
+            QProcess tam;
+            tam.start(QStringLiteral("pacman"), QStringList{QStringLiteral("-Sp"), QStringLiteral("--dbpath"), baseActualizaciones(),
+                                                            QStringLiteral("--print-format"), QStringLiteral("%s")} + pk);
+            if (!tam.waitForFinished(10000) || tam.exitCode() != 0)
+                return false;
+            for (const QString &l : QString::fromUtf8(tam.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+                *suma += l.trimmed().toLongLong();
+            return true;
+        };
+        if (!paquetes.isEmpty()) {
+            tamanoOk = medir(paquetes, &bytes);
+            if (!tamanoOk) {
+                // Algún paquete cambió de nombre en el repositorio: uno a uno.
+                bytes = 0;
+                for (const QString &pk : std::as_const(paquetes))
+                    tamanoOk = medir({pk}, &bytes) || tamanoOk;
+            }
+        }
+        QString partes;
+        if (!paquetes.isEmpty())
+            partes = paquetes.size() == 1 ? QStringLiteral("1 paquete") : QStringLiteral("%1 paquetes").arg(paquetes.size());
+        if (flatpaks > 0)
+            partes += (partes.isEmpty() ? QString() : QStringLiteral(" y ")) +
+                      (flatpaks == 1 ? QStringLiteral("1 app de la Tienda") : QStringLiteral("%1 apps de la Tienda").arg(flatpaks));
+        const QString tamano = tamanoOk && bytes > 0 ? tamanoLegible(bytes) : QStringLiteral("—");
+        fin(tamanoOk && bytes > 0 ? QStringLiteral("Hay actualizaciones: %1 (%2 de descarga)").arg(partes, tamano)
+                                  : QStringLiteral("Hay actualizaciones: %1").arg(partes),
+            total, tamano);
     });
+    proc->start(QStringLiteral("checkupdates"), {QStringLiteral("--nocolor")});
 }
 
 void SettingsBackend::cancelUpdates()
 {
+    m_updateNews.clear();
+    emit updateNewsChanged();
     m_updatePromptVisible = false;
     m_updateStatus = QStringLiteral("Actualización cancelada por el usuario");
     emit updatePromptVisibleChanged();
     emit updateStatusChanged();
 }
 
-void SettingsBackend::installUpdates()
+// Actualizar sin preguntas: pkexec titan-actualizar-sistema iniciar lanza la
+// actualización como servicio del sistema y aquí se sigue su registro.
+void SettingsBackend::installUpdates(bool ignorarAvisos)
 {
+    if (m_updateRunning)
+        return;
+    m_updateNews.clear();
+    emit updateNewsChanged();
+    if (ignorarAvisos) {
+        startUpdate();
+        return;
+    }
+    // Antes de nada: ¿ha publicado Arch algo que afecte a este equipo?
     m_updatePromptVisible = false;
-    m_updateStatus = QStringLiteral("Instalando actualizaciones en la terminal...");
+    m_updateStatus = QStringLiteral("Comprobando los avisos de Arch Linux…");
     emit updatePromptVisibleChanged();
     emit updateStatusChanged();
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p]() {
+        p->deleteLater();
+        QVariantList avisos;
+        for (const QString &l : QString::fromUtf8(p->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const QStringList c = l.split(QLatin1Char('\t'));
+            if (c.size() >= 3)
+                avisos << QVariantMap{{QStringLiteral("fecha"), c[0]}, {QStringLiteral("titulo"), c[1]}, {QStringLiteral("enlace"), c[2]}};
+        }
+        if (avisos.isEmpty()) {
+            startUpdate();
+            return;
+        }
+        m_updateNews = avisos;
+        m_updateStatus = QStringLiteral("Arch Linux ha publicado avisos que afectan a este equipo");
+        emit updateNewsChanged();
+        emit updateStatusChanged();
+    });
+    p->start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("avisos")});
+}
 
-    // Buscar terminal
-    QString term = QStringLiteral("titan-terminal");
-    if (!QStandardPaths::findExecutable(term).isEmpty() || QFile::exists(QStringLiteral("/usr/local/bin/titan-terminal"))) {
-        term = QStringLiteral("/usr/local/bin/titan-terminal");
-    } else if (!QStandardPaths::findExecutable(QStringLiteral("kitty")).isEmpty()) {
-        term = QStringLiteral("kitty");
-    } else if (!QStandardPaths::findExecutable(QStringLiteral("foot")).isEmpty()) {
-        term = QStringLiteral("foot");
+void SettingsBackend::readUpdateMode()
+{
+    QProcess p;
+    p.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("modo")});
+    if (p.waitForFinished(3000)) {
+        const QString m = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        if (!m.isEmpty() && m != m_updateMode) {
+            m_updateMode = m;
+            emit updateModeChanged();
+        }
+    }
+}
+
+void SettingsBackend::setUpdateMode(const QString &modo)
+{
+    if (modo == m_updateMode || (modo != QStringLiteral("estable") && modo != QStringLiteral("al-dia")))
+        return;
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p]() {
+        p->deleteLater();
+        readUpdateMode();
+    });
+    p->start(QStringLiteral("pkexec"), {binTitan(QStringLiteral("titan-actualizar-sistema")), QStringLiteral("modo"), modo});
+}
+
+void SettingsBackend::startUpdate()
+{
+    m_updatePromptVisible = false;
+    m_updateRunning = true;
+    m_updateProgress = 0.01;
+    m_updateResult.clear();
+    m_updateNeedsReboot = false;
+    m_updateStatus = QStringLiteral("Esperando la contraseña de administrador…");
+    m_updateLogLines.clear();
+    emit updatePromptVisibleChanged();
+    emit updateProgressChanged();
+    emit updateStatusChanged();
+    emit updateLogChanged();
+
+    auto *p = new QProcess(this);
+    connect(p, &QProcess::finished, this, [this, p](int codigo, QProcess::ExitStatus) {
+        const QString error = QString::fromUtf8(p->readAllStandardError()).trimmed();
+        p->deleteLater();
+        if (codigo == 126 || codigo == 127) {   // ventana cerrada / sin permiso
+            m_updateRunning = false;
+            m_updatePromptVisible = m_updateCount > 0;
+            m_updateStatus = codigo == 126 ? QStringLiteral("Actualización cancelada: no se ha cambiado nada.")
+                                           : QStringLiteral("Tu cuenta no puede actualizar el sistema.");
+            emit updatePromptVisibleChanged();
+            emit updateProgressChanged();
+            emit updateStatusChanged();
+            return;
+        }
+        if (codigo != 0) {
+            finishUpdate(false, QStringLiteral("No se pudo empezar la actualización. ") + error);
+            return;
+        }
+        followUpdate();
+    });
+    p->start(QStringLiteral("pkexec"), {binTitan(QStringLiteral("titan-actualizar-sistema")), QStringLiteral("iniciar")});
+}
+
+// Empieza (o retoma, si se volvió a abrir Ajustes) la lectura del registro.
+void SettingsBackend::followUpdate()
+{
+    m_updateRunning = true;
+    m_updateOffset = 0;
+    m_updatePartial.clear();
+    m_updateDownloads = 0;
+    m_updateIdle = 0;
+    m_updateLogLines.clear();
+    m_updateStatus = QStringLiteral("Actualizando el sistema…");
+    emit updateProgressChanged();
+    emit updateStatusChanged();
+    if (!m_updateTimer) {
+        m_updateTimer = new QTimer(this);
+        m_updateTimer->setInterval(400);
+        connect(m_updateTimer, &QTimer::timeout, this, &SettingsBackend::readUpdateLog);
+    }
+    m_updateTimer->start();
+}
+
+void SettingsBackend::readUpdateLog()
+{
+    QProcess ruta;
+    static QString fichero;
+    if (fichero.isEmpty()) {
+        ruta.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("registro")});
+        ruta.waitForFinished(3000);
+        fichero = QString::fromUtf8(ruta.readAllStandardOutput()).trimmed();
+    }
+    QFile f(fichero);
+    if (f.open(QIODevice::ReadOnly)) {
+        if (f.size() < m_updateOffset)   // se empezó otra: desde el principio
+            m_updateOffset = 0;
+        f.seek(m_updateOffset);
+        m_updatePartial += f.readAll();
+        m_updateOffset = f.pos();
+    }
+    bool cambio = false;
+    int fin;
+    while (m_updateRunning && (fin = m_updatePartial.indexOf('\n')) >= 0) {
+        // pacman sin terminal también separa con \r al descargar
+        const QString linea = QString::fromUtf8(m_updatePartial.left(fin)).section(QLatin1Char('\r'), -1);
+        m_updatePartial.remove(0, fin + 1);
+        appendUpdateLine(linea);
+        cambio = true;
+    }
+    if (cambio)
+        emit updateLogChanged();
+
+    // El servicio terminó sin escribir @@FIN (se cortó la luz, lo pararon...)
+    if (m_updateRunning) {
+        QProcess estado;
+        estado.start(binTitan(QStringLiteral("titan-actualizar-sistema")), {QStringLiteral("estado")});
+        estado.waitForFinished(3000);
+        if (QString::fromUtf8(estado.readAllStandardOutput()).trimmed() == QStringLiteral("parado")) {
+            if (++m_updateIdle >= 5)   // dos segundos sin servicio ni final
+                finishUpdate(false, QStringLiteral("La actualización se interrumpió. Vuelve a intentarlo."));
+        } else {
+            m_updateIdle = 0;
+        }
+    }
+}
+
+void SettingsBackend::appendUpdateLine(const QString &linea)
+{
+    static const QRegularExpression reInstalar(QStringLiteral("^\\(\\s*(\\d+)/(\\d+)\\)\\s+(upgrading|installing|reinstalling|removing|downgrading)\\s+(\\S+)"));
+    static const QRegularExpression reDescarga(QStringLiteral("^\\s*(\\S+)\\s+downloading\\.\\.\\."));
+
+    if (linea.startsWith(QStringLiteral("@@FIN "))) {
+        const QString resto = linea.mid(6);
+        finishUpdate(resto.section(QLatin1Char(' '), 0, 0) == QStringLiteral("ok"), resto.section(QLatin1Char(' '), 1));
+        return;
+    }
+    if (linea == QStringLiteral("@@REINICIAR")) {
+        m_updateNeedsReboot = true;
+        return;
+    }
+    if (linea.startsWith(QStringLiteral("@@ "))) {
+        m_updateProgress = qMax(m_updateProgress, linea.section(QLatin1Char(' '), 1, 1).toDouble() / 100.0);
+        m_updateStatus = linea.section(QLatin1Char(' '), 2);
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        return;
     }
 
-    QString script = QStringLiteral("echo '=== Inti OS - Actualización de Paquetes de Arch Linux ==='; "
-                                    "echo 'Ejecutando: sudo pacman -Syu'; "
-                                    "sudo pacman -Syu; "
-                                    "echo ''; "
-                                    "read -p 'Proceso terminado. Presiona Enter para cerrar...'");
+    m_updateLogLines << linea;
+    if (m_updateLogLines.size() > 4000)
+        m_updateLogLines.erase(m_updateLogLines.begin(), m_updateLogLines.begin() + 500);
 
-    QProcess::startDetached(term, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << script);
+    const auto inst = reInstalar.match(linea);
+    if (inst.hasMatch()) {
+        const double i = inst.captured(1).toDouble(), n = qMax(1.0, inst.captured(2).toDouble());
+        m_updateProgress = qMax(m_updateProgress, 0.40 + 0.50 * i / n);
+        const QString op = inst.captured(3);
+        const QString verbo = op == QStringLiteral("removing") ? QStringLiteral("Quitando")
+                            : op == QStringLiteral("installing") ? QStringLiteral("Instalando")
+                                                                 : QStringLiteral("Actualizando");
+        m_updateStatus = QStringLiteral("%1 %2 (%3 de %4)").arg(verbo, inst.captured(4), inst.captured(1), inst.captured(2));
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        return;
+    }
+    const auto desc = reDescarga.match(linea);
+    if (desc.hasMatch()) {
+        ++m_updateDownloads;
+        const double total = qMax(m_updateDownloads + 1, m_updateCount);
+        m_updateProgress = qMax(m_updateProgress, 0.10 + 0.28 * m_updateDownloads / total);
+        m_updateStatus = QStringLiteral("Descargando %1").arg(desc.captured(1));
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+    } else if (linea.startsWith(QStringLiteral(":: Running pre-transaction hooks"))) {
+        m_updateStatus = QStringLiteral("Guardando una instantánea del sistema…");
+        emit updateStatusChanged();
+    } else if (linea.startsWith(QStringLiteral(":: Running post-transaction hooks"))) {
+        m_updateStatus = QStringLiteral("Terminando de configurar…");
+        emit updateStatusChanged();
+    }
+}
+
+void SettingsBackend::finishUpdate(bool ok, const QString &texto)
+{
+    if (m_updateTimer)
+        m_updateTimer->stop();
+    auto terminar = [this, ok, texto]() {
+        m_updateRunning = false;
+        m_updateResult = ok ? QStringLiteral("ok") : QStringLiteral("error");
+        m_updateProgress = ok ? 1.0 : m_updateProgress;
+        m_updateStatus = ok && m_updateNeedsReboot
+                             ? QStringLiteral("Actualizado. Reinicia para usar el sistema nuevo.")
+                             : texto;
+        if (ok) {
+            m_updateCount = 0;
+            emit updateCountChanged();
+        }
+        emit updateProgressChanged();
+        emit updateStatusChanged();
+        emit updateLogChanged();
+    };
+    // Las apps de la Tienda instaladas solo para esta cuenta, sin contraseña
+    if (ok && !QStandardPaths::findExecutable(QStringLiteral("flatpak")).isEmpty()) {
+        m_updateStatus = QStringLiteral("Actualizando tus apps de la Tienda…");
+        m_updateProgress = qMax(m_updateProgress, 0.95);
+        emit updateStatusChanged();
+        emit updateProgressChanged();
+        auto *fp = new QProcess(this);
+        fp->setProcessChannelMode(QProcess::MergedChannels);
+        connect(fp, &QProcess::finished, this, [this, fp, terminar]() {
+            for (const QString &l : QString::fromUtf8(fp->readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+                m_updateLogLines << l.section(QLatin1Char('\r'), -1);
+            fp->deleteLater();
+            terminar();
+        });
+        fp->start(QStringLiteral("flatpak"), {QStringLiteral("update"), QStringLiteral("--user"), QStringLiteral("-y"),
+                                              QStringLiteral("--noninteractive")});
+        return;
+    }
+    terminar();
+}
+
+void SettingsBackend::rebootNow()
+{
+    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("reboot")});
 }
 
 void SettingsBackend::updateNetworkStatus()
